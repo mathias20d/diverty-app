@@ -10,7 +10,7 @@ import {
   Smartphone, FileText, Check, Sparkles, Map as MapIcon, Navigation, 
   Zap, PieChart, ChevronDown, Moon, Sun, Award, FileSpreadsheet, 
   Copy, MessageSquareText, Printer, Home, Menu, BarChart3, 
-  ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus 
+  ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Share2 
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -90,16 +90,21 @@ export const utils = {
   getLocalYYYYMMDD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
   getWeekRange: (baseDate = new Date()) => { const t = new Date(baseDate); const d = t.getDay() === 0 ? -6 : 1 - t.getDay(); const s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
   getServiceDetails: (name) => { if (!name) return undefined; const nl = normalizeText(name); return PAQUETES_BASE.find(p => nl.includes(normalizeText(p.nombre).replace('plan ', '').replace('paquete ', '').trim())); },
-  parseCSV: (str) => { const arr = []; let quote = false; for (let row = 0, col = 0, c = 0; c < str.length; c++) { let cc = str[c], nc = str[c+1]; arr[row] = arr[row] || []; arr[row][col] = arr[row][col] || ''; if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; } if (cc === '"') { quote = !quote; continue; } if (cc === ',' && !quote) { ++col; continue; } if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; } if (cc === '\n' && !quote) { ++row; col = 0; continue; } if (cc === '\r' && !quote) { ++row; col = 0; continue; } arr[row][col] += cc; } return arr; }
+  parseCSV: (str) => { const arr = []; let quote = false; for (let row = 0, col = 0, c = 0; c < str.length; c++) { let cc = str[c], nc = str[c+1]; arr[row] = arr[row] || []; arr[row][col] = arr[row][col] || ''; if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; } if (cc === '"') { quote = !quote; continue; } if (cc === ',' && !quote) { ++col; continue; } if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; } if (cc === '\n' && !quote) { ++row; col = 0; continue; } if (cc === '\r' && !quote) { ++row; col = 0; continue; } arr[row][col] += cc; } return arr; },
+  
+  openWhatsAppBusiness: (phone, msg) => {
+    const text = encodeURIComponent(msg);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+  }
 };
-const { getSafeLocal, setSafeLocal, triggerHaptic, safeNum, formatTime12h, getLocalYYYYMMDD, getWeekRange, parseCSV, getServiceDetails } = utils;
+const { getSafeLocal, setSafeLocal, triggerHaptic, safeNum, formatTime12h, getLocalYYYYMMDD, getWeekRange, parseCSV, getServiceDetails, openWhatsAppBusiness } = utils;
 
 const getWhatsAppMessage = (ev, type, empresa) => {
     const tot = safeNum(ev.total); const abo = safeNum(ev.abono); const saldo = (tot - abo).toFixed(2);
     const fec = String(ev.fecha||'').split('-').reverse().join('/'); const hor = formatTime12h(ev.hora);
     switch(type) {
-        case 'cotizacion': return `¡Hola *${ev.cliente}*! ✨\nTe comparto la cotización para tu evento el *${fec}*.\n🎉 *Paquetes:* ${ev.servicio}\n💰 *Inversión Total:* $${tot.toFixed(2)}\n\nSi deseas agendar, puedes confirmarnos por aquí. ¡Estamos a la orden! 🥳`;
-        case 'recibo': return `¡Hola *${ev.cliente}*! 🥳\nTu reserva está *Confirmada* ✅\n📅 *Fecha:* ${fec}\n⏰ *Hora:* ${hor}\n📍 *Lugar:* ${ev.ubicacion}\n💰 *Total:* $${tot.toFixed(2)}\n💳 *Abono recibido:* $${abo.toFixed(2)}\n⚠️ *Saldo a cancelar en evento:* $${saldo}\n¡Gracias por preferirnos! ✨`;
+        case 'cotizacion': return `¡Hola *${ev.cliente}*! ✨\nTe comparto la cotización para tu evento el *${fec}*.\n🎉 *Paquetes:* ${ev.servicio}\n💰 *Inversión Total:* $${tot.toFixed(2)}\n\n*He adjuntado el PDF con todos los detalles a este mensaje.*\n\nSi deseas agendar, puedes confirmarnos por aquí. ¡Estamos a la orden! 🥳`;
+        case 'recibo': return `¡Hola *${ev.cliente}*! 🥳\nTu reserva está *Confirmada* ✅\n📅 *Fecha:* ${fec}\n⏰ *Hora:* ${hor}\n📍 *Lugar:* ${ev.ubicacion}\n💰 *Total:* $${tot.toFixed(2)}\n💳 *Abono recibido:* $${abo.toFixed(2)}\n⚠️ *Saldo a cancelar en evento:* $${saldo}\n\n*Te adjunto el recibo oficial en PDF.*\n¡Gracias por preferirnos! ✨`;
         case 'recordatorio': return `¡Hola *${ev.cliente}*! 🥳\n¡Se acerca tu gran día! Recuerda tu evento para el *${fec}* a las *${hor}*.\n📍 Llegaremos a *${ev.ubicacion}*.\n💰 Saldo pendiente: *$${saldo}*.\n¡Nos vemos pronto para la diversión! ✨`;
         case 'cobro': return `¡Hola *${ev.cliente}*! 👋\nTe contactamos de Diverty Eventos.\nTe recordamos amablemente que tienes un saldo pendiente de *$${saldo}* para asegurar tu fecha del *${fec}*.\n\nSi deseas realizar el abono mediante Yappy o Transferencia, por favor avísanos por aquí. ¡Estamos a tu disposición! ✨`;
         case 'banco': return `¡Hola *${ev.cliente}*! 👋\nNuestros datos bancarios:\n🏦 *Banco:* ${empresa.banco}\n📋 *Tipo:* ${empresa.tipoCuenta}\n🔢 *Cuenta:* ${empresa.numeroCuenta}\n👤 *Nombre:* ${empresa.nombreTitular}\nPor favor envía comprobante. ¡Gracias! ✨`;
@@ -289,15 +294,26 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
                         <div className="overflow-hidden">
                             <div className="flex flex-col gap-3 mb-6">
                                 <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                                    <Sparkles size={16} className="text-slate-400" strokeWidth={2} />
+                                    <Sparkles size={16} className="text-slate-400 shrink-0" strokeWidth={2} />
                                     <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">{ev.servicio || 'Sin paquete asignado'}</span>
                                 </div>
-                                <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                                    <MapPin size={16} className="text-slate-400" strokeWidth={2} />
-                                    <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300 truncate">{ev.ubicacion} {ev.direccion ? `- ${ev.direccion}` : ''}</span>
+                                
+                                <div 
+                                    onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }}
+                                    className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 p-2 -mx-2 rounded-xl transition-all active:scale-[0.98] group border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                                    title="Abrir en Google Maps"
+                                >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <MapPin size={16} className="text-slate-400 group-hover:text-violet-500 transition-colors shrink-0" strokeWidth={2} />
+                                        <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300 truncate">{ev.ubicacion} {ev.direccion ? `- ${ev.direccion}` : ''}</span>
+                                    </div>
+                                    <div className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                                        <MapIcon size={12} className="text-violet-500" />
+                                    </div>
                                 </div>
+
                                 <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
-                                    <Smartphone size={16} className="text-slate-400" strokeWidth={2} />
+                                    <Smartphone size={16} className="text-slate-400 shrink-0" strokeWidth={2} />
                                     <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">{ev.telefono || 'Sin teléfono'}</span>
                                 </div>
                             </div>
@@ -424,23 +440,46 @@ export default function App() {
   const stats = useMemo(() => {
      let gananciaHoy = 0, gananciaSemana = 0, deudaTotal = 0, ingresosEsteMes = 0;
      const eventosHoy = []; const eventosManana = []; const alertasOperativas = [];
+     
+     const currYear = todayObj.getFullYear();
+     const currMonth = todayObj.getMonth() + 1;
+
      eventosActivos.forEach(ev => {
         const est = utils.normalizeText(ev.estado); 
-        const isHoy = ev.fecha === todayStr; const isManana = ev.fecha === tomorrowStr;
+        const isHoy = ev.fecha === todayStr; 
+        const isManana = ev.fecha === tomorrowStr;
+        
         if(est !== 'cancelado' && est !== 'cotizacion') {
             const t = utils.safeNum(ev.total), a = utils.safeNum(ev.abono), g = utils.safeNum(ev.gastos), p = t - g; 
-            if (est !== 'completado' && (t - a) > 0) deudaTotal += (t - a);
-            if(isHoy) gananciaHoy += p;
-            if(ev.fecha) { 
-                const [y, m, d] = String(ev.fecha).split('-'); 
-                if(y && m && d) { 
-                    if (parseInt(y, 10) === todayObj.getFullYear() && parseInt(m, 10) === (todayObj.getMonth() + 1)) ingresosEsteMes += p; 
-                    const eD = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)); 
-                    if (eD >= weekStart && eD <= weekEnd) gananciaSemana += p; 
-                } 
+            
+            let evYear = 0, evMonth = 0, evDay = 0;
+            if(ev.fecha) {
+                const parts = String(ev.fecha).trim().split('-');
+                if(parts.length >= 2) {
+                    evYear = parseInt(parts[0], 10);
+                    evMonth = parseInt(parts[1], 10);
+                    evDay = parseInt(parts[2] || 0, 10);
+                }
             }
+            
+            const isEsteMes = (evYear === currYear && evMonth === currMonth);
+            const isPastOrCurrentMonth = evYear < currYear || (evYear === currYear && evMonth <= currMonth);
+            
+            if (est !== 'completado' && (t - a) > 0 && isPastOrCurrentMonth) {
+                deudaTotal += (t - a);
+            }
+            
+            if(isHoy) gananciaHoy += p;
+            if(isEsteMes) ingresosEsteMes += p;
+            
+            if(evYear && evMonth && evDay) { 
+                const eD = new Date(evYear, evMonth - 1, evDay); 
+                if (eD >= weekStart && eD <= weekEnd) gananciaSemana += p; 
+            }
+            
             if(isHoy) eventosHoy.push(ev); 
             if(isManana) eventosManana.push(ev);
+            
             if (est !== 'completado' && (isHoy || isManana)) {
                 const priority = isHoy ? 1 : 2;
                 const sp = isHoy ? { color: 'text-rose-600', bg: 'bg-rose-50 border-rose-200', tagBg: 'bg-rose-500', tagText: 'HOY URGENTE' } : { color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', tagBg: 'bg-amber-500', tagText: 'MAÑANA' };
@@ -701,9 +740,86 @@ export default function App() {
   const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => { utils.triggerHaptic('light'); setEventos([]); Promise.all(eventosActivos.map(ev => setDoc(getDocRef(ev.id), { deletedLocally: true }, { merge: true }))).catch(e=>console.warn(e)); utils.triggerHaptic('success'); showAlert("Base de datos limpiada.", true); }, 'delete'), [eventosActivos, showConfirm, showAlert]);
   const handleViewDoc = useCallback((ev, type) => { try { utils.triggerHaptic('light'); setPrintData(ev); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert]);
   
-  const sendWhatsAppCall = useCallback((ev, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(ev, type, empresaSettings || appSettings.empresa); window.open(`https://wa.me/${String(ev.telefono).replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank'); }, [appSettings.empresa]);
+  // FUNCIONES DE DOCUMENTOS Y MENSAJES
+  const sendWhatsAppCall = useCallback((ev, type, empresaSettings) => { 
+      utils.triggerHaptic('success'); 
+      const msg = getWhatsAppMessage(ev, type, empresaSettings || appSettings.empresa); 
+      const phoneClean = String(ev.telefono).replace(/\D/g,'');
+      utils.openWhatsAppBusiness(phoneClean, msg);
+  }, [appSettings.empresa]);
+
   const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
+
+  // FUNCIÓN PARA DESCARGAR PDF
+  const downloadPDF = useCallback(async () => {
+    utils.triggerHaptic('success');
+    const element = document.getElementById('pdf-content');
+    if (!element) return;
+    if (!window.html2pdf) { showAlert("El generador de PDF está cargando. Intenta en unos segundos..."); return; }
+
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
+    const oldTransform = wrapper.style.transform;
+    wrapper.style.transform = 'scale(1)';
+
+    const docName = printData.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+    const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+
+    const opt = { margin: 0, filename: fileName, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true, logging: false }, jsPDF: { unit: 'in', format: [8.5, 11], orientation: 'portrait' } };
+
+    try {
+        await window.html2pdf().set(opt).from(element).save();
+        showAlert("¡PDF descargado con éxito en tu dispositivo!", true);
+    } catch (error) {
+        showAlert("Error al descargar el PDF.");
+    } finally {
+        wrapper.style.transform = oldTransform;
+    }
+  }, [printData, printType, showAlert]);
+
+  // NUEVA FUNCIÓN PARA COMPARTIR PDF USANDO EL MENÚ DEL CELULAR
+  const handleSharePDF = useCallback(async () => {
+    utils.triggerHaptic('success');
+    const element = document.getElementById('pdf-content');
+    if (!element) return;
+    if (!window.html2pdf) { showAlert("El generador de PDF está cargando..."); return; }
+
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
+    const oldTransform = wrapper.style.transform;
+    wrapper.style.transform = 'scale(1)';
+
+    const docName = printData.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+    const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+
+    const opt = { margin: 0, filename: fileName, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true, logging: false }, jsPDF: { unit: 'in', format: [8.5, 11], orientation: 'portrait' } };
+
+    try {
+        showAlert("Preparando PDF para compartir...", true);
+        const pdfBlob = await window.html2pdf().set(opt).from(element).output('blob');
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        const msg = getWhatsAppMessage(printData, printType === 'cotizacion' ? 'cotizacion' : 'recibo', appSettings.empresa);
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: fileName,
+                text: msg
+            });
+        } else {
+            showAlert("Tu celular no soporta compartir directamente. Descargando el PDF...", false);
+            await window.html2pdf().set(opt).from(element).save();
+            const phoneClean = String(printData.telefono).replace(/\D/g,'');
+            utils.openWhatsAppBusiness(phoneClean, msg);
+        }
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            showAlert("Error al compartir. Intenta descargar el PDF.");
+            console.error(error);
+        }
+    } finally {
+        wrapper.style.transform = oldTransform; 
+    }
+  }, [printData, printType, appSettings, showAlert]);
 
   const downloadExcel = useCallback(() => {
     utils.triggerHaptic('success');
@@ -1211,11 +1327,11 @@ export default function App() {
                  <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
                     {contactCandidates.map((c, idx) => {
                         const phoneClean = String(c.telefono).replace(/\D/g,'');
-                        const msg = encodeURIComponent(`¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`);
+                        const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`;
                         return (
                            <div key={`contact-${c.nombre}`} className="snap-center shrink-0 w-72 bg-gradient-to-tr from-white to-slate-50 dark:from-slate-800 dark:to-slate-900 backdrop-blur-xl p-5 rounded-3xl border border-white/60 dark:border-slate-700 shadow-sm flex flex-col gap-4 animate-fadeInUp" style={{ animationDelay: `${idx * 100}ms` }}>
                               <div><p className="font-black text-slate-800 dark:text-white truncate text-lg tracking-tight capitalize">{c.nombre}</p><p className="text-[10px] font-black text-rose-500 dark:text-rose-400 mt-1 uppercase tracking-widest bg-rose-50 dark:bg-rose-500/10 px-2 py-1 rounded w-max border border-rose-100 dark:border-rose-500/20 flex items-center gap-1"><Clock size={10}/> Sin compras hace {c.daysSince} días</p></div>
-                              <button onClick={() => { utils.triggerHaptic('success'); window.open(`https://wa.me/${phoneClean}?text=${msg}`, '_blank'); }} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-2xl transition-all duration-300 active:scale-95 font-black text-[11px] uppercase tracking-widest flex justify-center items-center gap-2 shadow-[0_4px_15px_rgba(16,185,129,0.3)]"><MessageCircle size={16}/> Enviar Promo</button>
+                              <button onClick={() => { utils.openWhatsAppBusiness(phoneClean, msg); }} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-2xl transition-all duration-300 active:scale-95 font-black text-[11px] uppercase tracking-widest flex justify-center items-center gap-2 shadow-[0_4px_15px_rgba(16,185,129,0.3)]"><MessageCircle size={16}/> Enviar Promo</button>
                            </div>
                         )
                     })}
@@ -1239,9 +1355,9 @@ export default function App() {
                  sortedFilteredClients.map((c, i) => {
                     const phoneClean = String(c.telefono).replace(/\D/g,'');
                     const isExpanded = expandedClientId === c.nombre;
-                    const msgPromo = encodeURIComponent(`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`);
-                    const msgSeguimiento = encodeURIComponent(`¡Hola ${c.nombre}! 👋 Pasábamos a saludarte de Diverty Eventos. ¿Qué tal estuvo tu última fiesta con nosotros? ¡Nos encantaría saber de ti! ✨`);
-                    const msgRecordatorio = encodeURIComponent(`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`);
+                    const msgPromo = `¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`;
+                    const msgSeguimiento = `¡Hola ${c.nombre}! 👋 Pasábamos a saludarte de Diverty Eventos. ¿Qué tal estuvo tu última fiesta con nosotros? ¡Nos encantaría saber de ti! ✨`;
+                    const msgRecordatorio = `¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
                     const avatarGradients = ['from-violet-500 to-indigo-500', 'from-emerald-400 to-teal-500', 'from-rose-400 to-pink-500', 'from-amber-400 to-orange-500', 'from-blue-400 to-cyan-500'];
                     const grad = c.isVIP ? 'from-amber-400 via-orange-500 to-rose-500' : avatarGradients[String(c.nombre).length % avatarGradients.length];
                     return (
@@ -1266,9 +1382,9 @@ export default function App() {
                                         <div className="text-center flex-1"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Estado</p><p className="font-black text-sm text-slate-700 dark:text-slate-300 capitalize flex justify-center items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${String(c.ultimoEstado).toLowerCase() === 'completado' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div>
                                     </div>
                                     <div className="flex gap-2 mb-3">
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('success'); window.open(`https://wa.me/${phoneClean}?text=${msgPromo}`, '_blank'); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400"><Sparkles size={16}/> Promo</button>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('success'); window.open(`https://wa.me/${phoneClean}?text=${msgSeguimiento}`, '_blank'); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-blue-600 dark:text-blue-400"><RefreshCw size={16}/> Seguir</button>
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('success'); window.open(`https://wa.me/${phoneClean}?text=${msgRecordatorio}`, '_blank'); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-amber-600 dark:text-amber-400"><BellRing size={16}/> Recordar</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgPromo); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400"><Sparkles size={16}/> Promo</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgSeguimiento); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-blue-600 dark:text-blue-400"><RefreshCw size={16}/> Seguir</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgRecordatorio); }} className="flex-1 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-500/10 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 flex flex-col items-center justify-center gap-1.5 border border-slate-200/80 dark:border-slate-700 shadow-sm text-amber-600 dark:text-amber-400"><BellRing size={16}/> Recordar</button>
                                     </div>
                                     <AppButton variant="primary" icon={Plus} onClick={(e) => { e.stopPropagation(); openModal(); }} className="w-full py-3.5 text-[11px] uppercase tracking-widest rounded-xl">Reservar a este cliente</AppButton>
                                 </div>
@@ -1283,12 +1399,19 @@ export default function App() {
   };
 
   const renderFinanzas = () => {
+      const currYear = todayObj.getFullYear();
+      const currMonth = todayObj.getMonth() + 1;
+
       const eventosParaBalance = eventosActivos.filter(ev => {
           const est = utils.normalizeText(ev.estado);
           if (est === 'cancelado' || est === 'cotizacion') return false;
           if (financePeriod === 'todos') return true;
-          return ev.fecha && String(ev.fecha).startsWith(`${todayObj.getFullYear()}-${String(todayObj.getMonth()+1).padStart(2,'0')}`);
+          
+          if (!ev.fecha) return false;
+          const parts = String(ev.fecha).trim().split('-');
+          return parseInt(parts[0], 10) === currYear && parseInt(parts[1], 10) === currMonth;
       });
+      
       const totalIngresos = eventosParaBalance.reduce((acc, ev) => acc + utils.safeNum(ev.total), 0);
       const totalGastos = eventosParaBalance.reduce((acc, ev) => acc + utils.safeNum(ev.gastos), 0);
       const balanceTotal = totalIngresos - totalGastos;
@@ -1296,13 +1419,22 @@ export default function App() {
 
       const eventosConDeuda = eventosActivos.filter(ev => {
           const est = utils.normalizeText(ev.estado);
-          return (utils.safeNum(ev.total) - utils.safeNum(ev.abono)) > 0 && est !== 'cancelado' && est !== 'completado' && est !== 'cotizacion';
+          const tieneDeuda = (utils.safeNum(ev.total) - utils.safeNum(ev.abono)) > 0 && est !== 'cancelado' && est !== 'completado' && est !== 'cotizacion';
+          if (!tieneDeuda) return false;
+          
+          if (financePeriod === 'todos') return true;
+          if (!ev.fecha) return false;
+          const parts = String(ev.fecha).trim().split('-');
+          return parseInt(parts[0], 10) === currYear && parseInt(parts[1], 10) === currMonth;
       });
       const deudaTotalGlobal = eventosConDeuda.reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.abono)), 0);
 
       const ingresosEsteMesGlobal = eventosActivos.filter(ev => {
           const est = utils.normalizeText(ev.estado);
-          return est !== 'cancelado' && est !== 'cotizacion' && ev.fecha && String(ev.fecha).startsWith(`${todayObj.getFullYear()}-${String(todayObj.getMonth()+1).padStart(2,'0')}`);
+          if (est === 'cancelado' || est === 'cotizacion') return false;
+          if (!ev.fecha) return false;
+          const parts = String(ev.fecha).trim().split('-');
+          return parseInt(parts[0], 10) === currYear && parseInt(parts[1], 10) === currMonth;
       }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
       
       const diasTranscurridos = todayObj.getDate();
@@ -1551,13 +1683,19 @@ export default function App() {
     return (
       <div className="bg-slate-900 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative">
         <style>{`@media print { body * { visibility: hidden; } #pdf-wrapper-scaler, #pdf-wrapper-scaler * { visibility: visible; } #pdf-wrapper-scaler { position: absolute; left: 0; top: 0; width: 100%; transform: scale(1) !important; margin: 0; } .print\\:hidden { display: none !important; } @page { size: auto; margin: 0mm; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`}</style>
-        <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex justify-between items-center z-50 print:hidden border-b border-slate-800 p-4">
-          <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold transition-colors duration-200 ease-in-out hover:text-indigo-400"><X size={20} className="mr-1"/> Atrás</button>
-          <div className="flex gap-2">
-             <button type="button" onClick={() => sendWhatsAppCall(printData, isCot ? 'cotizacion' : 'recibo', appSettings.empresa)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold flex items-center transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"><MessageCircle size={16} className="mr-2"/> WhatsApp</button>
-             <button type="button" onClick={printNativePDF} className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold flex items-center transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 shadow-lg shadow-indigo-500/30"><Printer size={16} className="mr-2"/> Guardar PDF</button>
+        <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4">
+          <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold transition-colors duration-200 ease-in-out hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button>
+          
+          <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
+             <button type="button" onClick={handleSharePDF} className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl font-bold flex items-center transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/30 text-xs sm:text-sm">
+                 <Share2 size={16} className="mr-1 sm:mr-2"/> Compartir PDF
+             </button>
+             <button type="button" onClick={downloadPDF} className="bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 rounded-xl font-bold flex items-center transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 shadow-lg shadow-violet-500/30 text-xs sm:text-sm">
+                 <Download size={16} className="mr-1 sm:mr-2"/> Guardar
+             </button>
           </div>
         </div>
+
         <div className="w-full flex-1 flex justify-center pb-12 overflow-hidden pt-8 bg-slate-900">
           <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '800px' }}>
             {isFact || isCot ? (
