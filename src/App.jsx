@@ -523,7 +523,7 @@ export default function App() {
 
   const showAlert = useCallback((message, success = false) => { 
       setToastAlert({ isOpen: true, message, success }); 
-      setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 4000); 
+      setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); 
   }, []);
 
   const showConfirm = useCallback((message, onConfirm, type = 'delete') => {
@@ -729,6 +729,9 @@ export default function App() {
       navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true);
   }, [eventosActivos, showAlert]);
 
+  // ==========================================
+  // OBTENER TOKEN PUSH
+  // ==========================================
   const activarNotificaciones = useCallback(async () => {
     if (!('Notification' in window)) {
         showAlert("Este navegador no soporta notificaciones.");
@@ -736,37 +739,38 @@ export default function App() {
     }
     try {
       utils.triggerHaptic('light');
-      
       const permission = await Notification.requestPermission();
       
       if (permission === 'granted') {
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        console.log("Service Worker registrado correctamente:", registration);
-
         const messaging = getMessaging(app);
-        
         const token = await getToken(messaging, { 
           vapidKey: 'BFDjCV2HR94H_de31u2xSs6OEu6SqanCtB2jjUvLk52yQ44pTaXpjl6na7dxoV7BLzai9wOSbB75ZoKdhvh9JGY',
           serviceWorkerRegistration: registration 
         });
         
         if (token) {
-          console.log("¡Token del celular obtenido!: ", token);
-          showAlert("Notificaciones activadas con éxito 🎉", true);
+          try {
+             await navigator.clipboard.writeText(token);
+             showAlert("✅ ¡Token COPIADO al portapapeles!", true);
+          } catch(err) {
+             const copyPrompt = window.prompt("Copia este Token larguísimo:", token);
+             if(copyPrompt) showAlert("Token copiado", true);
+          }
         } else {
           showAlert("No se pudo obtener el token.");
         }
       } else {
-        showAlert("Permiso de notificaciones denegado.");
+        showAlert("Permiso denegado.");
       }
     } catch (error) {
-      console.error("Error DETALLADO al activar notificaciones:", error);
-      showAlert(`Error: ${error.message || 'Fallo desconocido'}`);
+      console.error(error);
+      showAlert(`Error: ${error.message}`);
     }
   }, [showAlert]);
 
   // ==========================================
-  // 5. EFECTOS
+  // EFECTOS
   // ==========================================
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
@@ -1467,7 +1471,7 @@ export default function App() {
                            </button>
                        </div>
                        <button type="button" onClick={activarNotificaciones} className="flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 p-4 rounded-2xl transition-all border border-emerald-500/20 hover:border-emerald-500/30 font-bold text-sm active:scale-95 shadow-sm">
-                           <BellRing size={18}/> Activar Notificaciones
+                           <BellRing size={18}/> Obtener Token Push
                        </button>
                        <button onClick={handleLogout} className="flex items-center justify-center gap-2 bg-white/5 hover:bg-rose-500/20 text-white hover:text-rose-400 p-4 rounded-2xl transition-all border border-white/10 hover:border-rose-500/30 font-bold text-sm active:scale-95">
                            <Lock size={18}/> Cerrar Sesión
