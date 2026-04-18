@@ -246,6 +246,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
     return (
         <div className="relative w-full rounded-[20px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-300 ease-out hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] overflow-hidden" style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}>
+            
             <div className={`absolute inset-0 bg-gradient-to-r from-rose-600 to-rose-400 flex items-center pl-8 transition-opacity duration-300 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}>
                 <Trash2 size={24} className="text-white drop-shadow-md animate-pulse" />
                 <span className="text-white font-black ml-3 text-sm uppercase tracking-widest">Eliminar</span>
@@ -260,7 +261,9 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
                 onClick={() => { triggerHaptic('light'); setIsExpanded(!isExpanded); }}
             >
                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${sideColor}`}></div>
+                
                 <div className="pl-2">
+                    
                     <div className="flex justify-between items-center gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} style={{boxShadow: `0 0 8px ${dotShadow}`}}></div>
@@ -287,6 +290,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
                     <div className={`grid transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-5' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
                         <div className="overflow-hidden">
+                            
                             <div className="flex flex-col gap-3 mb-6">
                                 <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
                                     <Sparkles size={16} className="text-slate-400" strokeWidth={2} />
@@ -358,7 +362,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 export default function App() {
   
   // ==========================================
-  // ESTADOS Y HOOKS
+  // 1. ESTADOS BÁSICOS
   // ==========================================
   const [currentTime, setCurrentTime] = useState(new Date());
   const [appSettings, setAppSettings] = useState(() => {
@@ -407,6 +411,9 @@ export default function App() {
 
   const hasSyncedRef = useRef(false);
 
+  // ==========================================
+  // 2. MEMOS (FECHAS Y CONSTANTES)
+  // ==========================================
   const todayObj = currentTime;
   const todayStr = useMemo(() => utils.getLocalYYYYMMDD(currentTime), [currentTime]);
   const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
@@ -415,7 +422,7 @@ export default function App() {
   const PAQUETES_DIVERTY = useMemo(() => [...PAQUETES_BASE, ...paquetesPersonalizados], [paquetesPersonalizados]);
 
   // ==========================================
-  // DATOS DERIVADOS
+  // 3. MEMOS (DATOS DERIVADOS)
   // ==========================================
   const eventosActivos = useMemo(() => {
       return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
@@ -514,7 +521,7 @@ export default function App() {
   }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
 
   // ==========================================
-  // HANDLERS BÁSICOS Y FUNCIONES PURAS
+  // 4. HANDLERS BÁSICOS Y FUNCIONES PURAS
   // ==========================================
   const updateSettings = useCallback((newSettings) => {
       setAppSettings(newSettings);
@@ -736,12 +743,20 @@ export default function App() {
     }
     try {
       utils.triggerHaptic('light');
+      
       const permission = await Notification.requestPermission();
+      
       if (permission === 'granted') {
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        console.log("Service Worker registrado correctamente:", registration);
+
         const messaging = getMessaging(app);
+        
         const token = await getToken(messaging, { 
-          vapidKey: '-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E' 
+          vapidKey: '-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E',
+          serviceWorkerRegistration: registration 
         });
+        
         if (token) {
           console.log("¡Token del celular obtenido!: ", token);
           showAlert("Notificaciones activadas con éxito 🎉", true);
@@ -752,13 +767,13 @@ export default function App() {
         showAlert("Permiso de notificaciones denegado.");
       }
     } catch (error) {
-      console.error("Error al activar notificaciones:", error);
-      showAlert("Error al configurar notificaciones.");
+      console.error("Error DETALLADO al activar notificaciones:", error);
+      showAlert(`Error: ${error.message || 'Fallo desconocido'}`);
     }
   }, [showAlert]);
 
   // ==========================================
-  // EFECTOS (LUEGO DE TODOS LOS HANDLERS)
+  // 5. EFECTOS
   // ==========================================
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
