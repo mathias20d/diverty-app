@@ -2,12 +2,10 @@
   "name": "Diverty Eventos",
   "short_name": "Diverty",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#7c3aed",
   "orientation": "portrait",
-  "description": "Gestión de reservas y eventos Diverty",
   "icons": [
     {
       "src": "/icon-192.png",
