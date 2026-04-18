@@ -246,7 +246,6 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
     return (
         <div className="relative w-full rounded-[20px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-300 ease-out hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] overflow-hidden" style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}>
-            
             <div className={`absolute inset-0 bg-gradient-to-r from-rose-600 to-rose-400 flex items-center pl-8 transition-opacity duration-300 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}>
                 <Trash2 size={24} className="text-white drop-shadow-md animate-pulse" />
                 <span className="text-white font-black ml-3 text-sm uppercase tracking-widest">Eliminar</span>
@@ -261,9 +260,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
                 onClick={() => { triggerHaptic('light'); setIsExpanded(!isExpanded); }}
             >
                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${sideColor}`}></div>
-                
                 <div className="pl-2">
-                    
                     <div className="flex justify-between items-center gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} style={{boxShadow: `0 0 8px ${dotShadow}`}}></div>
@@ -290,7 +287,6 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
                     <div className={`grid transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-5' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
                         <div className="overflow-hidden">
-                            
                             <div className="flex flex-col gap-3 mb-6">
                                 <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
                                     <Sparkles size={16} className="text-slate-400" strokeWidth={2} />
@@ -362,7 +358,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 export default function App() {
   
   // ==========================================
-  // 1. ESTADOS BÁSICOS
+  // ESTADOS Y HOOKS
   // ==========================================
   const [currentTime, setCurrentTime] = useState(new Date());
   const [appSettings, setAppSettings] = useState(() => {
@@ -411,9 +407,6 @@ export default function App() {
 
   const hasSyncedRef = useRef(false);
 
-  // ==========================================
-  // 2. MEMOS (FECHAS Y CONSTANTES)
-  // ==========================================
   const todayObj = currentTime;
   const todayStr = useMemo(() => utils.getLocalYYYYMMDD(currentTime), [currentTime]);
   const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
@@ -422,7 +415,7 @@ export default function App() {
   const PAQUETES_DIVERTY = useMemo(() => [...PAQUETES_BASE, ...paquetesPersonalizados], [paquetesPersonalizados]);
 
   // ==========================================
-  // 3. MEMOS (DATOS DERIVADOS)
+  // DATOS DERIVADOS
   // ==========================================
   const eventosActivos = useMemo(() => {
       return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
@@ -521,7 +514,7 @@ export default function App() {
   }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
 
   // ==========================================
-  // 4. HANDLERS BÁSICOS Y FUNCIONES PURAS
+  // HANDLERS BÁSICOS Y FUNCIONES PURAS
   // ==========================================
   const updateSettings = useCallback((newSettings) => {
       setAppSettings(newSettings);
@@ -753,7 +746,7 @@ export default function App() {
         const messaging = getMessaging(app);
         
         const token = await getToken(messaging, { 
-          vapidKey: '-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E',
+          vapidKey: 'BFDjCV2HR94H_de31u2xSs6OEu6SqanCtB2jjUvLk52yQ44pTaXpjl6na7dxoV7BLzai9wOSbB75ZoKdhvh9JGY',
           serviceWorkerRegistration: registration 
         });
         
@@ -1042,8 +1035,8 @@ export default function App() {
 
           <div className="mt-10 pt-10 border-t border-slate-200/60 dark:border-slate-800/60 relative">
              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-black text-2xl text-slate-800 dark:text-white flex items-center gap-3"><CalendarDays className="text-violet-500" size={28} /> Próximas Reservas</h3>
-                <button type="button" onClick={() => {utils.triggerHaptic('light'); setActiveTab('eventos')}} className="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
+                 <h3 className="font-black text-2xl text-slate-800 dark:text-white flex items-center gap-3"><CalendarDays className="text-violet-500" size={28} /> Próximas Reservas</h3>
+                 <button type="button" onClick={() => {utils.triggerHaptic('light'); setActiveTab('eventos')}} className="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
              </div>
              {stats.eventosHoy.length > 0 || stats.eventosManana.length > 0 ? (
                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">{[...stats.eventosHoy, ...stats.eventosManana].map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayObj={todayObj} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} />)}</div>
