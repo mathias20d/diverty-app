@@ -15,6 +15,7 @@ import {
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getMessaging, getToken } from 'firebase/messaging';
 
 const firebaseConfig = { 
   apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", 
@@ -245,7 +246,6 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
     return (
         <div className="relative w-full rounded-[20px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all duration-300 ease-out hover:shadow-[0_8px_30px_rgba(0,0,0,0.06)] overflow-hidden" style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}>
-            
             <div className={`absolute inset-0 bg-gradient-to-r from-rose-600 to-rose-400 flex items-center pl-8 transition-opacity duration-300 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}>
                 <Trash2 size={24} className="text-white drop-shadow-md animate-pulse" />
                 <span className="text-white font-black ml-3 text-sm uppercase tracking-widest">Eliminar</span>
@@ -260,9 +260,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
                 onClick={() => { triggerHaptic('light'); setIsExpanded(!isExpanded); }}
             >
                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${sideColor}`}></div>
-                
                 <div className="pl-2">
-                    
                     <div className="flex justify-between items-center gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                             <div className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} style={{boxShadow: `0 0 8px ${dotShadow}`}}></div>
@@ -289,7 +287,6 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 
                     <div className={`grid transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-5' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
                         <div className="overflow-hidden">
-                            
                             <div className="flex flex-col gap-3 mb-6">
                                 <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400">
                                     <Sparkles size={16} className="text-slate-400" strokeWidth={2} />
@@ -361,7 +358,7 @@ const EventCardItem = React.memo(({ ev, idx, todayObj, onWhatsApp, onViewDoc, on
 export default function App() {
   
   // ==========================================
-  // 1. ESTADOS BÁSICOS
+  // ESTADOS Y HOOKS
   // ==========================================
   const [currentTime, setCurrentTime] = useState(new Date());
   const [appSettings, setAppSettings] = useState(() => {
@@ -410,9 +407,6 @@ export default function App() {
 
   const hasSyncedRef = useRef(false);
 
-  // ==========================================
-  // 2. MEMOS (FECHAS Y CONSTANTES)
-  // ==========================================
   const todayObj = currentTime;
   const todayStr = useMemo(() => utils.getLocalYYYYMMDD(currentTime), [currentTime]);
   const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
@@ -421,7 +415,7 @@ export default function App() {
   const PAQUETES_DIVERTY = useMemo(() => [...PAQUETES_BASE, ...paquetesPersonalizados], [paquetesPersonalizados]);
 
   // ==========================================
-  // 3. MEMOS (DATOS DERIVADOS)
+  // DATOS DERIVADOS
   // ==========================================
   const eventosActivos = useMemo(() => {
       return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
@@ -520,7 +514,7 @@ export default function App() {
   }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
 
   // ==========================================
-  // 4. HANDLERS BÁSICOS Y FUNCIONES PURAS
+  // HANDLERS BÁSICOS Y FUNCIONES PURAS
   // ==========================================
   const updateSettings = useCallback((newSettings) => {
       setAppSettings(newSettings);
@@ -735,8 +729,36 @@ export default function App() {
       navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true);
   }, [eventosActivos, showAlert]);
 
+  const activarNotificaciones = useCallback(async () => {
+    if (!('Notification' in window)) {
+        showAlert("Este navegador no soporta notificaciones.");
+        return;
+    }
+    try {
+      utils.triggerHaptic('light');
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const messaging = getMessaging(app);
+        const token = await getToken(messaging, { 
+          vapidKey: '-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E' 
+        });
+        if (token) {
+          console.log("¡Token del celular obtenido!: ", token);
+          showAlert("Notificaciones activadas con éxito 🎉", true);
+        } else {
+          showAlert("No se pudo obtener el token.");
+        }
+      } else {
+        showAlert("Permiso de notificaciones denegado.");
+      }
+    } catch (error) {
+      console.error("Error al activar notificaciones:", error);
+      showAlert("Error al configurar notificaciones.");
+    }
+  }, [showAlert]);
+
   // ==========================================
-  // 5. EFECTOS
+  // EFECTOS (LUEGO DE TODOS LOS HANDLERS)
   // ==========================================
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
@@ -873,7 +895,6 @@ export default function App() {
               placeholder="Código de acceso" 
             />
           </div>
-
           <button 
             type="submit" 
             className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-lg py-4 rounded-2xl shadow-[0_8px_20px_rgba(124,58,237,0.3)] hover:shadow-[0_12px_25px_rgba(124,58,237,0.5)] transition-all duration-300 ease-out hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
@@ -881,7 +902,6 @@ export default function App() {
             Acceder <ChevronRight size={20} strokeWidth={3} />
           </button>
         </form>
-
         <div className="mt-10 text-center flex items-center justify-center gap-2 text-slate-500">
           <CheckCircle2 size={14} className="text-emerald-500" />
           <p className="text-[11px] font-black uppercase tracking-widest">Acceso privado y seguro</p>
@@ -900,9 +920,7 @@ export default function App() {
 
         return (
           <div className="animate-fadeIn p-4 md:p-10 max-w-2xl mx-auto space-y-6 pb-32 relative z-50">
-             
              <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-3xl -z-10 animate-fadeIn"></div>
-             
              <div className="flex justify-between items-center bg-gradient-to-r from-amber-500 to-orange-600 text-white p-6 rounded-[2rem] shadow-[0_10px_40px_rgba(245,158,11,0.3)] transition-all duration-300 border border-amber-400/50">
                  <div>
                      <p className="text-[11px] font-black uppercase tracking-widest text-amber-100 mb-1">Modo En Terreno</p>
@@ -914,12 +932,9 @@ export default function App() {
                      <X size={24} />
                  </button>
              </div>
-
              {(faltanAbono.length > 0 || faltanDireccion.length > 0 || faltanHora.length > 0) && (
                  <div className="bg-white/5 border border-white/10 p-5 rounded-[2rem] backdrop-blur-md">
-                     <h3 className="text-white font-black text-[13px] uppercase tracking-widest mb-4 flex items-center gap-2">
-                         <CheckCircle2 size={18} className="text-emerald-400"/> Checklist del Día
-                     </h3>
+                     <h3 className="text-white font-black text-[13px] uppercase tracking-widest mb-4 flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-400"/> Checklist del Día</h3>
                      <div className="space-y-2.5">
                          {faltanAbono.length > 0 && (
                              <div className="flex items-center gap-3 bg-rose-500/20 border border-rose-500/30 p-3 rounded-2xl">
@@ -942,7 +957,6 @@ export default function App() {
                      </div>
                  </div>
              )}
-
              <div className="space-y-4">
                  {stats.eventosHoy.length === 0 ? (
                      <div className="text-center py-12 bg-white/5 rounded-[2.5rem] border border-white/10">
@@ -1444,7 +1458,12 @@ export default function App() {
                                <div className={`w-6 h-6 bg-white rounded-full absolute transition-transform duration-300 ease-in-out shadow-sm ${isDarkMode ? 'translate-x-7' : 'translate-x-1'}`}></div>
                            </button>
                        </div>
-                       <button onClick={handleLogout} className="flex items-center justify-center gap-2 bg-white/5 hover:bg-rose-500/20 text-white hover:text-rose-400 p-4 rounded-2xl transition-all border border-white/10 hover:border-rose-500/30 font-bold text-sm active:scale-95"><Lock size={18}/> Cerrar Sesión</button>
+                       <button type="button" onClick={activarNotificaciones} className="flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 p-4 rounded-2xl transition-all border border-emerald-500/20 hover:border-emerald-500/30 font-bold text-sm active:scale-95 shadow-sm">
+                           <BellRing size={18}/> Activar Notificaciones
+                       </button>
+                       <button onClick={handleLogout} className="flex items-center justify-center gap-2 bg-white/5 hover:bg-rose-500/20 text-white hover:text-rose-400 p-4 rounded-2xl transition-all border border-white/10 hover:border-rose-500/30 font-bold text-sm active:scale-95">
+                           <Lock size={18}/> Cerrar Sesión
+                       </button>
                   </div>
               </div>
 
@@ -1847,9 +1866,6 @@ export default function App() {
                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1"><Cloud size={10}/> Conectado</p>
                  </div>
              </div>
-             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white/5 hover:bg-rose-500/20 border border-transparent hover:border-rose-500/30 hover:text-rose-400 text-slate-400 font-bold text-xs transition-all duration-300 ease-out hover:scale-105 active:scale-95 shadow-sm">
-                 Cerrar Sesión
-             </button>
          </div>
       </aside>
 
