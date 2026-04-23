@@ -682,7 +682,6 @@ export default function App() {
     });
   }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
 
-  // OPTIMIZACIONES TOP-LEVEL PARA PREVENIR RE-RENDERS
   const filteredClients = useMemo(() => enrichedClients.filter(c => { if(!searchTerm) return true; const s = searchTerm.toLowerCase(); return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s); }), [enrichedClients, searchTerm]);
   const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => { if (clientSort === 'gasto') return b.totalGastado - a.totalGastado; if (clientSort === 'recientes') return new Date(b.ultimoEventoFecha || 0) - new Date(a.ultimoEventoFecha || 0); return 0; }), [filteredClients, clientSort]);
   const contactCandidates = useMemo(() => enrichedClients.filter(c => c.needsContact).slice(0, 5), [enrichedClients]);
@@ -779,12 +778,7 @@ export default function App() {
   const handleDuplicateEvento = useCallback((ev) => {
     utils.triggerHaptic('light');
     const { id, createdAt, deletedLocally, colisionAprobada, ...rest } = ev;
-    const duplicatedData = { 
-        ...rest, 
-        abono: '', 
-        estado: 'Pendiente',
-        isDuplicated: true
-    };
+    const duplicatedData = { ...rest, abono: '', estado: 'Pendiente', isDuplicated: true };
     setModalConfig({ isOpen: true, isCotizacion: false, initialData: duplicatedData });
     showAlert("Evento duplicado. Verifica los datos y guarda.", true);
   }, [showAlert]);
@@ -823,17 +817,12 @@ export default function App() {
   const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar reserva permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(e=>console.warn(e)); closeModal(); }), [closeModal, showConfirm]);
   
   const handleDeleteClient = useCallback((clientName, eventCount) => {
-    const mensaje = eventCount > 0 
-        ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` 
-        : `¿Seguro que deseas eliminar este cliente?`;
-    
+    const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`;
     showConfirm(mensaje, async () => {
         utils.triggerHaptic('light');
         const newHidden = [...hiddenClients, clientName];
         setHiddenClients(newHidden);
-        if (firebaseUser) {
-            await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true });
-        }
+        if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true });
         showAlert("Cliente eliminado exitosamente.", true);
     });
   }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
@@ -857,11 +846,16 @@ export default function App() {
     }
 
     const wrapper = document.getElementById('pdf-wrapper-scaler');
-    const oldTransform = wrapper.style.transform;
-    wrapper.style.transform = 'scale(1)';
+    let oldTransform = '';
+    
+    if (wrapper) {
+        oldTransform = wrapper.style.transform;
+        wrapper.style.transform = 'scale(1)';
+    }
+
     showAlert("Generando PDF...", true);
 
-    const docName = printData.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+    const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
     const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
     
     const opt = { 
@@ -882,6 +876,7 @@ export default function App() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         showAlert("¡PDF descargado con éxito en tu dispositivo!", true); 
     } 
     catch (error) { 
@@ -889,7 +884,9 @@ export default function App() {
         showAlert("Error en descarga. Se abrirá la opción de impresión para que lo guardes."); 
         printNativePDF();
     } 
-    finally { wrapper.style.transform = oldTransform; }
+    finally { 
+        if (wrapper) wrapper.style.transform = oldTransform; 
+    }
   }, [printData, printType, showAlert, printNativePDF]);
 
   const handleSharePDF = useCallback(async () => {
@@ -899,10 +896,14 @@ export default function App() {
     if (!window.html2pdf) { showAlert("El generador de PDF está cargando..."); return; }
 
     const wrapper = document.getElementById('pdf-wrapper-scaler');
-    const oldTransform = wrapper.style.transform;
-    wrapper.style.transform = 'scale(1)';
+    let oldTransform = '';
+    
+    if (wrapper) {
+        oldTransform = wrapper.style.transform;
+        wrapper.style.transform = 'scale(1)';
+    }
 
-    const docName = printData.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+    const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
     const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
     
     const opt = { 
@@ -920,10 +921,24 @@ export default function App() {
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         const msg = getWhatsAppMessage(printData, printType === 'cotizacion' ? 'cotizacion' : 'recibo', appSettings.empresa);
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: fileName, text: msg }); } 
-        else { showAlert("Tu celular no soporta compartir. Descargando...", false); await downloadPDF(); const phoneClean = String(printData.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }
-    } catch (error) { if (error?.name !== 'AbortError') { showAlert("Error al compartir. Usando descarga normal."); downloadPDF(); } } 
-    finally { wrapper.style.transform = oldTransform; }
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { 
+            await navigator.share({ files: [file], title: fileName, text: msg }); 
+        } 
+        else { 
+            showAlert("Tu celular no soporta compartir. Descargando...", false); 
+            await downloadPDF(); 
+            const phoneClean = String(printData?.telefono || '').replace(/\D/g,''); 
+            utils.openWhatsAppBusiness(phoneClean, msg); 
+        }
+    } catch (error) { 
+        if (error?.name !== 'AbortError') { 
+            showAlert("Error al compartir. Usando descarga normal."); 
+            downloadPDF(); 
+        } 
+    } 
+    finally { 
+        if (wrapper) wrapper.style.transform = oldTransform; 
+    }
   }, [printData, printType, appSettings, showAlert, downloadPDF]);
 
   const downloadExcel = useCallback(() => {
@@ -1547,13 +1562,20 @@ export default function App() {
     const idx = [...eventosActivos].sort((a,b)=>new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime()).findIndex(ev=>ev.id===printData.id);
     const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`;
     const servicioLimpioContrato = sA.map(s => { const cant = Number(s.cantidad) || 1; return cant > 1 ? `${cant}x ${String(s.nombre)}` : String(s.nombre); }).join(' + ');
+    const docTitle = isC ? 'COTIZACIÓN' : (isFact ? 'FACTURA' : 'CONTRATO DE SERVICIOS');
+
+    const renderSVGBackgrounds = () => (
+      <>
+         <svg className="absolute top-0 left-0 w-[400px] h-[300px] pointer-events-none z-0" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0H400C400 0 350 150 0 250V0Z" fill="url(#paint0_linear)"/><path d="M0 0H300C300 0 250 100 0 180V0Z" fill="url(#paint1_linear)"/><defs><linearGradient id="paint0_linear" x1="0" y1="0" x2="400" y2="250" gradientUnits="userSpaceOnUse"><stop stopColor="#6366F1" stopOpacity="0.2"/><stop offset="1" stopColor="#A855F7" stopOpacity="0.1"/></linearGradient><linearGradient id="paint1_linear" x1="0" y1="0" x2="300" y2="180" gradientUnits="userSpaceOnUse"><stop stopColor="#4F46E5" stopOpacity="0.8"/><stop offset="1" stopColor="#9333EA" stopOpacity="0.8"/></linearGradient></defs></svg>
+         <svg className="absolute bottom-0 right-0 w-[400px] h-[300px] pointer-events-none z-0" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M400 300H0C0 300 50 150 400 50V300Z" fill="url(#paint2_linear)"/><path d="M400 300H100C100 300 150 200 400 120V300Z" fill="url(#paint3_linear)"/><defs><linearGradient id="paint2_linear" x1="400" y1="300" x2="0" y2="50" gradientUnits="userSpaceOnUse"><stop stopColor="#A855F7" stopOpacity="0.2"/><stop offset="1" stopColor="#6366F1" stopOpacity="0.1"/></linearGradient><linearGradient id="paint3_linear" x1="400" y1="300" x2="100" y2="120" gradientUnits="userSpaceOnUse"><stop stopColor="#9333EA" stopOpacity="0.8"/><stop offset="1" stopColor="#4F46E5" stopOpacity="0.8"/></linearGradient></defs></svg>
+         <div className="absolute top-12 right-12 w-48 h-48 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(#4F46E5 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
+         <div className="absolute bottom-12 left-12 w-48 h-48 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(#4F46E5 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
+      </>
+    );
 
     return (
       <div className="bg-slate-50 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative">
-        <style>{`
-            @media print { body * { visibility: hidden; } #pdf-wrapper-scaler, #pdf-wrapper-scaler * { visibility: visible; } #pdf-wrapper-scaler { position: absolute; left: 0; top: 0; width: 100%; transform: scale(1) !important; margin: 0; } .print\\:hidden { display: none !important; } @page { size: auto; margin: 0mm; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
-            .avoid-break { page-break-inside: avoid; break-inside: avoid; }
-        `}</style>
+        <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:auto;margin:0mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}.avoid-break{page-break-inside:avoid;break-inside:avoid;}`}</style>
         <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4">
           <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button>
           <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
@@ -1564,56 +1586,197 @@ export default function App() {
         </div>
         <div className="w-full flex-1 flex justify-center pb-12 overflow-hidden pt-8 bg-slate-50">
           <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '800px' }}>
-            {isFact || isC ? (
-              <div id="pdf-content" className="bg-white w-[800px] min-h-[1131px] h-auto relative overflow-hidden font-sans text-slate-800 pb-16 flex flex-col shadow-2xl">
-                 <div className="bg-[#BE1622] text-white px-12 py-10 flex justify-between items-center h-[200px] shrink-0"><div className="flex flex-col items-start w-1/3"><div className="bg-white p-3 rounded-2xl shadow-sm border-[3px] border-white/80 mb-3 inline-flex items-center justify-center"><img src={LOGO_URL} alt="Diverty Eventos Panamá" className="h-16 w-auto object-contain" crossOrigin="anonymous" /></div><p className="text-[10px] font-medium tracking-wide opacity-90 pl-1">Diversión que crea recuerdos</p></div><div className="flex flex-col gap-2.5 text-[10px] border-l border-white/30 pl-8 w-1/3 font-medium"><div className="flex items-center gap-2"><MapPin size={14}/> Panamá, Ciudad de Panamá</div><div className="flex items-center gap-2"><Smartphone size={14}/> {appSettings.empresa.telefono}</div><div className="flex items-center gap-2"><MessageSquareText size={14}/> {appSettings.empresa.email}</div><div className="flex items-center gap-2"><Navigation size={14}/> {appSettings.empresa.web}</div></div><div className="flex flex-col items-end gap-3 w-1/3"><h1 className="text-[34px] font-black uppercase tracking-widest">{isC ? 'COTIZACIÓN' : 'FACTURA'}</h1><div className="bg-white text-[#BE1622] px-5 py-2 rounded-full text-[12px] font-black w-48 text-center shadow-sm">Nº: {numRef}</div><div className="bg-white text-[#BE1622] px-5 py-2 rounded-full text-[12px] font-black w-48 text-center shadow-sm">Fecha: {fechaDoc || 'Pendiente'}</div></div></div>
-                 <div className="px-12 py-8 flex justify-between items-start">
-                    <div className="w-1/2 pt-1"><h2 className="text-lg font-black text-slate-800 uppercase tracking-wide">{cli}</h2><p className="text-[11px] text-slate-600 mt-1">{tel}</p>{emailStr && <p className="text-[11px] text-slate-600 mt-0.5">{emailStr}</p>}{rucStr && <p className="text-[11px] font-bold text-slate-700 mt-1">RUC: {r}</p>}</div>
-                    <div className="w-1/2 text-right">{!isC && <p className="text-lg font-black text-[#BE1622] mb-5 uppercase tracking-wide">SALDO ADEUDADO ${(tot - abo).toFixed(2)}</p>}{isC && <p className="text-lg font-black text-[#BE1622] mb-5 uppercase tracking-wide">MONTO TOTAL ${tot.toFixed(2)}</p>}<table className="ml-auto text-[10px] text-slate-500 text-right border-separate border-spacing-x-4 border-spacing-y-1.5"><tbody><tr><td>N.º de {isC ? 'cotización' : 'factura'}</td><td className="font-bold text-slate-700">{numRef}</td></tr><tr><td>Fecha de la {isC ? 'cotización' : 'factura'}</td><td className="font-bold text-slate-700">{fechaDoc || 'Pendiente'}</td></tr><tr><td>Términos</td><td className="font-bold text-slate-700">Personalizada</td></tr></tbody></table></div>
-                 </div>
-                 <div className="px-12 mt-2 flex-1">
-                    <div className="border border-[#BE1622] rounded-xl overflow-hidden shadow-sm">
-                         <table className="w-full text-left text-[13px]">
-                             <thead className="bg-[#BE1622] text-white"><tr><th className="py-3 px-6 font-bold uppercase text-center tracking-widest w-1/3">ARTÍCULO</th><th className="py-3 px-6 font-bold uppercase tracking-widest text-center border-l border-white/30 w-1/2">DESCRIPCIÓN</th><th className="py-3 px-6 font-bold uppercase text-center tracking-widest border-l border-white/30 w-1/6">TOTAL</th></tr></thead>
-                             <tbody className="divide-y divide-[#BE1622]/20">
-                                 {sA.map((s, i) => {
-                                     const cant = Number(s.cantidad) || 1; const precioUnitario = utils.safeNum(s.precio) / cant; const descLines = String(s.descripcion || 'Servicio de animación para eventos').split('\n');
-                                     return (
-                                     <tr key={i} className="bg-white avoid-break">
-                                         <td className="py-6 px-6 text-center border-r border-[#BE1622]/20 align-top"><div className="flex justify-center mb-3 text-[#BE1622]"><Star size={28} strokeWidth={1.5}/></div><p className="font-black text-slate-900 text-[14px] leading-tight">{String(s.nombre)}</p>{cant > 1 && <p className="font-black text-[#BE1622] text-[12px] mt-1">- {cant} Horas -</p>}<p className="text-[10px] text-slate-500 font-bold mt-1.5">Animación Infantil</p></td>
-                                         <td className="py-6 px-8 border-r border-[#BE1622]/20 align-top"><div className="text-slate-700 text-[12px] leading-relaxed space-y-2">{descLines.map((line, j) => { const tLine = String(line).trim(); if(tLine.startsWith('•') || tLine.startsWith('-')) return <div key={j} className="flex items-start gap-2 font-bold"><CheckCircle2 size={14} className="text-[#BE1622] fill-[#BE1622]/10 shrink-0 mt-[1px]"/> <span>{tLine.replace(/^[•-]\s*/, '')}</span></div>; return <div key={j} className="mb-3 text-slate-600">{tLine}</div>; })}</div></td>
-                                         <td className="py-6 px-6 text-center align-middle"><p className="font-black text-slate-900 text-xl">B/. {utils.safeNum(s.precio).toFixed(2)}</p><p className="text-[10px] text-slate-400 mt-1">{cant.toFixed(2)} x B/. {precioUnitario.toFixed(2)}</p></td>
-                                     </tr>
-                                 )})}
-                                 {trn > 0 && (<tr className="bg-white avoid-break"><td className="py-6 px-6 text-center border-r border-[#BE1622]/20 align-middle"><div className="flex justify-center mb-3 text-[#BE1622]"><MapIcon size={28} strokeWidth={1.5}/></div><p className="font-black text-slate-900 text-[14px]">Transporte</p><p className="text-[10px] text-slate-500 font-bold mt-1.5">Logística</p></td><td className="py-6 px-8 border-r border-[#BE1622]/20 align-middle text-[12px] text-slate-700 leading-relaxed font-bold"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[#BE1622] fill-[#BE1622]/10 shrink-0"/> <span>Cargo por viáticos a zona: {ubi}</span></div></td><td className="py-6 px-6 text-center align-middle"><p className="font-black text-slate-900 text-xl">B/. {trn.toFixed(2)}</p></td></tr>)}
-                             </tbody>
-                         </table>
+              <div id="pdf-content" className="bg-[#F9FAFB] w-[800px] min-h-[1131px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl">
+                 {renderSVGBackgrounds()}
+                 
+                 <div className="flex flex-col mb-10 relative z-10">
+                     <div className="flex justify-between items-start w-full">
+                         <div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
+                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef} &nbsp;|&nbsp; Fecha: {fechaDoc}</p></div>
                      </div>
+                     <h1 className="text-[28px] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
+                     <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#4F46E5]/40 to-transparent mt-6"></div>
                  </div>
-                 <div className="px-12 mt-8 flex justify-between items-start gap-8 avoid-break">
-                     <div className="w-[50%]"><div className="flex items-center gap-2 mb-2 text-[#BE1622]"><div className="bg-[#BE1622] text-white p-1.5 rounded-lg"><Receipt size={16}/></div><h3 className="font-black uppercase tracking-wider text-[14px]">NOTAS</h3></div><div className="border-b-2 border-[#BE1622]/20 mb-3 w-full"></div><div className="text-[11px] font-medium text-slate-700 leading-relaxed space-y-1.5"><p>Gracias por confiar en Diverty Eventos Panamá.</p><p>El saldo pendiente debe ser cancelado antes o al finalizar el evento.</p><p>Para pagos aceptamos: Yappy, Transferencia Bancaria o Efectivo.</p></div></div>
-                     <div className="w-[45%] flex flex-col items-end"><div className="w-full border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm"><div className="flex justify-between items-center py-3.5 px-6 border-b border-slate-200 text-[14px]"><span className="font-bold text-slate-600">Subtotal:</span><span className="font-black text-slate-900">B/. {tot.toFixed(2)}</span></div>{!isC && abo > 0 && <div className="flex justify-between items-center py-3.5 px-6 border-b border-slate-200 text-[14px]"><span className="font-bold text-slate-600">Abono:</span><span className="font-black text-emerald-600">- B/. {abo.toFixed(2)}</span></div>}<div className="bg-[#BE1622] text-white py-6 px-6 text-center"><span className="block text-[12px] uppercase tracking-widest font-bold mb-1">{isC ? 'TOTAL ESTIMADO:' : 'TOTAL PENDIENTE:'}</span><span className="block text-[42px] font-black leading-none pb-1">B/. {isC ? tot.toFixed(2) : (tot - abo).toFixed(2)}</span></div></div></div>
+                 
+                 <div className="grid grid-cols-2 gap-8 mb-12 relative z-10">
+                    <div className="bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                        <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><Users size={16}/> Datos del Cliente</h3>
+                        <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
+                            <div className="flex justify-between"><span>Nombre:</span> <span className="text-[#111827] font-bold capitalize text-right">{cli}</span></div>
+                            <div className="flex justify-between"><span>Teléfono:</span> <span className="text-[#111827] text-right">{tel}</span></div>
+                            {emailStr && <div className="flex justify-between"><span>Email:</span> <span className="text-[#111827] text-right truncate w-40">{emailStr}</span></div>}
+                            {rucStr && <div className="flex justify-between"><span>RUC:</span> <span className="text-[#111827] text-right">{rucStr}</span></div>}
+                        </div>
+                    </div>
+                    
+                    <div className="bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                        <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><MapPin size={16}/> Detalles del Evento</h3>
+                        <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
+                            <div className="flex justify-between"><span>Fecha:</span> <span className="text-[#111827] font-bold text-right">{fechaDoc}</span></div>
+                            <div className="flex justify-between"><span>Horario:</span> <span className="text-[#111827] text-right">{horaStr}</span></div>
+                            <div className="flex justify-between"><span>Lugar:</span> <span className="text-[#111827] capitalize text-right truncate w-40">{ubi}</span></div>
+                            {dir && <div className="text-xs italic text-right mt-1 line-clamp-2">{dir}</div>}
+                        </div>
+                    </div>
                  </div>
-                 <div className="px-12 mt-auto pb-10 avoid-break">
-                     <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 flex justify-between items-stretch text-[10px] shadow-sm">
-                         <div className="flex gap-3 w-[35%] border-r border-slate-300 border-dashed pr-4"><div className="text-[#BE1622] mt-0.5"><DollarSign size={20} className="border-[2px] border-[#BE1622] rounded-full p-[2px]"/></div><div className="text-[10px] leading-snug space-y-0.5"><h4 className="font-black text-[#BE1622] uppercase tracking-wider mb-1.5 text-[11px]">MÉTODOS DE PAGO</h4><p className="font-bold text-slate-900">Yappy: <span className="font-medium text-slate-600">{appSettings.empresa.telefono}</span></p><p className="font-bold text-slate-900">{appSettings.empresa.banco} - <span className="font-medium text-slate-600">{appSettings.empresa.tipoCuenta}</span></p><p className="font-bold text-slate-900">Nº: <span className="font-medium text-slate-600">{appSettings.empresa.numeroCuenta}</span></p><p className="font-bold text-slate-900">Titular: <span className="font-medium text-slate-600">{appSettings.empresa.nombreTitular}</span></p></div></div>
-                         <div className="flex gap-3 w-[35%] border-r border-slate-300 border-dashed px-5"><div className="text-[#BE1622] mt-0.5"><CheckCircle2 size={20}/></div><div className="text-[10px] leading-snug"><h4 className="font-black text-[#BE1622] uppercase tracking-wider mb-1.5 text-[11px]">GARANTÍA DE SERVICIO</h4><p className="font-medium text-slate-600 leading-relaxed">Nuestro compromiso es brindarte la mejor experiencia. Si tienes alguna duda o cambio, contáctanos con tiempo.</p></div></div>
-                         <div className="flex flex-col items-center justify-center w-[30%] pl-4"><div className="text-[#BE1622] flex items-center gap-1.5 mb-2 font-black text-[12px]"><Award size={16}/> ¡GRACIAS!</div><h3 className="text-2xl text-slate-800" style={{fontFamily: "'Brush Script MT', 'Dancing Script', cursive, serif", fontStyle: "italic"}}>Diverty Eventos</h3><p className="text-slate-500 font-medium text-[10px] mt-1 text-center">Diversión que crea recuerdos</p></div>
-                     </div>
-                 </div>
+                 
+                 {isFact || isC ? (
+                    <>
+                         <div className="mb-6 flex-1 relative z-10">
+                            <div className="border border-[#4F46E5]/20 rounded-xl overflow-hidden shadow-sm bg-white">
+                                 <table className="w-full text-left text-[13px]">
+                                     <thead className="bg-[#F9FAFB] border-b border-[#4F46E5]/10 text-[#4F46E5]">
+                                         <tr>
+                                             <th className="py-4 px-6 font-bold uppercase text-center tracking-widest w-1/3 text-[11px]">Artículo</th>
+                                             <th className="py-4 px-6 font-bold uppercase tracking-widest text-center border-l border-gray-100 w-1/2 text-[11px]">Descripción</th>
+                                             <th className="py-4 px-6 font-bold uppercase text-center tracking-widest border-l border-gray-100 w-1/6 text-[11px]">Total</th>
+                                         </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-gray-100">
+                                         {sA.map((s, i) => {
+                                             const cant = Number(s.cantidad) || 1;
+                                             const precioUnitario = utils.safeNum(s.precio) / cant;
+                                             const descLines = String(s.descripcion || 'Servicio de animación para eventos').split('\n');
+                                             return (
+                                             <tr key={i} className="avoid-break hover:bg-gray-50 transition-colors">
+                                                 <td className="py-6 px-6 text-center border-r border-gray-100 align-top">
+                                                     <div className="flex justify-center mb-3 text-[#4F46E5]"><Star size={28} strokeWidth={1.5}/></div>
+                                                     <p className="font-bold text-[#111827] text-[14px] leading-tight">{String(s.nombre)}</p>
+                                                     {cant > 1 && <p className="font-semibold text-[#7C3AED] text-[12px] mt-1.5 bg-[#7C3AED]/10 py-1 rounded-md inline-block px-3">- {cant} Horas -</p>}
+                                                     <p className="text-[10px] text-[#6B7280] font-medium mt-2 tracking-wide uppercase">Animación Infantil</p>
+                                                 </td>
+                                                 <td className="py-6 px-8 border-r border-gray-100 align-top">
+                                                     <div className="text-[#6B7280] text-[12px] leading-relaxed space-y-2">
+                                                         {descLines.map((line, j) => {
+                                                             const tLine = String(line).trim();
+                                                             if(tLine.startsWith('•') || tLine.startsWith('-')) return <div key={j} className="flex items-start gap-2.5 font-medium"><CheckCircle2 size={14} className="text-[#4F46E5] shrink-0 mt-[2px]"/> <span className="text-[#374151]">{tLine.replace(/^[•-]\s*/, '')}</span></div>;
+                                                             return <div key={j} className="mb-2">{tLine}</div>;
+                                                         })}
+                                                     </div>
+                                                 </td>
+                                                 <td className="py-6 px-6 text-center align-middle">
+                                                     <p className="font-black text-[#111827] text-[18px]">B/. {utils.safeNum(s.precio).toFixed(2)}</p>
+                                                     <p className="text-[10px] text-[#6B7280] mt-1.5 font-medium">{cant.toFixed(2)} x B/. {precioUnitario.toFixed(2)}</p>
+                                                 </td>
+                                             </tr>
+                                         )})}
+                                         {trn > 0 && (
+                                             <tr className="avoid-break hover:bg-gray-50 transition-colors">
+                                                 <td className="py-6 px-6 text-center border-r border-gray-100 align-middle">
+                                                     <div className="flex justify-center mb-3 text-[#4F46E5]"><MapIcon size={28} strokeWidth={1.5}/></div>
+                                                     <p className="font-bold text-[#111827] text-[14px]">Transporte</p>
+                                                     <p className="text-[10px] text-[#6B7280] font-medium mt-2 tracking-wide uppercase">Logística</p>
+                                                 </td>
+                                                 <td className="py-6 px-8 border-r border-gray-100 align-middle text-[12px] text-[#374151] leading-relaxed font-medium">
+                                                     <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className="text-[#4F46E5] shrink-0 mt-[2px]"/> <span>Cargo por viáticos a zona: {ubi}</span></div>
+                                                 </td>
+                                                 <td className="py-6 px-6 text-center align-middle">
+                                                     <p className="font-black text-[#111827] text-[18px]">B/. {trn.toFixed(2)}</p>
+                                                 </td>
+                                             </tr>
+                                         )}
+                                     </tbody>
+                                 </table>
+                            </div>
+                         </div>
+
+                         <div className="px-0 mt-4 flex justify-between items-start gap-8 avoid-break relative z-10">
+                             <div className="w-[50%]">
+                                 <div className="bg-white p-5 rounded-xl border border-[#4F46E5]/10 shadow-sm h-full">
+                                     <div className="flex items-center gap-2 mb-3 text-[#4F46E5] border-b border-gray-100 pb-3">
+                                         <FileText size={18}/>
+                                         <h3 className="font-bold uppercase tracking-widest text-[11px]">Notas Importantes</h3>
+                                     </div>
+                                     <div className="text-[11px] font-medium text-[#6B7280] leading-relaxed space-y-2">
+                                         <p>Gracias por confiar en Diverty Eventos Panamá.</p>
+                                         <p>El saldo pendiente debe ser cancelado antes o al finalizar el evento.</p>
+                                         <p>Para pagos aceptamos: Yappy, Transferencia Bancaria o Efectivo.</p>
+                                     </div>
+                                 </div>
+                             </div>
+                             <div className="w-[45%] flex flex-col items-end">
+                                 <div className="w-full border border-[#4F46E5]/10 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col">
+                                     <div className="flex justify-between items-center py-3.5 px-6 border-b border-gray-100 text-[13px]">
+                                         <span className="font-semibold text-[#6B7280]">Subtotal:</span>
+                                         <span className="font-bold text-[#111827]">B/. {tot.toFixed(2)}</span>
+                                     </div>
+                                     {!isC && abo > 0 && (
+                                     <div className="flex justify-between items-center py-3.5 px-6 border-b border-gray-100 text-[13px] bg-emerald-50/50">
+                                         <span className="font-semibold text-[#6B7280]">Abono:</span>
+                                         <span className="font-bold text-emerald-600">- B/. {abo.toFixed(2)}</span>
+                                     </div>
+                                     )}
+                                     <div className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] text-white py-6 px-6 text-center">
+                                         <span className="block text-[11px] uppercase tracking-widest font-semibold mb-1 opacity-90">{isC ? 'Total Estimado:' : 'Total Pendiente:'}</span>
+                                         <span className="block text-[36px] font-black leading-none pb-1">B/. {isC ? tot.toFixed(2) : (tot - abo).toFixed(2)}</span>
+                                     </div>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div className="mt-8 pb-4 avoid-break relative z-10">
+                             <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex justify-between items-stretch text-[11px] shadow-sm">
+                                 <div className="flex gap-4 w-[35%] border-r border-gray-100 pr-4">
+                                     <div className="text-[#4F46E5] shrink-0 mt-1"><Briefcase size={20}/></div>
+                                     <div className="leading-snug space-y-1.5">
+                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Métodos de Pago</h4>
+                                         <p className="font-semibold text-[#111827]">Yappy: <span className="font-medium text-[#6B7280]">{appSettings.empresa.telefono}</span></p>
+                                         <p className="font-medium text-[#6B7280]">{appSettings.empresa.banco} - {appSettings.empresa.tipoCuenta}</p>
+                                         <p className="font-semibold text-[#111827]">Nº: <span className="font-medium text-[#6B7280]">{appSettings.empresa.numeroCuenta}</span></p>
+                                         <p className="font-semibold text-[#111827]">Titular: <span className="font-medium text-[#6B7280] uppercase">{appSettings.empresa.nombreTitular}</span></p>
+                                     </div>
+                                 </div>
+                                 <div className="flex gap-4 w-[35%] border-r border-gray-100 px-6">
+                                     <div className="text-[#4F46E5] shrink-0 mt-1"><CheckCircle2 size={20}/></div>
+                                     <div className="leading-snug">
+                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Garantía de Servicio</h4>
+                                         <p className="font-medium text-[#6B7280] leading-relaxed text-[11px]">Nuestro compromiso es brindarte la mejor experiencia. Si tienes alguna duda o cambio, contáctanos con tiempo.</p>
+                                     </div>
+                                 </div>
+                                 <div className="flex flex-col items-center justify-center w-[30%] pl-6">
+                                     <div className="text-[#4F46E5] flex items-center gap-2 mb-2 font-bold text-[12px] uppercase tracking-widest"><Award size={18}/> ¡Gracias!</div>
+                                     <h3 className="text-2xl text-[#111827]" style={{fontFamily: "'Brush Script MT', 'Dancing Script', cursive, serif", fontStyle: "italic"}}>Diverty Eventos</h3>
+                                     <p className="text-[#6B7280] font-medium text-[10px] mt-1.5 text-center tracking-wide uppercase">Diversión que crea recuerdos</p>
+                                 </div>
+                             </div>
+                         </div>
+                    </>
+                 ) : (
+                    <>
+                         <div className="mb-10 relative z-10">
+                             <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-5 flex items-center gap-2 justify-center"><Sparkles size={16}/> Servicios Contratados</h3>
+                             <div className="bg-[#F3F4F6] px-8 py-5 rounded-full border border-gray-200 shadow-sm text-center">
+                                 <p className="text-[14px] text-[#111827] font-semibold leading-relaxed capitalize">{servicioLimpioContrato}</p>
+                             </div>
+                         </div>
+                         
+                         <div className="mb-10 flex-1 relative z-10">
+                             <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-6 border-b border-gray-200 pb-3 flex items-center gap-2"><FileSignature size={16}/> Términos y Condiciones</h3>
+                             <div className="text-[13px] text-[#6B7280] space-y-8 leading-loose text-justify">
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">1. OBLIGACIONES DEL SERVICIO:</span><p className="mt-1 text-[#6B7280]">Diverty Eventos se compromete a cumplir con puntualidad y profesionalismo el servicio detallado. El Cliente deberá proporcionar un espacio adecuado y seguro para la realización de las actividades. Finalizado el contrato si el cliente desea adicionar tiempo tendrá un costo adicional.</p></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">2. CONDICIONES DE PAGO:</span><div className="mt-1 text-[#6B7280]">{abo > 0 ? (<p>El Cliente acuerda pagar un valor total de B/. <span className="font-bold text-[#111827]">{tot.toFixed(2)}</span>, del cual ha entregado un anticipo de B/. <span className="font-bold text-[#111827]">{abo.toFixed(2)}</span>. El saldo pendiente de B/. <span className="font-bold text-[#111827] underline">{(tot - abo).toFixed(2)}</span> deberá ser cancelado antes o al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO. El anticipo no es reembolsable en caso de cancelación.</p>) : (<p>El Cliente acuerda pagar el valor total de B/. <span className="font-bold text-[#111827] underline">{tot.toFixed(2)}</span> al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO.</p>)}</div></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">3. CANCELACIONES Y POLÍTICAS:</span><p className="mt-1 text-[#6B7280]">Cualquier modificación debe ser comunicada con un mínimo de (3) días de anticipación. En caso de posponer el evento por fuerza mayor, el cliente podrá reprogramar según disponibilidad. Diverty Eventos no se responsabiliza por incidentes ajenos a su control durante el evento.</p></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">4. DERECHOS DE IMAGEN:</span><p className="mt-1 text-[#6B7280]">Al firmar este contrato, el cliente autoriza el uso de imágenes o videos del evento con fines estrictamente promocionales para la empresa, salvo notificación previa en contrario.</p></div>
+                             </div>
+                         </div>
+                         
+                         <div className="mt-auto pt-16 flex justify-between items-end pb-8 px-12 avoid-break relative z-10">
+                             <div className="w-[40%] text-center">
+                                 <div className="border-t border-gray-300 pt-4">
+                                     <p className="font-semibold text-[13px] text-[#111827] uppercase truncate tracking-wide">{cli}</p>
+                                     <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-[0.2em] mt-1.5">Firma del Cliente</p>
+                                 </div>
+                             </div>
+                             <div className="w-[40%] text-center">
+                                 <div className="border-t border-gray-300 pt-4">
+                                     <p className="font-semibold text-[13px] text-[#111827] uppercase truncate tracking-wide">{appSettings.empresa.nombreTitular}</p>
+                                     <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-[0.2em] mt-1.5">Diverty Eventos Panamá</p>
+                                 </div>
+                             </div>
+                         </div>
+                    </>
+                 )}
               </div>
-            ) : (
-              <div id="pdf-content" className="bg-white w-[800px] min-h-[1131px] h-auto relative overflow-hidden font-sans text-slate-800 p-12 flex flex-col shadow-2xl">
-                 <div className="flex justify-between items-end border-b-[3px] border-slate-900 pb-6 mb-10"><div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain" crossOrigin="anonymous" /></div><div className="text-right"><h1 className="text-[26px] font-black text-slate-900 tracking-widest uppercase">CONTRATO DE SERVICIOS</h1><p className="text-sm text-slate-500 mt-1 font-bold">Ref: {numRef}  |  Fecha: {fechaDoc}</p></div></div>
-                 <div className="grid grid-cols-2 gap-10 mb-12">
-                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 flex items-center gap-2"><Users size={14}/> Datos del Cliente</h3><div className="space-y-3 text-[13px] font-medium"><div className="flex justify-between"><span className="text-slate-500">Nombre:</span> <span className="text-slate-900 font-bold capitalize text-right">{cli}</span></div><div className="flex justify-between"><span className="text-slate-500">Teléfono:</span> <span className="text-slate-900 text-right">{tel}</span></div>{emailStr && <div className="flex justify-between"><span className="text-slate-500">Email:</span> <span className="text-slate-900 text-right truncate w-40">{emailStr}</span></div>}{rucStr && <div className="flex justify-between"><span className="text-slate-500">RUC:</span> <span className="text-slate-900 text-right">{rucStr}</span></div>}</div></div>
-                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 flex items-center gap-2"><MapPin size={14}/> Detalles del Evento</h3><div className="space-y-3 text-[13px] font-medium"><div className="flex justify-between"><span className="text-slate-500">Fecha:</span> <span className="text-slate-900 font-bold text-right">{fechaDoc}</span></div><div className="flex justify-between"><span className="text-slate-500">Horario:</span> <span className="text-slate-900 text-right">{horaStr}</span></div><div className="flex justify-between"><span className="text-slate-500">Lugar:</span> <span className="text-slate-900 capitalize text-right truncate w-40">{ubi}</span></div>{dir && <div className="text-slate-600 text-xs italic text-right mt-1 line-clamp-2">{dir}</div>}</div></div>
-                 </div>
-                 <div className="mb-10"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 flex items-center gap-2"><Sparkles size={14}/> Servicios Contratados</h3><div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 text-center"><p className="text-[15px] text-indigo-900 font-bold leading-relaxed capitalize">{servicioLimpioContrato}</p></div></div>
-                 <div className="mb-10 flex-1"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2 flex items-center gap-2"><FileSignature size={14}/> Términos y Condiciones</h3><div className="text-[13px] text-slate-700 space-y-6 leading-relaxed text-justify"><div><span className="font-black text-slate-900">1. OBLIGACIONES DEL SERVICIO:</span><p className="mt-1">Diverty Eventos se compromete a cumplir con puntualidad y profesionalismo el servicio detallado. El Cliente deberá proporcionar un espacio adecuado y seguro para la realización de las actividades. Finalizado el contrato si el cliente desea adicionar tiempo tendrá un costo adicional.</p></div><div><span className="font-black text-slate-900">2. CONDICIONES DE PAGO:</span><div className="mt-1">{abo > 0 ? (<p>El Cliente acuerda pagar un valor total de B/. <span className="font-bold">{tot.toFixed(2)}</span>, del cual ha entregado un anticipo de B/. <span className="font-bold">{abo.toFixed(2)}</span>. El saldo pendiente de B/. <span className="font-bold underline">{(tot - abo).toFixed(2)}</span> deberá ser cancelado antes o al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO. El anticipo no es reembolsable en caso de cancelación.</p>) : (<p>El Cliente acuerda pagar el valor total de B/. <span className="font-bold underline">{tot.toFixed(2)}</span> al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO.</p>)}</div></div><div><span className="font-black text-slate-900">3. CANCELACIONES Y POLÍTICAS:</span><p className="mt-1">Cualquier modificación debe ser comunicada con un mínimo de (3) días de anticipación. En caso de posponer el evento por fuerza mayor, el cliente podrá reprogramar según disponibilidad. Diverty Eventos no se responsabiliza por incidentes ajenos a su control durante el evento.</p></div><div><span className="font-black text-slate-900">4. DERECHOS DE IMAGEN:</span><p className="mt-1">Al firmar este contrato, el cliente autoriza el uso de imágenes o videos del evento con fines estrictamente promocionales para la empresa, salvo notificación previa en contrario.</p></div></div></div>
-                 <div className="mt-auto pt-10 flex justify-between items-end pb-8 px-10 avoid-break"><div className="w-[40%] text-center"><div className="border-t-2 border-slate-300 pt-3"><p className="font-bold text-sm text-slate-900 uppercase truncate">{cli}</p><p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Firma del Cliente</p></div></div><div className="w-[40%] text-center"><div className="border-t-2 border-slate-300 pt-3"><p className="font-bold text-sm text-slate-900 uppercase truncate">{appSettings.empresa.nombreTitular}</p><p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Diverty Eventos Panamá</p></div></div></div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1660,7 +1823,6 @@ export default function App() {
   return (
     <div className={`font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-blue-500/30 transition-colors duration-200 relative bg-[#060B14] text-slate-100`}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.2s ease-out forwards;} .animate-slideUp{animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}`}</style>
-      
       <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,rgba(37,99,235,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
       
       {toastAlert.isOpen && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white ${toastAlert.success ? 'bg-emerald-500 border-emerald-400/50' : 'bg-rose-500 border-rose-400/50'}`}>{toastAlert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{toastAlert.message}</p></div></div>}
