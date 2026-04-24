@@ -796,33 +796,30 @@ export default function App() {
 
     const hasCollision = eventosActivos.some(ev => {
         if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
-        if (!ev.hora || !safeData.hora) return false; // CORRECCIÓN: Si falta la hora, asumimos que no hay colisión directa para no bloquear reservas.
+        if (!ev.hora || !safeData.hora) return false; 
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
 
     const guardarReservaFinal = (id, dataToSave) => {
+        // CERRAR MODAL PRIMERO PARA EVITAR DOBLE GUARDADO Y TRABAS EN LA UI
+        closeModal();
+        utils.setSafeLocal('diverty_form_draft', ''); 
+        
         setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
-        
-        // CORRECCIÓN CRÍTICA: try-catch para evitar crash en Chrome Android con "new Notification"
-        if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
-            try {
-                new Notification("Nueva reserva 🎉", {
-                    body: "Reserva creada correctamente",
-                    icon: "/icon-192.png"
-                });
-            } catch (err) {
-                // Si falla (como en Chrome Android), usamos ServiceWorker
-                if (navigator.serviceWorker) {
-                    navigator.serviceWorker.ready.then(reg => {
-                        reg.showNotification("Nueva reserva 🎉", { body: "Reserva creada correctamente", icon: "/icon-192.png" });
-                    }).catch(e=>console.warn(e));
-                }
-            }
-        }
+        showAlert("¡Reserva guardada!", true);
 
-        utils.setSafeLocal('diverty_form_draft', ''); closeModal(); showAlert("¡Reserva guardada!", true);
+        // Notificación de forma asíncrona para que no rompa el flujo si falla en Chrome Android
+        setTimeout(() => {
+            try {
+                if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
+                    navigator.serviceWorker.getRegistration().then(reg => {
+                        if (reg) reg.showNotification("Nueva reserva 🎉", { body: "Reserva creada correctamente", icon: "/icon-192.png" });
+                    }).catch(e => console.warn("SW error", e));
+                }
+            } catch(e) { console.warn("Notificación bloqueada", e); }
+        }, 300);
     };
 
     if (hasCollision && !safeData.colisionAprobada) { 
@@ -1057,7 +1054,7 @@ export default function App() {
       }
     } catch (error) { 
       console.error("Error obteniendo token:", error); 
-      showAlert("Error al obtener token (revisa la consola)", false); 
+      showAlert("Error al obtener token: " + (error.message || "revisa consola"), false); 
     }
   }, [showAlert]);
 
