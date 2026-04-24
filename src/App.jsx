@@ -1023,23 +1023,28 @@ export default function App() {
   }, [eventosActivos, showAlert]);
 
   const activarNotificaciones = useCallback(async () => {
-    if (!('Notification' in window)) { showAlert("Este navegador no soporta notificaciones."); return; }
-    try {
-      utils.triggerHaptic('light'); const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        const messaging = getMessaging(app);
-        const token = await getToken(messaging, { vapidKey: 'BFDjCV2HR94H_de31u2xSs6OEu6SqanCtB2jjUvLk52yQ44pTaXpjl6na7dxoV7BLzai9wOSbB75ZoKdhvh9JGY', serviceWorkerRegistration: registration });
-        if (token) { 
-          await setDoc(doc(db, "tokens", token), {
-          token: token,
-          createdAt: new Date()
-          });
-          try { await navigator.clipboard.writeText(token); showAlert("✅ ¡Token COPIADO al portapapeles!", true); } catch(err) { const copyPrompt = window.prompt("Copia este Token larguísimo:", token); if(copyPrompt) showAlert("Token copiado", true); } 
-        } else { showAlert("No se pudo obtener el token."); }
-      } else { showAlert("Permiso denegado."); }
-    } catch (error) { console.error(error); showAlert(`Error de notificaciones`); }
-  }, [showAlert]);
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") {
+      alert("Debes permitir notificaciones");
+      return;
+    }
+    
+    const messaging = getMessaging(app);
+    const token = await getToken(messaging, {
+      vapidKey: "-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E",
+      serviceWorkerRegistration: await navigator.serviceWorker.ready
+    });
+    
+    if (token) {
+      await setDoc(doc(db, "tokens", token), {
+        token: token,
+        createdAt: new Date()
+      });
+      console.log("Token guardado:", token);
+    } else {
+      console.error("No se generó token");
+    }
+  }, []);
 
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
