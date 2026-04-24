@@ -796,7 +796,7 @@ export default function App() {
 
     const hasCollision = eventosActivos.some(ev => {
         if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
-        if (!ev.hora || !safeData.hora) return true; 
+        if (!ev.hora || !safeData.hora) return false; // CORRECCIÓN: Si falta la hora, asumimos que no hay colisión directa para no bloquear reservas.
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
@@ -804,12 +804,24 @@ export default function App() {
     const guardarReservaFinal = (id, dataToSave) => {
         setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
-        if (Notification.permission === "granted") {
-        new Notification("Nueva reserva 🎉", {
-        body: "Reserva creada correctamente",
-        icon: "/icon-192.png"
-        });
+        
+        // CORRECCIÓN CRÍTICA: try-catch para evitar crash en Chrome Android con "new Notification"
+        if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+            try {
+                new Notification("Nueva reserva 🎉", {
+                    body: "Reserva creada correctamente",
+                    icon: "/icon-192.png"
+                });
+            } catch (err) {
+                // Si falla (como en Chrome Android), usamos ServiceWorker
+                if (navigator.serviceWorker) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        reg.showNotification("Nueva reserva 🎉", { body: "Reserva creada correctamente", icon: "/icon-192.png" });
+                    }).catch(e=>console.warn(e));
+                }
+            }
         }
+
         utils.setSafeLocal('diverty_form_draft', ''); closeModal(); showAlert("¡Reserva guardada!", true);
     };
 
