@@ -7,6 +7,7 @@ import { getMessaging, getToken } from 'firebase/messaging';
 
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
 const app = initializeApp(firebaseConfig); const db = getFirestore(app); const auth = getAuth(app); const appId = "diverty-oficial";
+const messaging = getMessaging(app);
 
 const sheetUrl = 'https://docs.google.com/spreadsheets/d/1dvIWaYZQte_IU9JsBZLnLEmKYVxfO9An1XjpRuIHD5g/edit?usp=drivesdk'; 
 const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; 
@@ -796,7 +797,7 @@ export default function App() {
 
     const hasCollision = eventosActivos.some(ev => {
         if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
-        if (!ev.hora || !safeData.hora) return false; 
+        if (!ev.hora || !safeData.hora) return false; // CORRECCIÓN: Si falta la hora, asumimos que no hay colisión directa para no bloquear reservas.
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
@@ -1034,7 +1035,6 @@ export default function App() {
       
       showAlert("Generando token, espera un momento...", true);
 
-      const messaging = getMessaging(app);
       const token = await getToken(messaging, {
         vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ"
       });
@@ -1463,7 +1463,7 @@ export default function App() {
                              return (
                                 <div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative">
                                     <div className="absolute -top-8 bg-black/80 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap">${d.value.toFixed(0)}</div>
-                                    <div className="w-full bg-blue-500/10 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-blue-400/30 h-[70px]"><div className="absolute bottom-0 w-full bg-blue-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{height: `${hPercent}%`}}></div></div>
+                                    <div className="w-full bg-blue-500/10 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-blue-400/30 h-[70px]"><div className="absolute bottom-0 w-full bg-blue-50 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{height: `${hPercent}%`}}></div></div>
                                     <span className="text-[9px] font-bold uppercase text-white/40 tracking-widest">{String(d.date).split('-')[2]}</span>
                                 </div>
                              )
