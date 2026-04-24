@@ -836,88 +836,111 @@ export default function App() {
 
   const downloadPDF = useCallback(async () => {
     utils.triggerHaptic('success');
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
-    
     if (!window.html2pdf) { 
-        showAlert("Intentando descargar PDF con método alternativo...", true); 
-        printNativePDF();
+        showAlert("Cargando generador, intenta en un segundo.", false); 
         return; 
     }
 
+    const element = document.getElementById('pdf-content');
     const wrapper = document.getElementById('pdf-wrapper-scaler');
-    let oldTransform = '';
     
-    if (wrapper) {
-        oldTransform = wrapper.style.transform;
-        wrapper.style.transform = 'scale(1)';
+    if (!element) {
+        showAlert("Error al localizar el documento.", false);
+        return;
     }
 
     showAlert("Generando PDF...", true);
 
-    const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
-    const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+    let oldTransform = '';
+    if (wrapper) {
+        oldTransform = wrapper.style.transform;
+        wrapper.style.transform = 'scale(1)';
+    }
     
-    const opt = { 
-        margin: [0.1, 0, 0.4, 0], 
-        filename: fileName, 
-        image: { type: 'jpeg', quality: 0.98 }, 
-        html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800 }, 
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.avoid-break'] }
-    };
+    const oldScrollY = window.scrollY;
+    window.scrollTo(0, 0);
 
-    try { 
-        const pdfBlob = await window.html2pdf().set(opt).from(element).output('blob');
-        const url = URL.createObjectURL(pdfBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        showAlert("¡PDF descargado con éxito en tu dispositivo!", true); 
+    try {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        
+        const opt = { 
+            margin: 0, 
+            filename: fileName, 
+            image: { type: 'jpeg', quality: 1.0 }, 
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                backgroundColor: "#ffffff",
+                width: 794,
+                windowWidth: 794
+            }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+        };
+
+        await window.html2pdf().set(opt).from(element).save();
+        showAlert("¡PDF descargado con éxito!", true); 
     } 
     catch (error) { 
-        console.error(error);
-        showAlert("Error en descarga. Se abrirá la opción de impresión para que lo guardes."); 
+        console.error("Error PDF:", error);
+        showAlert("Error en descarga. Imprimiendo como respaldo...", false); 
         printNativePDF();
     } 
     finally { 
-        if (wrapper) wrapper.style.transform = oldTransform; 
+        if (wrapper) wrapper.style.transform = oldTransform;
+        window.scrollTo(0, oldScrollY);
     }
   }, [printData, printType, showAlert, printNativePDF]);
 
   const handleSharePDF = useCallback(async () => {
     utils.triggerHaptic('success');
-    const element = document.getElementById('pdf-content');
-    if (!element) return;
-    if (!window.html2pdf) { showAlert("El generador de PDF está cargando..."); return; }
+    if (!window.html2pdf) { 
+        showAlert("Cargando generador...", false); 
+        return; 
+    }
 
+    const element = document.getElementById('pdf-content');
     const wrapper = document.getElementById('pdf-wrapper-scaler');
+    if (!element) return;
+
+    showAlert("Preparando PDF para compartir...", true);
+
     let oldTransform = '';
-    
     if (wrapper) {
         oldTransform = wrapper.style.transform;
         wrapper.style.transform = 'scale(1)';
     }
 
-    const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
-    const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
-    
-    const opt = { 
-        margin: [0.1, 0, 0.4, 0], 
-        filename: fileName, 
-        image: { type: 'jpeg', quality: 0.98 }, 
-        html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800 }, 
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.avoid-break'] }
-    };
+    const oldScrollY = window.scrollY;
+    window.scrollTo(0, 0);
 
     try {
-        showAlert("Preparando PDF para compartir...", true);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        
+        const opt = { 
+            margin: 0, 
+            filename: fileName, 
+            image: { type: 'jpeg', quality: 1.0 }, 
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                backgroundColor: "#ffffff",
+                width: 794,
+                windowWidth: 794
+            }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+        };
+
         const pdfBlob = await window.html2pdf().set(opt).from(element).output('blob');
+        if (!pdfBlob) throw new Error("Blob vacío");
+
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         const msg = getWhatsAppMessage(printData, printType === 'cotizacion' ? 'cotizacion' : 'recibo', appSettings.empresa);
 
@@ -925,21 +948,22 @@ export default function App() {
             await navigator.share({ files: [file], title: fileName, text: msg }); 
         } 
         else { 
-            showAlert("Tu celular no soporta compartir. Descargando...", false); 
-            await downloadPDF(); 
+            showAlert("No se pudo compartir directamente. Descargando...", false); 
+            await window.html2pdf().set(opt).from(element).save(); 
             const phoneClean = String(printData?.telefono || '').replace(/\D/g,''); 
             utils.openWhatsAppBusiness(phoneClean, msg); 
         }
     } catch (error) { 
+        console.error("Share error:", error);
         if (error?.name !== 'AbortError') { 
-            showAlert("Error al compartir. Usando descarga normal."); 
-            downloadPDF(); 
+            showAlert("Error al compartir. Usa el botón Guardar.", false); 
         } 
     } 
     finally { 
-        if (wrapper) wrapper.style.transform = oldTransform; 
+        if (wrapper) wrapper.style.transform = oldTransform;
+        window.scrollTo(0, oldScrollY);
     }
-  }, [printData, printType, appSettings, showAlert, downloadPDF]);
+  }, [printData, printType, appSettings, showAlert]);
 
   const downloadExcel = useCallback(() => {
     utils.triggerHaptic('success');
@@ -1010,7 +1034,7 @@ export default function App() {
       return () => unsubscribe(); 
   }, []);
 
-  useEffect(() => { const handleResize = () => setPdfScale(window.innerWidth < 850 ? (window.innerWidth - 32) / 800 : 1); handleResize(); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
+  useEffect(() => { const handleResize = () => setPdfScale(window.innerWidth < 850 ? (window.innerWidth - 32) / 794 : 1); handleResize(); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
   useEffect(() => { if (isPrinting) window.scrollTo(0, 0); }, [isPrinting, printData]);
 
   useEffect(() => {
@@ -1564,15 +1588,6 @@ export default function App() {
     const servicioLimpioContrato = sA.map(s => { const cant = Number(s.cantidad) || 1; return cant > 1 ? `${cant}x ${String(s.nombre)}` : String(s.nombre); }).join(' + ');
     const docTitle = isC ? 'COTIZACIÓN' : (isFact ? 'FACTURA' : 'CONTRATO DE SERVICIOS');
 
-    const renderSVGBackgrounds = () => (
-      <>
-         <svg className="absolute top-0 left-0 w-[400px] h-[300px] pointer-events-none z-0" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0H400C400 0 350 150 0 250V0Z" fill="url(#paint0_linear)"/><path d="M0 0H300C300 0 250 100 0 180V0Z" fill="url(#paint1_linear)"/><defs><linearGradient id="paint0_linear" x1="0" y1="0" x2="400" y2="250" gradientUnits="userSpaceOnUse"><stop stopColor="#6366F1" stopOpacity="0.2"/><stop offset="1" stopColor="#A855F7" stopOpacity="0.1"/></linearGradient><linearGradient id="paint1_linear" x1="0" y1="0" x2="300" y2="180" gradientUnits="userSpaceOnUse"><stop stopColor="#4F46E5" stopOpacity="0.8"/><stop offset="1" stopColor="#9333EA" stopOpacity="0.8"/></linearGradient></defs></svg>
-         <svg className="absolute bottom-0 right-0 w-[400px] h-[300px] pointer-events-none z-0" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M400 300H0C0 300 50 150 400 50V300Z" fill="url(#paint2_linear)"/><path d="M400 300H100C100 300 150 200 400 120V300Z" fill="url(#paint3_linear)"/><defs><linearGradient id="paint2_linear" x1="400" y1="300" x2="0" y2="50" gradientUnits="userSpaceOnUse"><stop stopColor="#A855F7" stopOpacity="0.2"/><stop offset="1" stopColor="#6366F1" stopOpacity="0.1"/></linearGradient><linearGradient id="paint3_linear" x1="400" y1="300" x2="100" y2="120" gradientUnits="userSpaceOnUse"><stop stopColor="#9333EA" stopOpacity="0.8"/><stop offset="1" stopColor="#4F46E5" stopOpacity="0.8"/></linearGradient></defs></svg>
-         <div className="absolute top-12 right-12 w-48 h-48 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(#4F46E5 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
-         <div className="absolute bottom-12 left-12 w-48 h-48 opacity-[0.15]" style={{ backgroundImage: 'radial-gradient(#4F46E5 2px, transparent 2px)', backgroundSize: '16px 16px' }}></div>
-      </>
-    );
-
     return (
       <div className="bg-slate-50 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative">
         <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:auto;margin:0mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}.avoid-break{page-break-inside:avoid;break-inside:avoid;}`}</style>
@@ -1584,22 +1599,26 @@ export default function App() {
              <button type="button" onClick={downloadPDF} className="bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm ml-2"><Download size={16} className="mr-2"/> Guardar</button>
           </div>
         </div>
-        <div className="w-full flex-1 flex justify-center pb-12 overflow-hidden pt-8 bg-slate-50">
-          <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '800px' }}>
-              <div id="pdf-content" className="bg-[#F9FAFB] w-[800px] min-h-[1131px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl">
-                 {renderSVGBackgrounds()}
+        <div className="w-full flex-1 flex justify-center pb-12 pt-8 bg-slate-50 overflow-visible">
+          <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '794px' }}>
+              <div id="pdf-content" className="bg-[#F9FAFB] w-[794px] min-h-[1123px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl">
+                 {/* REEMPLAZO SEGURO DE SVGs ABSOLUTOS: Usamos CSS sólido para evitar desbordes en html2canvas */}
+                 <div className="absolute top-[-150px] left-[-100px] w-[400px] h-[400px] rounded-full bg-[#6366F1]/10 z-0"></div>
+                 <div className="absolute top-[-100px] left-[-50px] w-[300px] h-[300px] rounded-full bg-[#4F46E5]/80 z-0"></div>
+                 <div className="absolute bottom-[-150px] right-[-100px] w-[400px] h-[400px] rounded-full bg-[#A855F7]/10 z-0"></div>
+                 <div className="absolute bottom-[-100px] right-[-50px] w-[300px] h-[300px] rounded-full bg-[#9333EA]/80 z-0"></div>
                  
                  <div className="flex flex-col mb-10 relative z-10">
                      <div className="flex justify-between items-start w-full">
                          <div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
                          <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef} &nbsp;|&nbsp; Fecha: {fechaDoc}</p></div>
                      </div>
-                     <h1 className="text-[28px] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
-                     <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#4F46E5]/40 to-transparent mt-6"></div>
+                     <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
+                     <div className="w-full h-[1px] bg-[#4F46E5]/20 mt-6"></div>
                  </div>
                  
-                 <div className="grid grid-cols-2 gap-8 mb-12 relative z-10">
-                    <div className="bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                 <div className="flex justify-between gap-8 mb-12 relative z-10">
+                    <div className="w-1/2 bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
                         <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><Users size={16}/> Datos del Cliente</h3>
                         <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
                             <div className="flex justify-between"><span>Nombre:</span> <span className="text-[#111827] font-bold capitalize text-right">{cli}</span></div>
@@ -1608,8 +1627,7 @@ export default function App() {
                             {rucStr && <div className="flex justify-between"><span>RUC:</span> <span className="text-[#111827] text-right">{rucStr}</span></div>}
                         </div>
                     </div>
-                    
-                    <div className="bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                    <div className="w-1/2 bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
                         <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><MapPin size={16}/> Detalles del Evento</h3>
                         <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
                             <div className="flex justify-between"><span>Fecha:</span> <span className="text-[#111827] font-bold text-right">{fechaDoc}</span></div>
@@ -1638,7 +1656,7 @@ export default function App() {
                                              const precioUnitario = utils.safeNum(s.precio) / cant;
                                              const descLines = String(s.descripcion || 'Servicio de animación para eventos').split('\n');
                                              return (
-                                             <tr key={i} className="avoid-break hover:bg-gray-50 transition-colors">
+                                             <tr key={i} className="avoid-break">
                                                  <td className="py-6 px-6 text-center border-r border-gray-100 align-top">
                                                      <div className="flex justify-center mb-3 text-[#4F46E5]"><Star size={28} strokeWidth={1.5}/></div>
                                                      <p className="font-bold text-[#111827] text-[14px] leading-tight">{String(s.nombre)}</p>
@@ -1661,7 +1679,7 @@ export default function App() {
                                              </tr>
                                          )})}
                                          {trn > 0 && (
-                                             <tr className="avoid-break hover:bg-gray-50 transition-colors">
+                                             <tr className="avoid-break">
                                                  <td className="py-6 px-6 text-center border-r border-gray-100 align-middle">
                                                      <div className="flex justify-center mb-3 text-[#4F46E5]"><MapIcon size={28} strokeWidth={1.5}/></div>
                                                      <p className="font-bold text-[#111827] text-[14px]">Transporte</p>
@@ -1680,8 +1698,8 @@ export default function App() {
                             </div>
                          </div>
 
-                         <div className="px-0 mt-4 flex justify-between items-start gap-8 avoid-break relative z-10">
-                             <div className="w-[50%]">
+                         <div className="px-0 mt-4 flex justify-between gap-8 avoid-break relative z-10">
+                             <div className="w-1/2">
                                  <div className="bg-white p-5 rounded-xl border border-[#4F46E5]/10 shadow-sm h-full">
                                      <div className="flex items-center gap-2 mb-3 text-[#4F46E5] border-b border-gray-100 pb-3">
                                          <FileText size={18}/>
@@ -1706,7 +1724,7 @@ export default function App() {
                                          <span className="font-bold text-emerald-600">- B/. {abo.toFixed(2)}</span>
                                      </div>
                                      )}
-                                     <div className="bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] text-white py-6 px-6 text-center">
+                                     <div className="bg-[#4F46E5] text-white py-6 px-6 text-center">
                                          <span className="block text-[11px] uppercase tracking-widest font-semibold mb-1 opacity-90">{isC ? 'Total Estimado:' : 'Total Pendiente:'}</span>
                                          <span className="block text-[36px] font-black leading-none pb-1">B/. {isC ? tot.toFixed(2) : (tot - abo).toFixed(2)}</span>
                                      </div>
@@ -1823,6 +1841,7 @@ export default function App() {
   return (
     <div className={`font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-blue-500/30 transition-colors duration-200 relative bg-[#060B14] text-slate-100`}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.2s ease-out forwards;} .animate-slideUp{animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}`}</style>
+      
       <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,rgba(37,99,235,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
       
       {toastAlert.isOpen && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white ${toastAlert.success ? 'bg-emerald-500 border-emerald-400/50' : 'bg-rose-500 border-rose-400/50'}`}>{toastAlert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{toastAlert.message}</p></div></div>}
