@@ -804,6 +804,12 @@ export default function App() {
     const guardarReservaFinal = (id, dataToSave) => {
         setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
+        if (Notification.permission === "granted") {
+        new Notification("Nueva reserva 🎉", {
+        body: "Reserva creada correctamente",
+        icon: "/icon-192.png"
+        });
+        }
         utils.setSafeLocal('diverty_form_draft', ''); closeModal(); showAlert("¡Reserva guardada!", true);
     };
 
