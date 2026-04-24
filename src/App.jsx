@@ -1023,28 +1023,43 @@ export default function App() {
   }, [eventosActivos, showAlert]);
 
   const activarNotificaciones = useCallback(async () => {
-    const permiso = await Notification.requestPermission();
-    if (permiso !== "granted") {
-      alert("Debes permitir notificaciones");
-      return;
-    }
-    
-    const messaging = getMessaging(app);
-    const token = await getToken(messaging, {
-      vapidKey: "-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E",
-      serviceWorkerRegistration: await navigator.serviceWorker.ready
-    });
-    
-    if (token) {
-      await setDoc(doc(db, "tokens", token), {
-        token: token,
-        createdAt: new Date()
+    try {
+      if (!('Notification' in window)) {
+        showAlert("Este navegador no soporta notificaciones.", false);
+        return;
+      }
+
+      const permiso = await Notification.requestPermission();
+      if (permiso !== "granted") {
+        showAlert("Debes permitir notificaciones", false);
+        return;
+      }
+      
+      showAlert("Generando token, espera un momento...", true);
+
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      const messaging = getMessaging(app);
+      const token = await getToken(messaging, {
+        vapidKey: "-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E",
+        serviceWorkerRegistration: registration
       });
-      console.log("Token guardado:", token);
-    } else {
-      console.error("No se generó token");
+      
+      if (token) {
+        await setDoc(doc(db, "tokens", token), {
+          token: token,
+          createdAt: new Date()
+        });
+        console.log("Token guardado:", token);
+        showAlert("✅ ¡Token generado y guardado con éxito!", true);
+      } else {
+        console.error("No se generó token");
+        showAlert("No se generó ningún token.", false);
+      }
+    } catch (error) { 
+      console.error("Error obteniendo token:", error); 
+      showAlert("Error al obtener token (revisa la consola)", false); 
     }
-  }, []);
+  }, [showAlert]);
 
   useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
