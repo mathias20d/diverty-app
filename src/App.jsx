@@ -1034,11 +1034,9 @@ export default function App() {
       
       showAlert("Generando token, espera un momento...", true);
 
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
       const messaging = getMessaging(app);
       const token = await getToken(messaging, {
-        vapidKey: "-2HV5FeEBTum7M8CEgXGbrq4I1yB6Aoc0hI5IAPJr_E",
-        serviceWorkerRegistration: registration
+        vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ"
       });
       
       if (token) {
