@@ -13,13 +13,8 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification?.title || "Diverty Eventos";
-  
-  const notificationOptions = {
-    body: payload.notification?.body || "Tienes una nueva notificación",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png"
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  self.registration.showNotification(payload.notification.title, {
+    body: payload.notification.body,
+    icon: "/icon-192.png"
+  });
 });
