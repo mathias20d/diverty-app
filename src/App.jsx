@@ -1030,7 +1030,13 @@ export default function App() {
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         const messaging = getMessaging(app);
         const token = await getToken(messaging, { vapidKey: 'BFDjCV2HR94H_de31u2xSs6OEu6SqanCtB2jjUvLk52yQ44pTaXpjl6na7dxoV7BLzai9wOSbB75ZoKdhvh9JGY', serviceWorkerRegistration: registration });
-        if (token) { try { await navigator.clipboard.writeText(token); showAlert("✅ ¡Token COPIADO al portapapeles!", true); } catch(err) { const copyPrompt = window.prompt("Copia este Token larguísimo:", token); if(copyPrompt) showAlert("Token copiado", true); } } else { showAlert("No se pudo obtener el token."); }
+        if (token) { 
+          await setDoc(doc(db, "tokens", token), {
+          token: token,
+          createdAt: new Date()
+          });
+          try { await navigator.clipboard.writeText(token); showAlert("✅ ¡Token COPIADO al portapapeles!", true); } catch(err) { const copyPrompt = window.prompt("Copia este Token larguísimo:", token); if(copyPrompt) showAlert("Token copiado", true); } 
+        } else { showAlert("No se pudo obtener el token."); }
       } else { showAlert("Permiso denegado."); }
     } catch (error) { console.error(error); showAlert(`Error de notificaciones`); }
   }, [showAlert]);
