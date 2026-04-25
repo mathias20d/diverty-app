@@ -3,18 +3,10 @@ import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock,
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
 const app = initializeApp(firebaseConfig); const db = getFirestore(app); const auth = getAuth(app); const appId = "diverty-oficial";
-
-// Escudo de seguridad por si el navegador no soporta notificaciones (ej. Gemini o Safari viejo)
-let messaging = null;
-try {
-  messaging = getMessaging(app);
-} catch (error) {
-  console.warn("Las notificaciones Push no están soportadas en este navegador.");
-}
 
 const sheetUrl = 'https://docs.google.com/spreadsheets/d/1dvIWaYZQte_IU9JsBZLnLEmKYVxfO9An1XjpRuIHD5g/edit?usp=drivesdk'; 
 const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; 
@@ -71,7 +63,7 @@ const getWhatsAppMessage = (ev, type, empresa) => {
     }
 }
 
-// 🎨 UI CONSTANTS - DISEÑO PULIDO Y FLUIDO
+// 🎨 UI CONSTANTS
 const GLASS_CARD = "bg-[#0B1221] border border-white/5 rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.3)] ring-1 ring-white/[0.02]";
 const inputClass = "w-full bg-[#0F172A] focus:bg-[#0B1221] border border-white/10 rounded-2xl p-4 text-[15px] font-medium text-white/90 outline-none focus:border-blue-500/50 transition-colors placeholder:text-white/30";
 const labelClass = "block text-xs uppercase text-white/60 font-semibold tracking-wider mb-2 ml-1";
@@ -595,6 +587,25 @@ export default function App() {
   const [expandedClientId, setExpandedClientId] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // 🚨 SISTEMA DE NOTIFICACIONES AISLADO (No congela la app) 🚨
+  const [messaging, setMessaging] = useState(null);
+
+  useEffect(() => {
+    const initMessaging = async () => {
+      try {
+        const { getMessaging, isSupported } = await import('firebase/messaging');
+        const supported = await isSupported();
+        if (supported) {
+          setMessaging(getMessaging(app));
+        }
+      } catch (e) {
+        console.warn("Notificaciones bloqueadas por el navegador:", e);
+      }
+    };
+    // Esperamos 2 segundos a que todo cargue antes de pedir permisos
+    setTimeout(() => { initMessaging(); }, 2000);
+  }, []);
+
   const todayObj = currentTime;
   const todayStr = useMemo(() => utils.getLocalYYYYMMDD(currentTime), [currentTime]);
   const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
@@ -606,58 +617,61 @@ export default function App() {
   const showAlert = useCallback((message, success = false) => { setToastAlert({ isOpen: true, message: String(message), success }); setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); }, []);
   const showConfirm = useCallback((message, onConfirm) => { setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); }, []);
 
-  // ESCUCHADOR DE NOTIFICACIONES EN PRIMER PLANO
+  // ESCUCHADOR DE NOTIFICACIONES DE FIREBASE EN PRIMER PLANO
   useEffect(() => {
+    if (!messaging) return;
     try {
       const unsubscribe = onMessage(messaging, (payload) => {
-        console.log("Mensaje recibido:", payload);
-        
-        const title =
-          payload.notification?.title ||
-          payload.data?.title ||
-          "Notificación";
-          
-        const body =
-          payload.notification?.body ||
-          payload.data?.body ||
-          "Tienes un nuevo mensaje";
+        const title = payload.notification?.title || payload.data?.title || "Notificación Diverty";
+        const body = payload.notification?.body || payload.data?.body || "Tienes un nuevo mensaje";
 
-        // 1. Mostrar alerta visual en la app (SIEMPRE visible en pantalla)
         showAlert(`🔔 ${title}: ${body}`, true);
         utils.triggerHaptic('success');
 
-        // 2. Intentar mostrar la notificación nativa usando el Service Worker (Compatible con Android)
-        if (Notification.permission === "granted" && navigator.serviceWorker) {
+        if (typeof Notification !== 'undefined' && Notification.permission === "granted" && navigator.serviceWorker) {
           navigator.serviceWorker.getRegistration().then(reg => {
-            if (reg) {
-              reg.showNotification(title, {
-                body: body,
-                icon: "/icon-192.png"
-              });
-            } else {
-               // Respaldo para computadoras
-               new Notification(title, { body: body, icon: "/icon-192.png" });
-            }
-          }).catch(() => {
-             // Respaldo final si falla el service worker
-             new Notification(title, { body: body, icon: "/icon-192.png" });
-          });
+            if (reg) { reg.showNotification(title, { body: body, icon: "/icon-192.png" }); } 
+            else { new Notification(title, { body: body, icon: "/icon-192.png" }); }
+          }).catch(() => new Notification(title, { body: body, icon: "/icon-192.png" }));
         }
       });
       return () => unsubscribe();
     } catch (e) {
       console.warn("FCM foreground error", e);
     }
-  }, [showAlert]);
+  }, [messaging, showAlert]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    // 🚨 TEMPORIZADOR DE RESCATE: Si Firebase tarda mucho, fuerza la pantalla de inicio
+    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 3000);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => { 
+        clearTimeout(fallbackTimer);
+        if (user) {
+            setFirebaseUser(user); 
+            setIsAuthenticated(true);
+        } else {
+            setFirebaseUser(null);
+            setIsAuthenticated(false);
+        }
+        setIsAuthLoading(false);
+    }, (error) => {
+        clearTimeout(fallbackTimer);
+        setIsAuthLoading(false);
+    }); 
+    
     const resetTimer = () => { lastActivityRef.current = Date.now(); };
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
     events.forEach(e => window.addEventListener(e, resetTimer));
     const interval = setInterval(() => { if (Date.now() - lastActivityRef.current > 15 * 60 * 1000) signOut(auth); }, 60000);
-    return () => { events.forEach(e => window.removeEventListener(e, resetTimer)); clearInterval(interval); };
-  }, [isAuthenticated]);
+    
+    return () => { 
+        clearTimeout(fallbackTimer);
+        events.forEach(e => window.removeEventListener(e, resetTimer)); 
+        clearInterval(interval); 
+        unsubscribe(); 
+    };
+  }, []);
 
   const eventosActivos = useMemo(() => eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora))), [eventos]);
 
@@ -848,7 +862,7 @@ export default function App() {
 
     const hasCollision = eventosActivos.some(ev => {
         if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
-        if (!ev.hora || !safeData.hora) return false; // CORRECCIÓN: Si falta la hora, asumimos que no hay colisión directa para no bloquear reservas.
+        if (!ev.hora || !safeData.hora) return false; 
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
@@ -1070,6 +1084,11 @@ export default function App() {
   }, [eventosActivos, showAlert]);
 
   const activarNotificaciones = useCallback(async () => {
+    if (!messaging) {
+        showAlert("Las notificaciones no están disponibles. (Posible bloqueo de navegador)", false);
+        return;
+    }
+    
     try {
       if (!('Notification' in window)) {
         showAlert("Este navegador no soporta notificaciones.", false);
@@ -1103,9 +1122,9 @@ export default function App() {
       console.error("Error obteniendo token:", error); 
       showAlert("Error al obtener token: " + (error.message || "revisa consola"), false); 
     }
-  }, [showAlert]);
+  }, [messaging, showAlert]);
 
-  // 🚨 AQUÍ ESTÁ EL CÓDIGO NUEVO QUE DETECTA LAS RESERVAS Y TE MANDA LA ALERTA 🚨
+  // 🚨 DETECTAR RESERVAS NUEVAS Y LANZAR ALERTA EN PANTALLA 🚨
   useEffect(() => {
     if (!db || !appId || !firebaseUser) return;
     const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500);
@@ -1113,13 +1132,11 @@ export default function App() {
     const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => {
       clearTimeout(timeoutId); const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // 🚨 DETECTAR RESERVA NUEVA Y LANZAR NOTIFICACIÓN AUTOMÁTICA 🚨
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added") {
           const data = change.doc.data();
-          // Solo notificar si se creó en los últimos 15 segundos (evita que suenen eventos viejos al cargar la página)
           if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) {
-             if (Notification.permission === 'granted' && navigator.serviceWorker) {
+             if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && navigator.serviceWorker) {
                 utils.triggerHaptic('success');
                 navigator.serviceWorker.getRegistration().then(reg => {
                    if (reg) reg.showNotification("🎉 ¡Nueva Reserva!", { 
@@ -1138,11 +1155,11 @@ export default function App() {
           const map = new Map(prev.map(e => [e.id, e]));
           fbData.forEach(e => { 
              if (map.has(e.id)) { 
-                const exist = map.get(e.id); 
-                if (exist.estado !== e.estado || exist.abono !== e.abono || exist.total !== e.total || exist.deletedLocally !== e.deletedLocally) {
-                    map.set(e.id, { ...exist, estado: e.estado, abono: e.abono, total: e.total, deletedLocally: e.deletedLocally }); 
-                    hasChanges = true;
-                }
+                 const exist = map.get(e.id); 
+                 if (exist.estado !== e.estado || exist.abono !== e.abono || exist.total !== e.total || exist.deletedLocally !== e.deletedLocally) {
+                     map.set(e.id, { ...exist, estado: e.estado, abono: e.abono, total: e.total, deletedLocally: e.deletedLocally }); 
+                     hasChanges = true;
+                 }
              } else { map.set(e.id, e); hasChanges = true; } 
           });
           if (!hasChanges && prev.length > 0) return prev;
