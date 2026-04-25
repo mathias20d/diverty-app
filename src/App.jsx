@@ -604,18 +604,36 @@ export default function App() {
     try {
       const unsubscribe = onMessage(messaging, (payload) => {
         console.log("Mensaje recibido:", payload);
+        
         const title =
           payload.notification?.title ||
           payload.data?.title ||
           "Notificación";
+          
         const body =
           payload.notification?.body ||
           payload.data?.body ||
           "Tienes un nuevo mensaje";
-        if (Notification.permission === "granted") {
-          new Notification(title, {
-            body: body,
-            icon: "/icon-192.png"
+
+        // 1. Mostrar alerta visual en la app (SIEMPRE visible en pantalla)
+        showAlert(`🔔 ${title}: ${body}`, true);
+        utils.triggerHaptic('success');
+
+        // 2. Intentar mostrar la notificación nativa usando el Service Worker (Compatible con Android)
+        if (Notification.permission === "granted" && navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistration().then(reg => {
+            if (reg) {
+              reg.showNotification(title, {
+                body: body,
+                icon: "/icon-192.png"
+              });
+            } else {
+               // Respaldo para computadoras (el que habías pedido originalmente)
+               new Notification(title, { body: body, icon: "/icon-192.png" });
+            }
+          }).catch(() => {
+             // Respaldo final si falla el service worker
+             new Notification(title, { body: body, icon: "/icon-192.png" });
           });
         }
       });
@@ -623,7 +641,7 @@ export default function App() {
     } catch (e) {
       console.warn("FCM foreground error", e);
     }
-  }, []);
+  }, [showAlert]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1674,7 +1692,7 @@ export default function App() {
                  <div className="flex flex-col mb-10 relative z-10">
                      <div className="flex justify-between items-start w-full">
                          <div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
-                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef} &nbsp;|&nbsp; Fecha: {fechaDoc}</p></div>
+                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef}  |  Fecha: {fechaDoc}</p></div>
                      </div>
                      <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
                      <div className="w-full h-[1px] bg-[#4F46E5]/20 mt-6"></div>
