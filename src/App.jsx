@@ -587,23 +587,19 @@ export default function App() {
   const [expandedClientId, setExpandedClientId] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // 🚨 SISTEMA DE NOTIFICACIONES AISLADO (No congela la app) 🚨
   const [messaging, setMessaging] = useState(null);
 
+  // INICIALIZACIÓN SEGURA (AISLADA)
   useEffect(() => {
     const initMessaging = async () => {
       try {
-        const { getMessaging, isSupported } = await import('firebase/messaging');
         const supported = await isSupported();
-        if (supported) {
-          setMessaging(getMessaging(app));
-        }
+        if (supported) setMessaging(getMessaging(app));
       } catch (e) {
-        console.warn("Notificaciones bloqueadas por el navegador:", e);
+        console.warn("FCM no soportado:", e);
       }
     };
-    // Esperamos 2 segundos a que todo cargue antes de pedir permisos
-    setTimeout(() => { initMessaging(); }, 2000);
+    setTimeout(() => { initMessaging(); }, 1500);
   }, []);
 
   const todayObj = currentTime;
@@ -617,7 +613,7 @@ export default function App() {
   const showAlert = useCallback((message, success = false) => { setToastAlert({ isOpen: true, message: String(message), success }); setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); }, []);
   const showConfirm = useCallback((message, onConfirm) => { setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); }, []);
 
-  // ESCUCHADOR DE NOTIFICACIONES DE FIREBASE EN PRIMER PLANO
+  // ESCUCHADOR DE NOTIFICACIONES EN PRIMER PLANO
   useEffect(() => {
     if (!messaging) return;
     try {
@@ -641,8 +637,8 @@ export default function App() {
     }
   }, [messaging, showAlert]);
 
+  // TEMPORIZADOR DE RESCATE (NUNCA MÁS SE CONGELARÁ EN INICIANDO)
   useEffect(() => {
-    // 🚨 TEMPORIZADOR DE RESCATE: Si Firebase tarda mucho, fuerza la pantalla de inicio
     const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 3000);
 
     const unsubscribe = onAuthStateChanged(auth, (user) => { 
@@ -874,16 +870,6 @@ export default function App() {
         setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
         showAlert("¡Reserva guardada!", true);
-
-        setTimeout(() => {
-            try {
-                if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
-                    navigator.serviceWorker.getRegistration().then(reg => {
-                        if (reg) reg.showNotification("Nueva reserva 🎉", { body: "Reserva creada correctamente", icon: "/icon-192.png" });
-                    }).catch(e => console.warn("SW error", e));
-                }
-            } catch(e) { console.warn("Notificación bloqueada", e); }
-        }, 300);
     };
 
     if (hasCollision && !safeData.colisionAprobada) { 
@@ -1124,7 +1110,7 @@ export default function App() {
     }
   }, [messaging, showAlert]);
 
-  // 🚨 DETECTAR RESERVAS NUEVAS Y LANZAR ALERTA EN PANTALLA 🚨
+  // 🚨 DETECTAR RESERVAS NUEVAS Y LANZAR ALERTA VISUAL 🚨
   useEffect(() => {
     if (!db || !appId || !firebaseUser) return;
     const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500);
@@ -1136,16 +1122,9 @@ export default function App() {
         if (change.type === "added") {
           const data = change.doc.data();
           if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) {
-             if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && navigator.serviceWorker) {
-                utils.triggerHaptic('success');
-                navigator.serviceWorker.getRegistration().then(reg => {
-                   if (reg) reg.showNotification("🎉 ¡Nueva Reserva!", { 
-                       body: `${data.cliente} ha sido registrado para el ${data.fecha}. Total: $${data.total}`, 
-                       icon: "/icon-192.png",
-                       vibrate: [200, 100, 200]
-                   });
-                });
-             }
+             // 🚨 Mostramos la alerta verde dentro de la app para confirmar que se detectó
+             utils.triggerHaptic('success');
+             showAlert(`🔥 ¡Alerta de Sistema! Entró nueva reserva: ${data.cliente}`, true);
           }
         }
       });
