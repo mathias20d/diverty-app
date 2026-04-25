@@ -3,11 +3,10 @@ import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock,
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getMessaging, getToken } from 'firebase/messaging';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
 const app = initializeApp(firebaseConfig); const db = getFirestore(app); const auth = getAuth(app); const appId = "diverty-oficial";
-const messaging = getMessaging(app);
 
 const sheetUrl = 'https://docs.google.com/spreadsheets/d/1dvIWaYZQte_IU9JsBZLnLEmKYVxfO9An1XjpRuIHD5g/edit?usp=drivesdk'; 
 const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; 
@@ -595,6 +594,36 @@ export default function App() {
   const todayTime = useMemo(() => new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate()).getTime(), [currentTime]);
   const PAQUETES_DIVERTY = useMemo(() => [...PAQUETES_BASE, ...paquetesPersonalizados], [paquetesPersonalizados]);
 
+  const updateSettings = useCallback((newSettings) => { setAppSettings(newSettings); utils.setSafeLocal('diverty_settings', JSON.stringify(newSettings)); }, []);
+  const showAlert = useCallback((message, success = false) => { setToastAlert({ isOpen: true, message: String(message), success }); setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); }, []);
+  const showConfirm = useCallback((message, onConfirm) => { setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); }, []);
+
+  // ESCUCHADOR DE NOTIFICACIONES EN PRIMER PLANO
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      const msging = getMessaging(app);
+      const unsubscribe = onMessage(msging, (payload) => {
+        console.log("Mensaje en primer plano recibido:", payload);
+        
+        // Disparar Notificación Nativa si tiene permisos
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+           new Notification(payload.notification?.title || "Diverty Eventos", {
+              body: payload.notification?.body || "Nueva notificación",
+              icon: '/icon-192.png'
+           });
+        }
+        
+        // Mostrar la alerta en pantalla
+        showAlert(`🔔 ${payload.notification?.title || 'Aviso'}: ${payload.notification?.body || ''}`, true);
+        utils.triggerHaptic('success');
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("FCM Listener error:", e);
+    }
+  }, [isAuthenticated, showAlert]);
+
   useEffect(() => {
     if (!isAuthenticated) return;
     const resetTimer = () => { lastActivityRef.current = Date.now(); };
@@ -735,10 +764,6 @@ export default function App() {
   const cotizacionesActivas = useMemo(() => eventosActivos.filter(ev => utils.normalizeText(ev.estado) === 'cotizacion'), [eventosActivos]);
   const proximasReservas = useMemo(() => [...stats.eventosHoy, ...stats.eventosManana].filter(ev => utils.normalizeText(ev.estado) !== 'completado'), [stats.eventosHoy, stats.eventosManana]);
 
-  const updateSettings = useCallback((newSettings) => { setAppSettings(newSettings); utils.setSafeLocal('diverty_settings', JSON.stringify(newSettings)); }, []);
-  const showAlert = useCallback((message, success = false) => { setToastAlert({ isOpen: true, message: String(message), success }); setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); }, []);
-  const showConfirm = useCallback((message, onConfirm) => { setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); }, []);
-  
   const handleAddCustomService = useCallback(async (nombre, precio) => {
     if (!nombre?.trim()) { showAlert("Ingresa un nombre para el servicio.", false); return null; }
     const newSrv = { id: 'c-'+Date.now(), nombre: nombre.trim(), precio: utils.safeNum(precio), short: nombre.substring(0,12)+'...', descripcion: 'Servicio personalizado.', isCustom: true };
@@ -797,13 +822,12 @@ export default function App() {
 
     const hasCollision = eventosActivos.some(ev => {
         if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
-        if (!ev.hora || !safeData.hora) return false; // CORRECCIÓN: Si falta la hora, asumimos que no hay colisión directa para no bloquear reservas.
+        if (!ev.hora || !safeData.hora) return false; 
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
 
     const guardarReservaFinal = (id, dataToSave) => {
-        // CERRAR MODAL PRIMERO PARA EVITAR DOBLE GUARDADO Y TRABAS EN LA UI
         closeModal();
         utils.setSafeLocal('diverty_form_draft', ''); 
         
@@ -811,7 +835,6 @@ export default function App() {
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
         showAlert("¡Reserva guardada!", true);
 
-        // Notificación de forma asíncrona para que no rompa el flujo si falla en Chrome Android
         setTimeout(() => {
             try {
                 if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {
@@ -1035,6 +1058,7 @@ export default function App() {
       
       showAlert("Generando token, espera un momento...", true);
 
+      const messaging = getMessaging(app);
       const token = await getToken(messaging, {
         vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ"
       });
@@ -1463,7 +1487,7 @@ export default function App() {
                              return (
                                 <div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative">
                                     <div className="absolute -top-8 bg-black/80 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap">${d.value.toFixed(0)}</div>
-                                    <div className="w-full bg-blue-500/10 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-blue-400/30 h-[70px]"><div className="absolute bottom-0 w-full bg-blue-50 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{height: `${hPercent}%`}}></div></div>
+                                    <div className="w-full bg-blue-500/10 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-blue-400/30 h-[70px]"><div className="absolute bottom-0 w-full bg-blue-500 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{height: `${hPercent}%`}}></div></div>
                                     <span className="text-[9px] font-bold uppercase text-white/40 tracking-widest">{String(d.date).split('-')[2]}</span>
                                 </div>
                              )
