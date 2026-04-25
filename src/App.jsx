@@ -7,7 +7,14 @@ import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
 const app = initializeApp(firebaseConfig); const db = getFirestore(app); const auth = getAuth(app); const appId = "diverty-oficial";
-const messaging = getMessaging(app);
+
+// Escudo de seguridad por si el navegador no soporta notificaciones (ej. Gemini o Safari viejo)
+let messaging = null;
+try {
+  messaging = getMessaging(app);
+} catch (error) {
+  console.warn("Las notificaciones Push no están soportadas en este navegador.");
+}
 
 const sheetUrl = 'https://docs.google.com/spreadsheets/d/1dvIWaYZQte_IU9JsBZLnLEmKYVxfO9An1XjpRuIHD5g/edit?usp=drivesdk'; 
 const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; 
@@ -628,7 +635,7 @@ export default function App() {
                 icon: "/icon-192.png"
               });
             } else {
-               // Respaldo para computadoras (el que habías pedido originalmente)
+               // Respaldo para computadoras
                new Notification(title, { body: body, icon: "/icon-192.png" });
             }
           }).catch(() => {
@@ -1098,32 +1105,34 @@ export default function App() {
     }
   }, [showAlert]);
 
-  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
-  useEffect(() => { if (!document.getElementById('html2pdf-script')) { const script = document.createElement('script'); script.id = 'html2pdf-script'; script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; script.async = true; document.body.appendChild(script); } }, []);
-  
-  useEffect(() => { 
-      const unsubscribe = onAuthStateChanged(auth, (user) => { 
-          if (user) {
-              setFirebaseUser(user); 
-              setIsAuthenticated(true);
-          } else {
-              setFirebaseUser(null);
-              setIsAuthenticated(false);
-          }
-          setIsAuthLoading(false);
-      }); 
-      return () => unsubscribe(); 
-  }, []);
-
-  useEffect(() => { const handleResize = () => setPdfScale(window.innerWidth < 850 ? (window.innerWidth - 32) / 794 : 1); handleResize(); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
-  useEffect(() => { if (isPrinting) window.scrollTo(0, 0); }, [isPrinting, printData]);
-
+  // 🚨 AQUÍ ESTÁ EL CÓDIGO NUEVO QUE DETECTA LAS RESERVAS Y TE MANDA LA ALERTA 🚨
   useEffect(() => {
     if (!db || !appId || !firebaseUser) return;
     const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500);
     const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
     const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => {
       clearTimeout(timeoutId); const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // 🚨 DETECTAR RESERVA NUEVA Y LANZAR NOTIFICACIÓN AUTOMÁTICA 🚨
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const data = change.doc.data();
+          // Solo notificar si se creó en los últimos 15 segundos (evita que suenen eventos viejos al cargar la página)
+          if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) {
+             if (Notification.permission === 'granted' && navigator.serviceWorker) {
+                utils.triggerHaptic('success');
+                navigator.serviceWorker.getRegistration().then(reg => {
+                   if (reg) reg.showNotification("🎉 ¡Nueva Reserva!", { 
+                       body: `${data.cliente} ha sido registrado para el ${data.fecha}. Total: $${data.total}`, 
+                       icon: "/icon-192.png",
+                       vibrate: [200, 100, 200]
+                   });
+                });
+             }
+          }
+        }
+      });
+
       setEventos(prev => {
           let hasChanges = false;
           const map = new Map(prev.map(e => [e.id, e]));
