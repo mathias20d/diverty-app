@@ -120,9 +120,9 @@ const EmptyState = React.memo(({ icon: Icon, title, message, actionBtn }) => {
 const AppButton = React.memo(({ children, variant = 'primary', icon: Icon, onClick, className = '', ...props }) => {
     const baseStyle = "font-bold rounded-[16px] transition-all duration-200 ease-out active:scale-[0.98] hover:opacity-90 flex items-center justify-center gap-2.5 px-5 py-3.5";
     let vS = "";
-    if (variant === 'warning') vS = `bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20`;
-    else if (variant === 'success') vS = `bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20`;
-    else if (variant === 'danger') vS = `bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20`;
+    if (variant === 'warning') vS = `bg-amber-500/10 text-amber-400 hover:bg-amber-500/20`;
+    else if (variant === 'success') vS = `bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20`;
+    else if (variant === 'danger') vS = `bg-rose-500/10 text-rose-400 hover:bg-rose-500/20`;
     else if (variant === 'primary') vS = `bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/20`;
     else vS = "bg-white/5 text-white/90 hover:bg-white/10";
     
@@ -653,6 +653,16 @@ export default function App() {
 
   const [messaging, setMessaging] = useState(null);
 
+  // INYECCIÓN DEL GENERADOR PDF
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.html2pdf) {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, []);
+
   // INICIALIZACIÓN SEGURA (AISLADA)
   useEffect(() => {
     const initMessaging = async () => {
@@ -664,6 +674,53 @@ export default function App() {
       }
     };
     setTimeout(() => { initMessaging(); }, 1500);
+  }, []);
+
+  useEffect(() => {
+      if (isPrinting) {
+          const handleResize = () => {
+              if (window.innerWidth < 800) {
+                  setPdfScale(window.innerWidth / 850);
+              } else {
+                  setPdfScale(1);
+              }
+          };
+          handleResize();
+          window.addEventListener('resize', handleResize);
+          return () => window.removeEventListener('resize', handleResize);
+      }
+  }, [isPrinting]);
+
+  // TEMPORIZADOR DE RESCATE (NUNCA MÁS SE CONGELARÁ EN INICIANDO)
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 3000);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => { 
+        clearTimeout(fallbackTimer);
+        if (user) {
+            setFirebaseUser(user); 
+            setIsAuthenticated(true);
+        } else {
+            setFirebaseUser(null);
+            setIsAuthenticated(false);
+        }
+        setIsAuthLoading(false);
+    }, (error) => {
+        clearTimeout(fallbackTimer);
+        setIsAuthLoading(false);
+    }); 
+    
+    const resetTimer = () => { lastActivityRef.current = Date.now(); };
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, resetTimer));
+    const interval = setInterval(() => { if (Date.now() - lastActivityRef.current > 15 * 60 * 1000) signOut(auth); }, 60000);
+    
+    return () => { 
+        clearTimeout(fallbackTimer);
+        events.forEach(e => window.removeEventListener(e, resetTimer)); 
+        clearInterval(interval); 
+        unsubscribe(); 
+    };
   }, []);
 
   const todayObj = currentTime;
@@ -700,38 +757,6 @@ export default function App() {
       console.warn("FCM foreground error", e);
     }
   }, [messaging, showAlert]);
-
-  // TEMPORIZADOR DE RESCATE (NUNCA MÁS SE CONGELARÁ EN INICIANDO)
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 3000);
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => { 
-        clearTimeout(fallbackTimer);
-        if (user) {
-            setFirebaseUser(user); 
-            setIsAuthenticated(true);
-        } else {
-            setFirebaseUser(null);
-            setIsAuthenticated(false);
-        }
-        setIsAuthLoading(false);
-    }, (error) => {
-        clearTimeout(fallbackTimer);
-        setIsAuthLoading(false);
-    }); 
-    
-    const resetTimer = () => { lastActivityRef.current = Date.now(); };
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(e => window.addEventListener(e, resetTimer));
-    const interval = setInterval(() => { if (Date.now() - lastActivityRef.current > 15 * 60 * 1000) signOut(auth); }, 60000);
-    
-    return () => { 
-        clearTimeout(fallbackTimer);
-        events.forEach(e => window.removeEventListener(e, resetTimer)); 
-        clearInterval(interval); 
-        unsubscribe(); 
-    };
-  }, []);
 
   const eventosActivos = useMemo(() => eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora))), [eventos]);
 
@@ -958,7 +983,6 @@ export default function App() {
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
         showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
 
-        // Disparar PDF automáticamente sólo si es una NUEVA cotización
         if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) {
              setPrintData({ ...dataToSave });
              setPrintType('cotizacion');
@@ -993,16 +1017,15 @@ export default function App() {
   const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
 
+  // 2️⃣ FUNCIONES DE DESCARGA
   const downloadPDF = useCallback(async () => {
     utils.triggerHaptic('success');
     if (!window.html2pdf) { 
-        showAlert("Cargando generador, intenta en un segundo.", false); 
+        showAlert("Instalando módulo PDF... haz clic de nuevo en 2 segundos.", false); 
         return; 
     }
 
     const element = document.getElementById('pdf-content');
-    const wrapper = document.getElementById('pdf-wrapper-scaler');
-    
     if (!element) {
         showAlert("Error al localizar el documento.", false);
         return;
@@ -1011,16 +1034,13 @@ export default function App() {
     showAlert("Generando PDF...", true);
 
     let oldTransform = '';
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
     if (wrapper) {
         oldTransform = wrapper.style.transform;
         wrapper.style.transform = 'scale(1)';
     }
-    
-    const oldScrollY = window.scrollY;
-    window.scrollTo(0, 0);
 
     try {
-        await new Promise(resolve => requestAnimationFrame(resolve));
         await new Promise(resolve => setTimeout(resolve, 800));
 
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
@@ -1045,39 +1065,32 @@ export default function App() {
     } 
     catch (error) { 
         console.error("Error PDF:", error);
-        showAlert("Error en descarga. Imprimiendo como respaldo...", false); 
-        printNativePDF();
-    } 
-    finally { 
+        showAlert("Error en descarga.", false); 
+    } finally {
         if (wrapper) wrapper.style.transform = oldTransform;
-        window.scrollTo(0, oldScrollY);
     }
-  }, [printData, printType, showAlert, printNativePDF]);
+  }, [printData, printType, showAlert]);
 
   const handleSharePDF = useCallback(async () => {
     utils.triggerHaptic('success');
     if (!window.html2pdf) { 
-        showAlert("Cargando generador...", false); 
+        showAlert("Instalando módulo PDF... haz clic de nuevo en 2 segundos.", false); 
         return; 
     }
 
     const element = document.getElementById('pdf-content');
-    const wrapper = document.getElementById('pdf-wrapper-scaler');
     if (!element) return;
 
     showAlert("Preparando PDF para compartir...", true);
 
     let oldTransform = '';
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
     if (wrapper) {
         oldTransform = wrapper.style.transform;
         wrapper.style.transform = 'scale(1)';
     }
 
-    const oldScrollY = window.scrollY;
-    window.scrollTo(0, 0);
-
     try {
-        await new Promise(resolve => requestAnimationFrame(resolve));
         await new Promise(resolve => setTimeout(resolve, 800));
 
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
@@ -1115,12 +1128,10 @@ export default function App() {
     } catch (error) { 
         console.error("Share error:", error);
         if (error?.name !== 'AbortError') { 
-            showAlert("Error al compartir. Usa el botón Guardar.", false); 
+            showAlert("Error al compartir. Usa el botón Descargar.", false); 
         } 
-    } 
-    finally { 
+    } finally {
         if (wrapper) wrapper.style.transform = oldTransform;
-        window.scrollTo(0, oldScrollY);
     }
   }, [printData, printType, appSettings, showAlert]);
 
@@ -1747,6 +1758,7 @@ export default function App() {
     );
   };
 
+  // RENDER DEL DOCUMENTO (PREVISUALIZACIÓN + DESCARGA)
   if (isPrinting && printData) {
     const isC = printType === 'cotizacion';
     const isFact = printType === 'factura';
@@ -1769,29 +1781,31 @@ export default function App() {
     const docTitle = isC ? 'COTIZACIÓN' : (isFact ? 'FACTURA' : 'CONTRATO DE SERVICIOS');
 
     return (
-      <div className="bg-slate-50 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative">
-        <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:auto;margin:0mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}.avoid-break{page-break-inside:avoid;break-inside:avoid;}`}</style>
-        <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4">
-          <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button>
-          <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
-             <button type="button" onClick={printNativePDF} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm mr-2 transition-all active:scale-95"><Printer size={16} className="mr-2"/> Imprimir PDF</button>
-             <button type="button" onClick={handleSharePDF} className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm"><Share2 size={16} className="mr-2"/> Compartir</button>
-             <button type="button" onClick={downloadPDF} className="bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm ml-2"><Download size={16} className="mr-2"/> Guardar</button>
+      <div className="bg-slate-50 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[100000]">
+        {/* Barra superior de controles visible siempre */}
+        <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-[100001] print:hidden border-b border-slate-800 p-4 gap-4 w-full">
+          <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold hover:text-blue-400 self-start sm:self-auto py-2 px-3 rounded-lg hover:bg-white/10 transition-colors"><ChevronLeft size={20} className="mr-1"/> Volver</button>
+          
+          <div className="flex flex-wrap gap-3 justify-end w-full sm:w-auto">
+             <button type="button" onClick={printNativePDF} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl font-bold flex items-center text-sm transition-all active:scale-95"><Printer size={18} className="mr-2"/> Imprimir</button>
+             <button type="button" onClick={handleSharePDF} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm transition-all active:scale-95"><Share2 size={18} className="mr-2"/> Enviar al Cliente</button>
+             <button type="button" onClick={downloadPDF} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm transition-all active:scale-95"><Download size={18} className="mr-2"/> Guardar PDF</button>
           </div>
         </div>
-        <div className="w-full flex-1 flex justify-center pb-12 pt-8 bg-slate-50 overflow-visible">
-          <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '794px' }}>
-              <div id="pdf-content" className="bg-[#F9FAFB] w-[794px] min-h-[1123px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl">
-                 {/* REEMPLAZO SEGURO DE SVGs ABSOLUTOS: Usamos CSS sólido para evitar desbordes en html2canvas */}
-                 <div className="absolute top-[-150px] left-[-100px] w-[400px] h-[400px] rounded-full bg-[#6366F1]/10 z-0"></div>
-                 <div className="absolute top-[-100px] left-[-50px] w-[300px] h-[300px] rounded-full bg-[#4F46E5]/80 z-0"></div>
-                 <div className="absolute bottom-[-150px] right-[-100px] w-[400px] h-[400px] rounded-full bg-[#A855F7]/10 z-0"></div>
-                 <div className="absolute bottom-[-100px] right-[-50px] w-[300px] h-[300px] rounded-full bg-[#9333EA]/80 z-0"></div>
+
+        {/* Zona de previsualización (escalable en móvil) */}
+        <div className="w-full flex-1 flex justify-center pb-12 pt-8 bg-slate-200 overflow-x-auto print:p-0 print:bg-white">
+          <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '794px' }} className="print:!transform-none print:w-auto shrink-0">
+              <div id="pdf-content" className="bg-[#F9FAFB] w-[794px] min-h-[1123px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl print:shadow-none mx-auto">
+                 <div className="absolute top-[-150px] left-[-100px] w-[400px] h-[400px] rounded-full bg-[#6366F1]/10 z-0 print:!bg-[#6366F1] print:!opacity-10"></div>
+                 <div className="absolute top-[-100px] left-[-50px] w-[300px] h-[300px] rounded-full bg-[#4F46E5]/80 z-0 print:!bg-[#4F46E5] print:!opacity-80"></div>
+                 <div className="absolute bottom-[-150px] right-[-100px] w-[400px] h-[400px] rounded-full bg-[#A855F7]/10 z-0 print:!bg-[#A855F7] print:!opacity-10"></div>
+                 <div className="absolute bottom-[-100px] right-[-50px] w-[300px] h-[300px] rounded-full bg-[#9333EA]/80 z-0 print:!bg-[#9333EA] print:!opacity-80"></div>
                  
                  <div className="flex flex-col mb-10 relative z-10">
                      <div className="flex justify-between items-start w-full">
                          <div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
-                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef}  |  Fecha: {fechaDoc}</p></div>
+                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef} &nbsp;|&nbsp; Fecha: {fechaDoc}</p></div>
                      </div>
                      <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
                      <div className="w-full h-[1px] bg-[#4F46E5]/20 mt-6"></div>
@@ -1836,7 +1850,7 @@ export default function App() {
                                              const precioUnitario = utils.safeNum(s.precio) / cant;
                                              const descLines = String(s.descripcion || 'Servicio de animación para eventos').split('\n');
                                              return (
-                                             <tr key={i} className="avoid-break">
+                                             <tr key={i} className="break-inside-avoid">
                                                  <td className="py-6 px-6 text-center border-r border-gray-100 align-top">
                                                      <div className="flex justify-center mb-3 text-[#4F46E5]"><Star size={28} strokeWidth={1.5}/></div>
                                                      <p className="font-bold text-[#111827] text-[14px] leading-tight">{String(s.nombre)}</p>
@@ -1859,7 +1873,7 @@ export default function App() {
                                              </tr>
                                          )})}
                                          {trn > 0 && (
-                                             <tr className="avoid-break">
+                                             <tr className="break-inside-avoid">
                                                  <td className="py-6 px-6 text-center border-r border-gray-100 align-middle">
                                                      <div className="flex justify-center mb-3 text-[#4F46E5]"><MapIcon size={28} strokeWidth={1.5}/></div>
                                                      <p className="font-bold text-[#111827] text-[14px]">Transporte</p>
@@ -1878,7 +1892,7 @@ export default function App() {
                             </div>
                          </div>
 
-                         <div className="px-0 mt-4 flex justify-between gap-8 avoid-break relative z-10">
+                         <div className="px-0 mt-4 flex justify-between gap-8 break-inside-avoid relative z-10">
                              <div className="w-1/2">
                                  <div className="bg-white p-5 rounded-xl border border-[#4F46E5]/10 shadow-sm h-full">
                                      <div className="flex items-center gap-2 mb-3 text-[#4F46E5] border-b border-gray-100 pb-3">
@@ -1912,7 +1926,7 @@ export default function App() {
                              </div>
                          </div>
 
-                         <div className="mt-8 pb-4 avoid-break relative z-10">
+                         <div className="mt-8 pb-4 break-inside-avoid relative z-10">
                              <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex justify-between items-stretch text-[11px] shadow-sm">
                                  <div className="flex gap-4 w-[35%] border-r border-gray-100 pr-4">
                                      <div className="text-[#4F46E5] shrink-0 mt-1"><Briefcase size={20}/></div>
@@ -1958,7 +1972,7 @@ export default function App() {
                              </div>
                          </div>
                          
-                         <div className="mt-auto pt-16 flex justify-between items-end pb-8 px-12 avoid-break relative z-10">
+                         <div className="mt-auto pt-16 flex justify-between items-end pb-8 px-12 break-inside-avoid relative z-10">
                              <div className="w-[40%] text-center">
                                  <div className="border-t border-gray-300 pt-4">
                                      <p className="font-semibold text-[13px] text-[#111827] uppercase truncate tracking-wide">{cli}</p>
