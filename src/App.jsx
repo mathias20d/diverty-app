@@ -120,9 +120,9 @@ const EmptyState = React.memo(({ icon: Icon, title, message, actionBtn }) => {
 const AppButton = React.memo(({ children, variant = 'primary', icon: Icon, onClick, className = '', ...props }) => {
     const baseStyle = "font-bold rounded-[16px] transition-all duration-200 ease-out active:scale-[0.98] hover:opacity-90 flex items-center justify-center gap-2.5 px-5 py-3.5";
     let vS = "";
-    if (variant === 'warning') vS = `bg-amber-500/10 text-amber-400 hover:bg-amber-500/20`;
-    else if (variant === 'success') vS = `bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20`;
-    else if (variant === 'danger') vS = `bg-rose-500/10 text-rose-400 hover:bg-rose-500/20`;
+    if (variant === 'warning') vS = `bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20`;
+    else if (variant === 'success') vS = `bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20`;
+    else if (variant === 'danger') vS = `bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20`;
     else if (variant === 'primary') vS = `bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/20`;
     else vS = "bg-white/5 text-white/90 hover:bg-white/10";
     
@@ -201,7 +201,7 @@ const TransactionItem = React.memo(({ ev, isExpanded, onToggleExpand, utils }) =
     );
 });
 
-const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils }) => {
+const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir }) => {
     const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false);
     const startX = useRef(0);
     const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []);
@@ -209,15 +209,22 @@ const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, o
     const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
 
     const estNormalized = utils.normalizeText(ev.estado);
+    const isCotizacion = estNormalized.includes('cotizaci') || estNormalized.includes('cot.');
     const tot = utils.safeNum(ev.total), abo = utils.safeNum(ev.abono), restante = Math.max(0, tot - abo);
     
     let sideColor = "bg-white/10", dotColor = "bg-white/20";
     if (estNormalized === 'completado') { sideColor = 'bg-emerald-500'; dotColor = 'bg-emerald-400'; }
+    else if (estNormalized.includes('aprobada')) { sideColor = 'bg-teal-500'; dotColor = 'bg-teal-400'; }
+    else if (estNormalized.includes('rechazada')) { sideColor = 'bg-gray-500'; dotColor = 'bg-gray-400'; }
+    else if (isCotizacion) { sideColor = 'bg-amber-300'; dotColor = 'bg-amber-300'; }
     else if (estNormalized === 'confirmado') { sideColor = 'bg-blue-500'; dotColor = 'bg-blue-400'; }
     else if (estNormalized === 'pendiente') { sideColor = 'bg-amber-500'; dotColor = 'bg-amber-400'; }
     else if (estNormalized === 'cancelado') { sideColor = 'bg-rose-500'; dotColor = 'bg-rose-400'; }
 
-    const waType = estNormalized === 'pendiente' ? 'cobro' : estNormalized === 'confirmado' ? 'recordatorio' : 'agradecimiento';
+    let waType = 'agradecimiento';
+    if (isCotizacion) waType = 'cotizacion';
+    else if (estNormalized === 'pendiente') waType = 'cobro';
+    else if (estNormalized === 'confirmado') waType = 'recordatorio';
 
     let diff = null, dateBadgeContent = null;
     if (ev.fecha) { 
@@ -227,8 +234,13 @@ const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, o
             diff = Math.ceil((evtD - todayTime) / (1000 * 60 * 60 * 24)); 
         } 
     }
-    if (diff === 0) dateBadgeContent = (<span className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> HOY</span>);
-    else if (diff === 1) dateBadgeContent = (<span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1 shrink-0">MAÑANA</span>);
+    if (diff === 0 && !isCotizacion) dateBadgeContent = (<span className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> HOY</span>);
+    else if (diff === 1 && !isCotizacion) dateBadgeContent = (<span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1 shrink-0">MAÑANA</span>);
+    else if (isCotizacion) {
+        if (estNormalized.includes('aprobada')) dateBadgeContent = (<span className="bg-teal-500/10 border border-teal-500/20 text-teal-400 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0">COT. Aprobada</span>);
+        else if (estNormalized.includes('rechazada')) dateBadgeContent = (<span className="bg-gray-500/10 border border-gray-500/20 text-gray-400 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0">COT. Rechazada</span>);
+        else dateBadgeContent = (<span className="bg-amber-300/10 border border-amber-300/20 text-amber-300 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1.5"><FileText size={12}/> Cotización</span>);
+    }
 
     const handleExpand = useCallback((e) => { if(e){e.preventDefault(); e.stopPropagation();} utils.triggerHaptic('light'); setIsExpanded(p => !p); }, [utils]);
     const handleMap = useCallback((e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }, [ev.direccion, ev.ubicacion, onMapClick]);
@@ -247,7 +259,7 @@ const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, o
                         {!isExpanded && (
                             <div className="flex items-center gap-4 shrink-0">
                                 <span className="text-white/90 font-bold text-lg tracking-tight">${tot.toFixed(2)}</span>
-                                {restante > 0 ? (<div className="bg-rose-500/10 text-rose-400 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border border-rose-500/20">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>)}
+                                {isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-500/10 text-rose-400 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border border-rose-500/20">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}
                             </div>
                         )}
                     </div>
@@ -268,13 +280,35 @@ const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, o
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3">
                                 <AppButton onClick={handleWA} className="w-full sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-400/50 shadow-sm" icon={MessageCircle}>Contactar</AppButton>
-                                <div className="flex gap-3 w-full sm:flex-1">
-                                    <AppButton onClick={handleFactura} variant="default" className="flex-1" icon={Receipt}>Factura</AppButton>
-                                    <AppButton onClick={handleContrato} variant="default" className="flex-1" icon={FileSignature}>Contrato</AppButton>
-                                </div>
+                                {isCotizacion ? (
+                                    <div className="flex gap-3 w-full sm:flex-1">
+                                        <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="w-full" icon={FileText}>Ver PDF</AppButton>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-3 w-full sm:flex-1">
+                                        <AppButton onClick={handleFactura} variant="default" className="flex-1" icon={Receipt}>Factura</AppButton>
+                                        <AppButton onClick={handleContrato} variant="default" className="flex-1" icon={FileSignature}>Contrato</AppButton>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Acciones específicas para Cotizaciones */}
+                            {isCotizacion && (
+                                <div className="flex gap-3 mt-4 pt-4 border-t border-white/5">
+                                    {estNormalized === 'cotizacion' && (
+                                        <>
+                                            <AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3">Aprobar</AppButton>
+                                            <AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 bg-white/5 text-white/50 hover:text-white/80">Rechazar</AppButton>
+                                        </>
+                                    )}
+                                    {estNormalized.includes('aprobada') && (
+                                        <AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-[0_8px_20px_rgba(37,99,235,0.3)]">Convertir en Reserva</AppButton>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex gap-3 mt-4 pt-4 border-t border-white/5">
-                                <button onClick={(e) => { e.stopPropagation(); onEdit(ev); }} className="flex-1 text-white/70 hover:text-white/90 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-white/5 rounded-xl hover:bg-white/10"><Edit size={16} strokeWidth={2}/> Editar</button>
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} className="flex-1 text-white/70 hover:text-white/90 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-white/5 rounded-xl hover:bg-white/10"><Edit size={16} strokeWidth={2}/> Editar</button>
                                 <button onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} className="flex-1 text-blue-400/90 hover:text-blue-400 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-blue-500/10 rounded-xl hover:bg-blue-500/20"><Copy size={16} strokeWidth={2}/> Duplicar</button>
                                 <button onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} className="flex-1 text-rose-400/90 hover:text-rose-400 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-rose-500/10 rounded-xl hover:bg-rose-500/20"><Trash2 size={16} strokeWidth={2}/> Eliminar</button>
                             </div>
@@ -405,11 +439,18 @@ const EventFormModal = React.memo(({ isOpen, initialData, isCotizacionMode, onCl
 
     if (!isOpen) return null;
 
+    const opcionesEstado = isCotizacionMode 
+        ? ['Cotización', 'Cot. Aprobada', 'Cot. Rechazada'] 
+        : ['Pendiente', 'Confirmado', 'Completado'];
+
     return (
         <div className="fixed inset-0 z-[9998] bg-black/70 flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fadeIn">
             <div className={`${modalSectionClass} w-full h-[92vh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0`}>
                  <div className="p-6 sm:p-8 border-b border-white/5 flex justify-between items-center z-20 bg-transparent">
-                    <h3 className="font-bold text-white/90 text-2xl flex items-center gap-3 tracking-tight">{initialData?.id && !initialData?.isDuplicated ? <Edit className="text-blue-400"/> : <Plus className="text-blue-400"/>} {initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nueva Reserva'}</h3>
+                    <h3 className="font-bold text-white/90 text-2xl flex items-center gap-3 tracking-tight">
+                        {isCotizacionMode ? <FileText className="text-amber-400"/> : (initialData?.id && !initialData?.isDuplicated ? <Edit className="text-blue-400"/> : <Plus className="text-blue-400"/>)} 
+                        {isCotizacionMode ? (initialData?.id ? 'Editar Cotización' : 'Nueva Cotización') : (initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nueva Reserva')}
+                    </h3>
                     <div className="flex gap-3">{(!initialData?.id || initialData?.isDuplicated) && (<button onClick={handleClearDraft} type="button" className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-500/20 active:scale-[0.98] transition-colors"><Trash2 size={20}/></button>)}<button onClick={onClose} type="button" className="p-2.5 bg-white/5 text-white/70 hover:text-white rounded-xl hover:bg-white/10 active:scale-[0.98] transition-colors"><X size={20}/></button></div>
                  </div>
                  <div className="overflow-y-auto flex-1 p-5 sm:p-8">
@@ -521,27 +562,50 @@ const EventFormModal = React.memo(({ isOpen, initialData, isCotizacionMode, onCl
                      <div className={`${GLASS_CARD} p-6`}>
                         <div className="flex items-center gap-3 mb-6"><div className="bg-emerald-500/10 text-emerald-400 p-2.5 rounded-xl border border-emerald-500/20"><Receipt size={20}/></div><h4 className="font-bold text-white/90 text-lg tracking-tight">Finanzas</h4></div>
                         
-                        <div className="grid grid-cols-2 gap-5 mb-6">
-                            <div><label className={labelClass}>Abono</label><input type="number" value={formData.abono} onChange={e=>setFormData({...formData,abono:e.target.value})} className={`${inputClass} text-emerald-400 font-bold`} /></div>
-                            <div><label className={labelClass}>Viáticos</label><input type="number" value={formData.transporte} onChange={e=>{
-                                const newTransporte = e.target.value;
-                                setFormData(prev => ({...prev, transporte: newTransporte, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(newTransporte) + utils.safeNum(prev.gastos)).toString()}));
-                            }} className={inputClass} /></div>
+                        {!isCotizacionMode && (
+                            <div className="grid grid-cols-2 gap-5 mb-6">
+                                <div><label className={labelClass}>Abono</label><input type="number" value={formData.abono} onChange={e=>setFormData({...formData,abono:e.target.value})} className={`${inputClass} text-emerald-400 font-bold`} /></div>
+                                <div><label className={labelClass}>Viáticos</label><input type="number" value={formData.transporte} onChange={e=>{
+                                    const newTransporte = e.target.value;
+                                    setFormData(prev => ({...prev, transporte: newTransporte, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(newTransporte) + utils.safeNum(prev.gastos)).toString()}));
+                                }} className={inputClass} /></div>
+                            </div>
+                        )}
+
+                        {isCotizacionMode && (
+                            <div className="mb-6">
+                                <div><label className={labelClass}>Viáticos Adicionales ($)</label><input type="number" value={formData.transporte} onChange={e=>{
+                                    const newTransporte = e.target.value;
+                                    setFormData(prev => ({...prev, transporte: newTransporte, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(newTransporte) + utils.safeNum(prev.gastos)).toString()}));
+                                }} className={inputClass} /></div>
+                            </div>
+                        )}
+                        
+                        {!isCotizacionMode && (
+                            <div className="mb-6 space-y-5 border-t border-white/5 pt-6 mt-2">
+                                <div><label className={labelClass}>Gastos operativos reales ($)</label><input type="number" value={formData.gastos} onChange={e=>{
+                                    const newGastos = e.target.value;
+                                    setFormData(prev => ({...prev, gastos: newGastos, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(prev.transporte) + utils.safeNum(newGastos)).toString()}));
+                                }} className={`${inputClass} text-rose-400`} /></div>
+                                <div><label className={labelClass}>Detalle de gastos internos</label><textarea value={formData.detalleGastos} onChange={e=>setFormData({...formData,detalleGastos:e.target.value})} className={`${inputClass} min-h-[80px] resize-none leading-relaxed`} placeholder="Ej. Transporte, hielo, ayudante..." /></div>
+                            </div>
+                        )}
+
+                        <div className="mb-6 border-t border-white/5 pt-6 mt-2">
+                            <label className={labelClass}>Estado {isCotizacionMode ? 'Cotización' : 'Reserva'}</label>
+                            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
+                                {opcionesEstado.map(est => (
+                                    <button type="button" key={est} onClick={()=>setFormData({...formData,estado:est})} className={`shrink-0 flex-1 py-3.5 px-4 text-[10px] font-bold uppercase tracking-wider rounded-xl border transition-colors active:scale-[0.98] ${formData.estado===est ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-[#0F172A] text-white/60 border-white/5 hover:bg-[#1E293B] hover:text-white/90'}`}>{est}</button>
+                                ))}
+                            </div>
                         </div>
                         
-                        <div className="mb-6 space-y-5 border-t border-white/5 pt-6 mt-2">
-                            <div><label className={labelClass}>Gastos operativos reales ($)</label><input type="number" value={formData.gastos} onChange={e=>{
-                                const newGastos = e.target.value;
-                                setFormData(prev => ({...prev, gastos: newGastos, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(prev.transporte) + utils.safeNum(newGastos)).toString()}));
-                            }} className={`${inputClass} text-rose-400`} /></div>
-                            <div><label className={labelClass}>Detalle de gastos internos</label><textarea value={formData.detalleGastos} onChange={e=>setFormData({...formData,detalleGastos:e.target.value})} className={`${inputClass} min-h-[80px] resize-none leading-relaxed`} placeholder="Ej. Transporte, hielo, ayudante..." /></div>
-                        </div>
-
-                        <div className="mb-6 border-t border-white/5 pt-6 mt-2"><label className={labelClass}>Estado</label><div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">{['Cotización', 'Pendiente', 'Confirmado', 'Completado'].map(est => (<button type="button" key={est} onClick={()=>setFormData({...formData,estado:est})} className={`shrink-0 flex-1 py-3.5 px-4 text-[10px] font-bold uppercase tracking-wider rounded-xl border transition-colors active:scale-[0.98] ${formData.estado===est ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-[#0F172A] text-white/60 border-white/5 hover:bg-[#1E293B] hover:text-white/90'}`}>{est}</button>))}</div></div>
                         <div className="bg-[#0F172A] p-6 rounded-2xl flex justify-between items-center border border-white/5 mt-2"><span className="font-bold text-white/50 uppercase tracking-wider text-xs">TOTAL FINAL</span><div className="flex items-center"><span className="text-3xl font-bold text-blue-500 mr-2">$</span><input type="number" value={formData.total} onChange={e=>setFormData({...formData,total:e.target.value})} className="bg-transparent text-right text-4xl font-bold text-white/90 outline-none w-32 tracking-tight" /></div></div>
                      </div>
 
-                     <AppButton variant="primary" icon={Check} onClick={handleSubmit} className="w-full py-4 text-base uppercase tracking-wider mt-2 mb-4">Guardar Reserva</AppButton>
+                     <AppButton variant="primary" icon={Check} onClick={handleSubmit} className="w-full py-4 text-base uppercase tracking-wider mt-2 mb-4">
+                        {isCotizacionMode ? 'Guardar Cotización' : 'Guardar Reserva'}
+                     </AppButton>
                   </form>
                  </div>
               </div>
@@ -678,7 +742,7 @@ export default function App() {
 
      eventosActivos.forEach(ev => {
         const est = utils.normalizeText(ev.estado), isHoy = ev.fecha === todayStr, isManana = ev.fecha === tomorrowStr;
-        if(est !== 'cancelado' && est !== 'cotizacion') {
+        if(est !== 'cancelado' && !est.includes('cotizaci') && !est.includes('cot.')) {
             const t = utils.safeNum(ev.total), a = utils.safeNum(ev.abono), g = utils.safeNum(ev.gastos), p = t - g; 
             let evYear = 0, evMonth = 0, evDay = 0;
             if(ev.fecha) { const parts = String(ev.fecha).trim().split('-'); if(parts.length >= 2) { evYear = parseInt(parts[0], 10); evMonth = parseInt(parts[1], 10); evDay = parseInt(parts[2] || 0, 10); } }
@@ -706,7 +770,7 @@ export default function App() {
      const clientsMap = {};
      eventosActivos.forEach(ev => {
         const est = utils.normalizeText(ev.estado);
-        if(est === 'cancelado' || est === 'cotizacion') return; 
+        if(est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return; 
         const key = String(ev.cliente || '').trim().toLowerCase(); if(!key) return;
         if(!clientsMap[key]) clientsMap[key] = { nombre: ev.cliente, telefono: ev.telefono, totalGastado: 0, eventos: 0, ultimoEventoFecha: ev.fecha, ultimoEstado: ev.estado };
         clientsMap[key].totalGastado += utils.safeNum(ev.total); clientsMap[key].eventos += 1;
@@ -731,7 +795,7 @@ export default function App() {
   const agendaFiltrados = useMemo(() => {
     return eventosActivos.filter(e => {
         const est = utils.normalizeText(e.estado);
-        if (est === 'cotizacion') return false; 
+        if (est.includes('cotizaci') || est.includes('cot.')) return false; 
         if (globalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(globalSearch.toLowerCase())) return false;
         if (filterDate && e.fecha !== filterDate) return false;
         
@@ -755,7 +819,7 @@ export default function App() {
   const cy = new Date(todayTime).getFullYear(), cm = new Date(todayTime).getMonth() + 1;
   const evtCalculoBase = useMemo(() => eventosActivos.filter(ev => {
       const est = utils.normalizeText(ev.estado);
-      if (est === 'cancelado' || est === 'cotizacion') return false;
+      if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return false;
       if (financePeriod === 'todos') return true;
       if (!ev.fecha) return false; 
       const parts = String(ev.fecha).trim().split('-'); 
@@ -777,7 +841,7 @@ export default function App() {
   const finanzasMes = useMemo(() => {
       const ingresosEsteMesGlobal = eventosActivos.filter(ev => {
           const est = utils.normalizeText(ev.estado);
-          if (est === 'cancelado' || est === 'cotizacion') return false;
+          if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return false;
           if (!ev.fecha) return false; const parts = String(ev.fecha).trim().split('-'); return parseInt(parts[0], 10) === cy && parseInt(parts[1], 10) === cm;
       }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
       const diasTranscurridos = new Date(todayTime).getDate(), diasTotales = new Date(cy, cm, 0).getDate();
@@ -791,13 +855,13 @@ export default function App() {
       const td = new Date(todayTime);
       const last7Days = Array.from({length: 7}, (_, i) => { const d = new Date(td); d.setDate(d.getDate() - (6 - i)); return utils.getLocalYYYYMMDD(d); });
       return last7Days.map(date => {
-          const dayEarnings = eventosActivos.filter(ev => ev.fecha === date && utils.normalizeText(ev.estado) !== 'cancelado' && utils.normalizeText(ev.estado) !== 'cotizacion').reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
+          const dayEarnings = eventosActivos.filter(ev => ev.fecha === date && utils.normalizeText(ev.estado) !== 'cancelado' && !utils.normalizeText(ev.estado).includes('cotizaci') && !utils.normalizeText(ev.estado).includes('cot.')).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
           return { date, value: dayEarnings };
       });
   }, [eventosActivos, todayTime]);
   const maxChartVal = useMemo(() => Math.max(...chartData.map(d => d.value), 100), [chartData]);
 
-  const cotizacionesActivas = useMemo(() => eventosActivos.filter(ev => utils.normalizeText(ev.estado) === 'cotizacion'), [eventosActivos]);
+  const cotizacionesActivas = useMemo(() => eventosActivos.filter(ev => utils.normalizeText(ev.estado).includes('cotizaci') || utils.normalizeText(ev.estado).includes('cot.')), [eventosActivos]);
   const proximasReservas = useMemo(() => [...stats.eventosHoy, ...stats.eventosManana].filter(ev => utils.normalizeText(ev.estado) !== 'completado'), [stats.eventosHoy, stats.eventosManana]);
 
   const handleAddCustomService = useCallback(async (nombre, precio) => {
@@ -840,24 +904,47 @@ export default function App() {
   const handleDuplicateEvento = useCallback((ev) => {
     utils.triggerHaptic('light');
     const { id, createdAt, deletedLocally, colisionAprobada, ...rest } = ev;
-    const duplicatedData = { ...rest, abono: '', estado: 'Pendiente', isDuplicated: true };
-    setModalConfig({ isOpen: true, isCotizacion: false, initialData: duplicatedData });
+    const isCotizacionOrig = utils.normalizeText(ev.estado).includes('cot');
+    const duplicatedData = { ...rest, abono: '', estado: isCotizacionOrig ? 'Cotización' : 'Pendiente', isDuplicated: true };
+    setModalConfig({ isOpen: true, isCotizacion: isCotizacionOrig, initialData: duplicatedData });
     showAlert("Evento duplicado. Verifica los datos y guarda.", true);
+  }, [showAlert]);
+
+  const handleUpdateEstado = useCallback((id, nuevoEstado) => {
+      utils.triggerHaptic('light');
+      setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
+      setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true }).catch(e=>console.warn(e));
+      showAlert(`Estado actualizado a ${nuevoEstado}`, true);
+  }, [showAlert]);
+
+  const handleConvertirReserva = useCallback((ev) => {
+      utils.triggerHaptic('light');
+      setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...ev, estado: 'Pendiente' } });
+      showAlert("Confirma los datos para crear la reserva.", true);
   }, [showAlert]);
 
   const handleSaveFromModal = useCallback(async (formDataToSave, isCotizacionMode) => {
     if (!formDataToSave.cliente?.trim()) return showAlert("Por favor, ingresa el nombre del cliente."); 
     if (!formDataToSave.fecha) return showAlert("Por favor, selecciona la fecha.");
-    if (isCotizacionMode) { utils.triggerHaptic('success'); closeModal(); setPrintData({ ...formDataToSave, id: `cot-${Date.now()}` }); setPrintType('cotizacion'); setIsPrinting(true); return; }
     utils.triggerHaptic('light'); 
     
-    const evtId = (formDataToSave.id && !formDataToSave.isDuplicated) ? formDataToSave.id : `man-${Date.now()}`; 
+    const evtId = (formDataToSave.id && !formDataToSave.isDuplicated) ? formDataToSave.id : (isCotizacionMode ? `cot-${Date.now()}` : `man-${Date.now()}`); 
     const { isDuplicated, ...cleanFormData } = formDataToSave;
+
+    // Asegurar estado según modo en creación nueva
+    if (!formDataToSave.id || isDuplicated) {
+        if (isCotizacionMode && !cleanFormData.estado.includes('Cot')) cleanFormData.estado = 'Cotización';
+        if (!isCotizacionMode && cleanFormData.estado.includes('Cot')) cleanFormData.estado = 'Pendiente';
+    }
+
     const safeData = JSON.parse(JSON.stringify({ ...cleanFormData, id: evtId, createdAt: cleanFormData.createdAt || new Date().toISOString(), deletedLocally: false }));
     if (modalConfig.initialData?.fecha !== safeData.fecha || modalConfig.initialData?.hora !== safeData.hora) safeData.colisionAprobada = false;
 
-    const hasCollision = eventosActivos.some(ev => {
-        if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado) === 'cotizacion' || ev.fecha !== safeData.fecha) return false;
+    const estNormal = utils.normalizeText(safeData.estado);
+    const isCotiz = estNormal.includes('cotizaci') || estNormal.includes('cot.');
+
+    const hasCollision = !isCotiz && eventosActivos.some(ev => {
+        if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado).includes('cotizaci') || utils.normalizeText(ev.estado).includes('cot.') || ev.fecha !== safeData.fecha) return false;
         if (!ev.hora || !safeData.hora) return false; 
         const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
@@ -869,7 +956,14 @@ export default function App() {
         
         setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
-        showAlert("¡Reserva guardada!", true);
+        showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
+
+        // Disparar PDF automáticamente sólo si es una NUEVA cotización
+        if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) {
+             setPrintData({ ...dataToSave });
+             setPrintType('cotizacion');
+             setIsPrinting(true);
+        }
     };
 
     if (hasCollision && !safeData.colisionAprobada) { 
@@ -879,7 +973,7 @@ export default function App() {
     }
   }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm]);
 
-  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar reserva permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(e=>console.warn(e)); closeModal(); }), [closeModal, showConfirm]);
+  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(e=>console.warn(e)); closeModal(); }), [closeModal, showConfirm]);
   
   const handleDeleteClient = useCallback((clientName, eventCount) => {
     const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`;
@@ -1034,7 +1128,7 @@ export default function App() {
     utils.triggerHaptic('success');
     const filteredForExport = eventosActivos.filter(ev => { 
         const est = utils.normalizeText(ev.estado);
-        if (est === 'cancelado' || est === 'cotizacion' || utils.safeNum(ev.total) <= 0) return false; 
+        if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(ev.total) <= 0) return false; 
         if (financePeriod === 'todos') return true; 
         const fStr = String(ev.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); return parseInt(ey) === cy && parseInt(em) === cm; } return false; 
     });
@@ -1065,7 +1159,7 @@ export default function App() {
 
   const handleCopiarCobros = useCallback(() => {
       utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n";
-      eventosActivos.filter(ev => { const est = utils.normalizeText(ev.estado); return (utils.safeNum(ev.total) - utils.safeNum(ev.abono)) > 0 && est !== 'cancelado' && est !== 'completado' && est !== 'cotizacion'; }).forEach(ev => { text += `👤 *${ev.cliente}*\n📅 Fecha: ${ev.fecha}\n💰 Debe: $${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}\n📞 WA: ${ev.telefono}\n\n`; });
+      eventosActivos.filter(ev => { const est = utils.normalizeText(ev.estado); return (utils.safeNum(ev.total) - utils.safeNum(ev.abono)) > 0 && est !== 'cancelado' && est !== 'completado' && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(ev => { text += `👤 *${ev.cliente}*\n📅 Fecha: ${ev.fecha}\n💰 Debe: $${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}\n📞 WA: ${ev.telefono}\n\n`; });
       navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true);
   }, [eventosActivos, showAlert]);
 
@@ -1239,7 +1333,7 @@ export default function App() {
                  {stats.eventosHoy.length === 0 ? (
                      <div className="text-center py-16 bg-white/5 rounded-[24px] border border-white/5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]"><Sun size={56} className="mx-auto text-white/30 mb-5" strokeWidth={1.5}/><p className="text-white font-extrabold text-xl mb-2 tracking-tight">¡Todo Despejado!</p><p className="text-white/50 font-medium text-sm">No hay eventos operativos para hoy.</p></div>
                  ) : (
-                     stats.eventosHoy.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} />)
+                     stats.eventosHoy.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)
                  )}
              </div>
           </div>
@@ -1270,7 +1364,7 @@ export default function App() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4">
-             <button type="button" onClick={() => openModal(null, true)} className="flex-1 bg-white/5 border border-white/5 text-white/90 rounded-xl py-4 font-bold flex items-center justify-center gap-2.5 active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/10 transition-all duration-200 shadow-sm"><FileText size={20} className="text-amber-400"/> <span className="hidden sm:inline">Cotización Rápida</span></button>
+             <button type="button" onClick={() => openModal(null, true)} className="flex-1 bg-white/5 border border-white/5 text-white/90 rounded-xl py-4 font-bold flex items-center justify-center gap-2.5 active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/10 transition-all duration-200 shadow-sm"><FileText size={20} className="text-amber-400"/> <span className="hidden sm:inline">Crear Cotización</span></button>
              <button type="button" onClick={() => {utils.triggerHaptic('light'); setIsModoOperativo(true); window.scrollTo(0,0);}} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2.5 active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-200 shadow-[0_8px_20px_rgba(37,99,235,0.3)] border border-transparent"><Zap size={20} className="text-amber-300 fill-amber-300"/> <span className="hidden sm:inline">Modo Operativo</span></button>
              <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/5 border border-white/5 text-blue-400 rounded-xl py-4 px-6 flex items-center justify-center active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/10 transition-all duration-200 shadow-sm"><RefreshCw size={22} className={isSyncing ? "animate-spin" : ""} /></button>
           </div>
@@ -1294,7 +1388,7 @@ export default function App() {
              <div className="mt-14 pt-10 border-t border-white/5 relative">
                  <h3 className="font-extrabold text-2xl text-white/90 flex items-center gap-3 mb-6 tracking-tight"><FileText className="text-amber-400" size={24} /> Cotizaciones Activas</h3>
                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                     {cotizacionesActivas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} />)}
+                     {cotizacionesActivas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={(e) => openModal(e, true)} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}
                  </div>
              </div>
           )}
@@ -1305,7 +1399,7 @@ export default function App() {
                  <button type="button" onClick={() => {utils.triggerHaptic('light'); setActiveTab('eventos')}} className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/50 hover:text-white/90 transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
              </div>
              {proximasReservas.length > 0 ? (
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{proximasReservas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} />)}</div>
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{proximasReservas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>
              ) : (
                  <EmptyState icon={CalendarDays} title="Agenda Despejada" message="No tienes reservas programadas para hoy ni mañana. ¡Aprovecha para crear nuevas cotizaciones!" actionBtn={<AppButton onClick={()=>openModal()} variant="primary" icon={Plus} className="mt-4 px-8 py-4">Crear Reserva</AppButton>} />
              )}
@@ -1343,7 +1437,7 @@ export default function App() {
                   {blanks.map(b => <div key={`b-${b}`} className="min-h-[70px] sm:min-h-[130px] bg-transparent"></div>)}
                   {days.map(d => {
                      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; 
-                     const dayEvents = eventosActivos.filter(e => e.fecha === dateStr && utils.normalizeText(e.estado) !== 'cotizacion' && utils.normalizeText(e.estado) !== 'cancelado'); 
+                     const dayEvents = eventosActivos.filter(e => e.fecha === dateStr && !utils.normalizeText(e.estado).includes('cotizaci') && !utils.normalizeText(e.estado).includes('cot.') && utils.normalizeText(e.estado) !== 'cancelado'); 
                      const isToday = dateStr === todayStr; const isSelected = filterDate === dateStr; const hasEvents = dayEvents.length > 0;
                      
                      return (
@@ -1377,7 +1471,7 @@ export default function App() {
                             <div className="bg-white/5 text-white/90 px-6 py-3.5 rounded-xl font-bold text-sm flex items-center gap-3 shadow-sm border border-white/5"><CalendarDays size={18} className="text-blue-400" strokeWidth={2.5}/> {fecha ? String(fecha).split('-').reverse().join('/') : 'Sin Fecha'}</div>
                             <div className="flex-1 h-px bg-white/10"></div>
                         </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{grouped[fecha].map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} />)}</div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{grouped[fecha].map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>
                     </div>
                 ))}
             </div>
@@ -1414,7 +1508,7 @@ export default function App() {
 
         <>
             {viewMode === 'mes' && renderCalendarGrid()}
-            {(!isDBReady && !globalSearch && !filterDate && eventosActivos.length === 0) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8"><SkeletonCard /><SkeletonCard /></div>) : agendaFiltrados.length === 0 ? (<EmptyState icon={Search} title="Sin resultados" message="No se encontraron reservas." actionBtn={!!globalSearch || !!filterDate ? <button onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="mt-4 text-blue-400 font-bold px-8 py-3.5 rounded-[16px] border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 ease-out shadow-sm uppercase tracking-wider text-xs">Limpiar filtros</button> : null} />) : (!!globalSearch || !!filterDate) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} />)}</div>) : ( renderListView() )}
+            {(!isDBReady && !globalSearch && !filterDate && eventosActivos.length === 0) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8"><SkeletonCard /><SkeletonCard /></div>) : agendaFiltrados.length === 0 ? (<EmptyState icon={Search} title="Sin resultados" message="No se encontraron reservas." actionBtn={!!globalSearch || !!filterDate ? <button onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="mt-4 text-blue-400 font-bold px-8 py-3.5 rounded-[16px] border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 ease-out shadow-sm uppercase tracking-wider text-xs">Limpiar filtros</button> : null} />) : (!!globalSearch || !!filterDate) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>) : ( renderListView() )}
         </>
       </div>
     );
