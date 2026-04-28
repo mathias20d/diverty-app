@@ -19,7 +19,7 @@
     <meta name="theme-color" content="#0F172A">
     <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiRGl2ZXJ0eSBFdmVudG9zIiwic2hvcnRfbmFtZSI6IkRpdmVydHkiLCJzdGFydF91cmwiOiIvIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZmZmZiI sInRoZW1lX2NvbG9yIjoiIzBkOTQ4OCIsImljb25zIjpbeyJzcmMiOiJodHRwczovL2RpdmVydHlldmVudG9zLm9ubGluZS9hbmRyb2lkLWNocm9tZS01MTJ4NTEyLnBuZyIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9wbmcifV19">
 
-    <!-- Schema.org JSON-LD Tags (Agregados para solucionar la inyección desde JS) -->
+    <!-- Schema.org JSON-LD Tags -->
     <script id="schema-event-planner" type="application/ld+json"></script>
     <script id="schema-faq" type="application/ld+json"></script>
 
@@ -41,81 +41,53 @@
             --bg-dark: #0F172A;
         }
 
-        /* MODO OSCURO GLOBAL APLICADO */
         body { font-family: 'Quicksand', sans-serif; background-color: var(--bg-dark); color: #f8fafc; -webkit-font-smoothing: antialiased; line-height: 1.7; }
-        
         h2, h3, h4, .font-poppins { font-family: 'Poppins', sans-serif; letter-spacing: -0.02em; }
         h1, .font-nunito { font-family: 'Nunito', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
 
         @media (max-width: 1024px) { body { padding-bottom: 120px; } } 
         @media (max-width: 768px) { body { font-size: 16px; } h2 { font-size: 1.75rem!important; } h3 { font-size: 1.25rem!important; } }
         
-        /* === PREVENIR SALTO DE PIE DE PÁGINA EN LA CARGA INICIAL (FOUC FIX) === */
-        body:not(.js-loaded) footer,
-        body:not(.js-loaded) #mobile-nav,
-        body:not(.js-loaded) .whatsapp-container {
-            opacity: 0;
-            visibility: hidden;
-            pointer-events: none;
-        }
-        body.js-loaded footer,
-        body.js-loaded #mobile-nav,
-        body.js-loaded .whatsapp-container {
-            transition: opacity 0.5s ease-in;
-            opacity: 1;
-            visibility: visible;
-            pointer-events: auto;
-        }
+        /* FOUC FIX */
+        body:not(.js-loaded) footer, body:not(.js-loaded) #mobile-nav, body:not(.js-loaded) .whatsapp-container { opacity: 0; visibility: hidden; pointer-events: none; }
+        body.js-loaded footer, body.js-loaded #mobile-nav, body.js-loaded .whatsapp-container { transition: opacity 0.5s ease-in; opacity: 1; visibility: visible; pointer-events: auto; }
 
-        /* === 2. HEADER Y COMPORTAMIENTO DE SCROLL === */
-        #mainHeader {
-            transition: background-color 0.2s ease, box-shadow 0.2s ease; 
-            padding-top: 1rem; 
-            padding-bottom: 1rem;
-            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.95), transparent);
-            will-change: background-color, box-shadow;
-        }
-        
-        #mainHeader.scrolled {
-            background: rgba(15, 23, 42, 0.98); 
-            backdrop-filter: blur(8px); 
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05); 
-            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); 
-        } 
-
+        /* === 2. HEADER Y NAVEGACIÓN === */
+        #mainHeader { transition: background-color 0.2s ease, box-shadow 0.2s ease; padding-top: 1rem; padding-bottom: 1rem; background: linear-gradient(to bottom, rgba(15, 23, 42, 0.95), transparent); will-change: background-color, box-shadow; }
+        #mainHeader.scrolled { background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); } 
         .nav-link { transition: all .2s ease; position: relative; padding: .75rem 1rem; border-radius: 12px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; color: #cbd5e1; }
         .nav-link::before { content: ''; position: absolute; bottom: 0; left: 50%; width: 0; height: 3px; background: var(--gradient-rainbow); transition: all .2s ease; transform: translateX(-50%); border-radius: 2px; }
         .nav-link.active::before, .nav-link:hover::before { width: 80%; }
         .nav-link.active, .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); transform: translateY(-2px); } 
         
-        /* === 3. MENÚ MÓVIL LATERAL === */
         #mobileMenu { position: fixed; top: 0; right: -100%; width: 85%; max-width: 380px; height: 100vh; background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(10px); border-left: 1px solid rgba(255,255,255,0.05); box-shadow: -20px 0 60px rgba(0,0,0,0.8); transition: right .3s ease-out; z-index: 1000; display: flex; flex-direction: column; overflow-y: auto; will-change: right; }
         #mobileMenu.open { right: 0; }
         .mobile-menu-header { padding: 2rem 1.5rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
         .mobile-nav-link { padding: 1rem 1.25rem; margin: 0.25rem 1rem; border-radius: 16px; transition: all .2s ease; display: flex; align-items: center; font-weight: 600; gap: 1rem; color: #cbd5e1; text-decoration: none; }
         .mobile-nav-link:hover, .mobile-nav-link.active { color: #fff; background: rgba(255,255,255,0.1); transform: translateX(5px); }
         
-        /* === 4. BOTONES GLOBALES === */
-        .btn-premium { font-weight: 700; border-radius: 9999px; transition: transform .2s ease, filter .2s ease; border: none; display: inline-flex; align-items: center; justify-content: center; gap: .75rem; position: relative; overflow: hidden; text-decoration: none; font-size: 1rem; letter-spacing: 0; }
+        /* === 3. BOTONES GLOBALES === */
+        .btn-premium { font-weight: 700; border-radius: 9999px; transition: transform .2s ease, filter .2s ease; border: none; display: inline-flex; align-items: center; justify-content: center; gap: .75rem; position: relative; overflow: hidden; text-decoration: none; font-size: 1rem; }
         .btn-premium:hover { transform: translateY(-2px); filter: brightness(1.05); }
         .btn-premium:active { transform: translateY(0); } 
-        .btn-success { background: #10B981; color: #fff; }
         
-        .form-input { background-color: #F1F5F9; border: 1px solid transparent; border-radius: 16px; padding: 1.25rem; font-family: 'Quicksand', sans-serif; color: #1E293B; width: 100%; font-size: 1rem; transition: border-color .2s ease, box-shadow .2s ease; }
-        .form-input:focus { outline: none; background-color: #ffffff; border-color: #8B5CF6; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1); }
-        select.form-input { text-align: left; }
-        
-        /* === 5. COMPONENTES UI Y TARJETAS OPTIMIZADAS === */
-        .gallery-item { position: relative; overflow: hidden; border-radius: 20px; aspect-ratio: 1; background: #1E293B; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); }
-        .gallery-item:hover { transform: scale(1.03); }
-
-        .review-card { background: #1E293B; border-radius: 24px; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3); padding: 1.5rem; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.05); }
-        
-        /* === 6. MODALES Y WIZARD === */
-        .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42,.8); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; opacity: 0; visibility: hidden; transition: opacity .2s ease; backdrop-filter: blur(5px); }
+        /* === 4. MODALES BLINDADOS === */
+        .modal-backdrop { 
+            position: fixed; inset: 0; background: rgba(15, 23, 42,.85); z-index: 1050; 
+            display: flex; align-items: center; justify-content: center; 
+            padding: 1.5rem; opacity: 0; visibility: hidden; transition: opacity .3s ease; backdrop-filter: blur(8px); 
+        }
+        @media (max-width: 640px) { .modal-backdrop { padding: 1rem; } }
         .modal-backdrop.show { opacity: 1; visibility: visible; }
-        .modal-content { background: #1E293B; color: white; border-radius: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); max-width: 90vw; max-height: 90vh; overflow-y: auto; transform: scale(.95); transition: transform .2s ease-out; padding: 2rem; border: 1px solid rgba(255,255,255,0.1); }
-        .modal-backdrop.show .modal-content { transform: scale(1); }
+        
+        .modal-content { 
+            background: #0B1121; color: white; border-radius: 32px; 
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); 
+            width: 100%; max-width: 28rem; max-height: 100%; display: flex; flex-direction: column; 
+            transform: scale(.95) translateY(10px); transition: transform .3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            border: 1px solid rgba(255,255,255,0.1); position: relative; overflow: hidden; 
+        }
+        .modal-backdrop.show .modal-content { transform: scale(1) translateY(0); }
         
         .wizard-content { display: none; } 
         .wizard-content.active { display: block; }
@@ -125,54 +97,37 @@
 
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
         
-        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 10000; padding: 1rem 1.5rem; border-radius: 12px; color: #fff; font-weight: 600; opacity: 0; visibility: hidden; transition: all .3s cubic-bezier(.25,.46,.45,.94); display: flex; align-items: center; gap: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 11000; padding: 1rem 1.5rem; border-radius: 12px; color: #fff; font-weight: 600; opacity: 0; visibility: hidden; transition: all .3s cubic-bezier(.25,.46,.45,.94); display: flex; align-items: center; gap: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         #toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(10px); }
         #toast.success { background: linear-gradient(135deg,#10b981,#059669); }
         #toast.error { background: linear-gradient(135deg,#ef4444,#dc2626); }
         
         #confetti-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 
-        /* === 7. DISEÑO ULTRA PRO CARD OPTIMIZADO === */
-        .ultra-card { border: 1px solid rgba(255,255,255,0.05); transition: transform 0.3s ease, box-shadow 0.3s ease; }
-        .snap-container { padding-bottom: 2rem !important; padding-top: 0.5rem !important; }
-
-        /* === 8. ESTILOS CALENDARIO NUEVOS === */
-        .cal-day-cell { border-radius: 9999px; transition: all 0.2s ease; cursor: pointer; }
-        .cal-day-cell:hover { transform: scale(1.1); filter: brightness(1.1); }
-        
-        /* Animaciones para inyectar ALEGRÍA */
+        /* === 5. ANIMACIONES === */
         .animate-slide-up { animation: slideUpFadeIn .3s ease-out forwards; } 
         @keyframes slideUpFadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } } 
-        
         @keyframes float-fun { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
         .badge-float { animation: float-fun 3s ease-in-out infinite; will-change: transform; }
-        
         @keyframes gradient-xy { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         .btn-animated-gradient { background-size: 200% 200%; animation: gradient-xy 3s ease infinite; }
 
-        /* Efecto Playful en Imágenes de Tarjetas */
         .group-hover-playful:hover img { transform: scale(1.08) rotate(3deg); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .group-hover-playful img { transition: transform 0.4s ease; }
 
-        /* === 9. NAVEGACIÓN INFERIOR === */
-        .nav-pill-float {
-            background: rgba(15, 23, 42, 0.9);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-        }
-        
-        /* Animación de Swiper Guía */
+        /* === 6. NAVEGACIÓN INFERIOR Y WHATSAPP === */
+        .nav-pill-float { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.8); }
         .animate-swipe { animation: swipe 2s ease-in-out infinite; }
         @keyframes swipe { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(40px); } }
 
-        /* === 10. WHATSAPP FLOTANTE CON TOOLTIP === */
-        .whatsapp-container { position: fixed; bottom: 110px; right: 20px; z-index: 998; display: flex; align-items: center; gap: 12px; pointer-events: none; }
+        .whatsapp-container { position: fixed; bottom: 110px; right: 20px; z-index: 998; display: flex; align-items: center; gap: 12px; pointer-events: none; transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .whatsapp-container > * { pointer-events: auto; }
+        body.has-cart .whatsapp-container { bottom: 200px; }
         .whatsapp-tooltip { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 9999px; color: white; font-size: 13px; font-weight: 700; white-space: nowrap; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: float-tooltip 3s ease-in-out infinite; position: relative; }
         .whatsapp-tooltip::after { content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); border-width: 6px 0 6px 6px; border-style: solid; border-color: transparent transparent transparent rgba(15, 23, 42, 0.95); }
         @keyframes float-tooltip { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
@@ -180,33 +135,14 @@
         .whatsapp-btn:hover, .whatsapp-btn:active { transform: scale(1.05); }
         @keyframes glowing-wa { 0% { box-shadow: 0 0 15px rgba(37,211,102,0.4); } 50% { box-shadow: 0 0 30px rgba(37,211,102,0.8), 0 0 10px rgba(255,255,255,0.3) inset; } 100% { box-shadow: 0 0 15px rgba(37,211,102,0.4); } }
         
-        /* === 11. OPTIMIZACIONES EXTREMAS DE RENDIMIENTO DE VIDEO Y MÓVILES === */
-        video.bg-video-optimized {
-            transform: translateZ(0); /* Fuerza aceleración GPU */
-            will-change: transform;
-            backface-visibility: hidden;
-            perspective: 1000;
-        }
-
-        /* OPTIMIZACIONES EXTREMAS PARA MÓVIL */
+        /* === 7. OPTIMIZACIONES EXTREMAS === */
+        video.bg-video-optimized { transform: translateZ(0); will-change: transform; backface-visibility: hidden; perspective: 1000; }
         @media (max-width: 768px) {
-            .backdrop-blur-md, 
-            .backdrop-blur-sm,
-            #mainHeader.scrolled,
-            .whatsapp-tooltip,
-            .nav-pill-float {
-                backdrop-filter: none !important;
-                -webkit-backdrop-filter: none !important;
-                background-color: rgba(15, 23, 42, 0.98) !important;
+            .backdrop-blur-md, .backdrop-blur-sm, #mainHeader.scrolled, .whatsapp-tooltip, .nav-pill-float {
+                backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-color: rgba(15, 23, 42, 0.98) !important;
             }
-            .btn-animated-gradient {
-                animation: none !important;
-                background-size: 100% 100% !important;
-            }
-            .whatsapp-btn {
-                animation: none !important;
-                box-shadow: 0 4px 10px rgba(37,211,102,0.4) !important;
-            }
+            .btn-animated-gradient { animation: none !important; background-size: 100% 100% !important; }
+            .whatsapp-btn { animation: none !important; box-shadow: 0 4px 10px rgba(37,211,102,0.4) !important; }
             #confetti-canvas { display: none !important; }
         }
     </style>
@@ -284,7 +220,7 @@
         </div>
     </nav>
 
-    <!-- Contenedor Principal. AÑADIDO: min-h-screen y w-full para obligarlo a ocupar toda la pantalla y empujar el footer hacia abajo SIEMPRE -->
+    <!-- Contenedor Principal -->
     <main id="mainContent" class="flex-grow flex flex-col min-h-screen w-full"></main>
 
     <!-- FOOTER ULTRA PRO -->
@@ -377,68 +313,146 @@
         </a>
     </div>
     
-    <!-- Modales Oscuros -->
-    <div id="infoModal" class="modal-backdrop">
-        <div class="modal-content bg-slate-900 border border-slate-700 text-white rounded-[32px] shadow-2xl p-8 max-w-md w-full text-center">
-            <div class="mb-6">
-                <div class="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/30"><i data-lucide="check-circle" class="w-10 h-10"></i></div>
-                <h3 class="text-2xl font-extrabold text-white mb-3 font-poppins">¡Solicitud Exitosa!</h3>
-                <p id="modalMessage" class="text-base text-slate-300 font-medium leading-relaxed"></p>
+    <!-- MODAL INFO EXITO ULTRA PRO -->
+    <div id="infoModal" class="modal-backdrop z-[1050]">
+        <div class="modal-content bg-[#0B1121] border border-slate-700/50 text-white rounded-[32px] sm:rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] p-8 sm:p-10 max-w-md w-full relative overflow-hidden text-center justify-center">
+            
+            <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-teal-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            
+            <div class="relative z-10">
+                <div class="w-20 h-20 bg-[#162032] border border-emerald-500/30 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(16,185,129,0.15)] badge-float relative group">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-emerald-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
+                    <i data-lucide="check-circle" class="w-10 h-10 text-emerald-400 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"></i>
+                </div>
+                
+                <h3 class="text-3xl font-black text-white mb-3 font-nunito tracking-tight">¡Solicitud Exitosa!</h3>
+                <p id="modalMessage" class="text-sm text-slate-400 font-medium leading-relaxed mb-8 px-2"></p>
+                
+                <button id="closeModal" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 btn-animated-gradient border border-emerald-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.6)] hover:-translate-y-1">
+                    <i data-lucide="check" class="w-5 h-5"></i> Entendido
+                </button>
             </div>
-            <button id="closeModal" class="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-3.5 px-6 rounded-full flex justify-center items-center gap-2"><i data-lucide="check" class="w-5 h-5"></i> Entendido</button>
         </div>
     </div>
 
-    <div id="cartModal" class="modal-backdrop">
-        <div class="modal-content bg-slate-900 border border-slate-700 text-white rounded-[32px] shadow-2xl p-6 sm:p-8 max-w-lg w-full">
-            <h2 class="text-2xl font-extrabold mb-6 flex items-center justify-center gap-2 text-center text-white"><i data-lucide="shopping-cart" class="text-purple-400"></i>Tu Carrito</h2>
-            <div id="cartItems" class="max-h-60 overflow-y-auto text-left mb-6 p-4 bg-slate-800/50 rounded-2xl border border-slate-700 custom-scrollbar"></div>
-            <div class="text-left mb-5">
-                <label for="cartLocation" class="font-bold text-slate-400 text-sm mb-1 block">Ubicación del Evento:</label>
-                <select id="cartLocation" class="w-full bg-[#1E293B] border border-slate-600 rounded-2xl py-3.5 px-4 text-sm font-bold text-white outline-none focus:border-purple-400 transition-colors"></select>
+    <!-- MODAL DEL CARRITO (REDISEÑO ESTRUCTURAL PARA MÓVILES) -->
+    <div id="cartModal" class="modal-backdrop z-[1050]">
+        <div class="modal-content border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+            
+            <div class="absolute -top-32 -right-32 w-64 h-64 bg-purple-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-indigo-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            
+            <!-- Cabecera Fija -->
+            <div class="shrink-0 p-5 sm:p-6 pb-2 relative z-10">
+                <h2 class="text-2xl sm:text-3xl font-extrabold flex items-center justify-center gap-2 text-white font-nunito tracking-tight">
+                    <i data-lucide="shopping-cart" class="text-purple-400 w-6 h-6 sm:w-7 sm:h-7"></i>Tu Carrito
+                </h2>
             </div>
-            <div class="text-right font-semibold mb-6 space-y-1">
-                <p class="text-sm text-slate-400">Subtotal: <span id="cartTotal" class="text-white">$0.00</span></p>
-                <p class="text-sm text-slate-400">Transporte: <span id="transportCost" class="text-white">$0.00</span></p>
-                <p class="text-2xl text-emerald-400 font-extrabold border-t border-slate-700 pt-3 mt-2">Total: <span id="finalTotal">$0.00</span></p>
-            </div>
-            <div class="flex gap-3">
-                <button id="closeCart" class="bg-slate-800 border border-slate-700 text-slate-300 flex-1 hover:bg-slate-700 font-bold py-3.5 px-6 rounded-full transition-colors">Cerrar</button>
-                <a href="#booking" id="proceedBooking" class="bg-purple-600 hover:bg-purple-500 text-white flex-1 nav-action font-bold py-3.5 px-6 rounded-full text-center transition-colors">Reservar</a>
+                
+            <!-- Lista de Items SCROLLABLE -->
+            <div id="cartItems" class="flex-1 overflow-y-auto px-5 sm:px-6 custom-scrollbar relative z-10 min-h-[80px]"></div>
+                
+            <!-- Footer Fijo -->
+            <div class="shrink-0 p-5 sm:p-6 pt-4 relative z-10 border-t border-slate-800/50 bg-[#0B1121]/95 backdrop-blur-md">
+                
+                <div class="mb-4">
+                    <label for="cartLocation" class="font-bold text-slate-400 text-[10px] uppercase tracking-wider mb-2 block pl-1">Ubicación del Evento:</label>
+                    <div class="relative group">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <i data-lucide="map-pin" class="w-4 h-4 text-rose-400"></i>
+                        </div>
+                        <select id="cartLocation" class="w-full bg-[#162032] border border-slate-700/50 rounded-xl py-3 pl-10 pr-10 text-sm font-bold text-white outline-none focus:border-purple-400 transition-all appearance-none shadow-inner cursor-pointer group-hover:border-slate-600"></select>
+                        <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-5 pl-1 pr-1 bg-[#162032]/50 p-4 rounded-xl border border-slate-700/30 shadow-inner">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-medium text-slate-400">Subtotal:</span>
+                        <span id="cartTotal" class="text-xs font-bold text-white w-20 text-right">$0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-medium text-slate-400">Transporte:</span>
+                        <span id="transportCost" class="text-xs font-bold text-white w-20 text-right">$0.00</span>
+                    </div>
+                    <div class="w-full h-px bg-slate-700/50 mb-3"></div>
+                    <div class="flex justify-between items-end">
+                        <span class="text-sm font-extrabold text-white uppercase tracking-wider">Total</span>
+                        <span id="finalTotal" class="text-2xl font-black text-emerald-400 drop-shadow-md leading-none">$0.00</span>
+                    </div>
+                </div>
+                
+                <!-- Botones Ultra Pro -->
+                <div class="flex gap-3">
+                    <button id="closeCart" class="bg-[#1E293B] border border-slate-700 text-slate-300 flex-1 hover:bg-[#2A364A] hover:text-white hover:border-slate-500 font-extrabold rounded-[18px] transition-all duration-300 text-[15px] shadow-sm flex items-center justify-center gap-2 h-[54px]">
+                        Cerrar
+                    </button>
+                    <a href="#booking" id="proceedBooking" class="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white flex-1 nav-action font-extrabold rounded-[18px] text-center transition-all duration-300 text-[15px] flex justify-center items-center shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1 gap-2 h-[54px]">
+                        Reservar <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
     
-    <div id="calculatorModal" class="modal-backdrop">
-        <div class="modal-content bg-slate-900 border border-slate-700 text-white rounded-[32px] shadow-2xl p-6 sm:p-8 max-w-2xl w-full">
-            <h2 class="text-2xl font-extrabold mb-6 flex items-center justify-center gap-2 text-white"><i data-lucide="calculator" class="text-cyan-400"></i>Calculadora Rápida</h2>
-            <div class="bg-slate-800/50 rounded-2xl p-5 mb-5 border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Servicios:</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar" id="calculatorServices"></div>
+    <!-- MODAL CALCULADORA -->
+    <div id="calculatorModal" class="modal-backdrop z-[1050]">
+        <div class="modal-content border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] max-w-2xl">
+            
+            <div class="shrink-0 p-5 sm:p-6 pb-2 relative z-10 border-b border-slate-800/50">
+                <h2 class="text-2xl font-extrabold flex items-center justify-center gap-2 text-white"><i data-lucide="calculator" class="text-cyan-400"></i>Calculadora Rápida</h2>
             </div>
-            <div class="bg-slate-800/50 rounded-2xl p-5 mb-5 border border-slate-700">
-                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Ubicación:</h3>
-                <select id="calculatorLocation" class="w-full bg-[#1E293B] border border-slate-600 rounded-2xl py-3.5 px-4 text-sm font-bold text-white outline-none focus:border-cyan-400 transition-colors"></select>
+                
+            <div class="flex-1 overflow-y-auto px-5 sm:px-6 py-4 custom-scrollbar relative z-10 min-h-[80px]">
+                <div class="bg-slate-800/50 rounded-2xl p-5 mb-5 border border-slate-700">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Servicios:</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="calculatorServices"></div>
+                </div>
+                <div class="bg-slate-800/50 rounded-2xl p-5 mb-2 border border-slate-700">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Ubicación:</h3>
+                    <select id="calculatorLocation" class="w-full bg-[#1E293B] border border-slate-600 rounded-2xl py-3.5 px-4 text-sm font-bold text-white outline-none focus:border-cyan-400 transition-colors"></select>
+                </div>
             </div>
-            <div class="bg-slate-950 text-white rounded-3xl p-6 mb-6 border border-slate-800">
-                <div class="flex justify-between items-center mb-1"><span class="text-sm font-medium text-slate-400">Subtotal:</span><span id="calcSubtotal" class="text-lg font-bold text-white">$0.00</span></div>
-                <div class="flex justify-between items-center mb-3"><span class="text-sm font-medium text-slate-400">Transporte:</span><span id="calcTransport" class="text-lg font-bold text-white">$0.00</span></div>
-                <div class="border-t border-slate-800 pt-3"><div class="flex justify-between items-baseline"><span class="text-sm font-bold text-slate-400 uppercase">TOTAL ESTIMADO:</span><span id="calcTotal" class="text-3xl font-extrabold text-emerald-400 drop-shadow-md">$0.00</span></div></div>
-            </div>
-            <div class="flex gap-3">
-                <button id="closeCalculator" class="bg-slate-800 border border-slate-700 text-slate-300 flex-1 hover:bg-slate-700 font-bold py-3.5 px-6 rounded-full transition-colors">Cerrar</button>
-                <button id="addCalculatedToCart" class="bg-emerald-500 hover:bg-emerald-400 flex-1 text-white font-bold py-3.5 px-6 rounded-full flex justify-center items-center gap-2 transition-colors"><i data-lucide="check" class="w-5 h-5"></i> Aceptar</button>
+                
+            <div class="shrink-0 p-5 sm:p-6 pt-4 relative z-10 border-t border-slate-800/50 bg-[#0B1121]/95 backdrop-blur-md">
+                <div class="bg-slate-950 text-white rounded-3xl p-5 mb-5 border border-slate-800 shadow-inner">
+                    <div class="flex justify-between items-center mb-1"><span class="text-sm font-medium text-slate-400">Subtotal:</span><span id="calcSubtotal" class="text-lg font-bold text-white">$0.00</span></div>
+                    <div class="flex justify-between items-center mb-3"><span class="text-sm font-medium text-slate-400">Transporte:</span><span id="calcTransport" class="text-lg font-bold text-white">$0.00</span></div>
+                    <div class="border-t border-slate-800 pt-3"><div class="flex justify-between items-baseline"><span class="text-sm font-bold text-slate-400 uppercase">TOTAL ESTIMADO:</span><span id="calcTotal" class="text-3xl font-extrabold text-emerald-400 drop-shadow-md">$0.00</span></div></div>
+                </div>
+                <div class="flex gap-3">
+                    <button id="closeCalculator" class="bg-[#1E293B] border border-slate-700 text-slate-300 flex-1 hover:bg-[#2A364A] hover:text-white font-extrabold rounded-[18px] transition-all duration-300 text-[15px] shadow-sm h-[54px]">Cerrar</button>
+                    <button id="addCalculatedToCart" class="bg-emerald-500 hover:bg-emerald-400 flex-1 text-white font-bold rounded-[18px] flex justify-center items-center gap-2 transition-colors h-[54px] shadow-md"><i data-lucide="check" class="w-5 h-5"></i> Aceptar</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="bookingConfirmModal" class="modal-backdrop">
-        <div class="modal-content text-center p-8 max-w-md w-full bg-slate-900 border border-slate-700 rounded-[32px] shadow-2xl">
-            <div class="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-5 border border-yellow-500/30 badge-float"><i data-lucide="calendar" class="w-8 h-8 text-yellow-400"></i></div>
-            <h2 class="text-2xl font-extrabold mb-3 text-white">Verificar Disponibilidad</h2>
-            <p class="text-slate-400 mb-6 text-sm leading-relaxed">Nuestra agenda se llena rápidamente. El sistema validará su fecha automáticamente en el siguiente paso.</p>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <button id="continueToBookingBtn" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3.5 px-6 rounded-full transition-colors">Continuar a Reserva</button>
+    <!-- MODAL CONFIRMAR RESERVA ULTRA PRO -->
+    <div id="bookingConfirmModal" class="modal-backdrop z-[1050]">
+        <div class="modal-content bg-[#0B1121] border border-slate-700/50 text-white rounded-[32px] sm:rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] p-8 sm:p-10 max-w-md w-full relative overflow-hidden text-center justify-center">
+            
+            <div class="absolute -top-32 -right-32 w-64 h-64 bg-indigo-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-purple-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
+            
+            <div class="relative z-10">
+                <div class="w-20 h-20 bg-[#162032] border border-slate-700 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner badge-float relative group">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
+                    <i data-lucide="calendar" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]"></i>
+                </div>
+                
+                <h2 class="text-3xl font-black mb-3 text-white font-nunito tracking-tight leading-tight">Verificar<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Disponibilidad</span></h2>
+                
+                <p class="text-slate-400 mb-8 text-sm font-medium leading-relaxed px-2">
+                    Nuestra agenda se llena rápidamente. El sistema validará su fecha de forma automática en el siguiente paso.
+                </p>
+                
+                <button id="continueToBookingBtn" class="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
+                    Continuar a Reserva <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -488,12 +502,12 @@
     // 2. DATOS DEL CATÁLOGO
     // ==========================================
     const locations = [
-        { value: 'panama-centro', label: '📍 Panamá Centro (+$5)', cost: 5 }, 
-        { value: 'arraijan', label: '📍 Arraiján (+$15)', cost: 15 }, 
-        { value: 'la-chorrera', label: '📍 La Chorrera (+$20)', cost: 20 }, 
-        { value: 'panama-norte', label: '📍 Panamá Norte (+$10)', cost: 10 }, 
-        { value: 'panama-este', label: '📍 Panamá Este (+$10)', cost: 10 }, 
-        { value: 'ancon', label: '📍 Ancón (+$10)', cost: 10 }
+        { value: 'panama-centro', label: 'Panamá Centro (+$5)', cost: 5 }, 
+        { value: 'arraijan', label: 'Arraiján (+$15)', cost: 15 }, 
+        { value: 'la-chorrera', label: 'La Chorrera (+$20)', cost: 20 }, 
+        { value: 'panama-norte', label: 'Panamá Norte (+$10)', cost: 10 }, 
+        { value: 'panama-este', label: 'Panamá Este (+$10)', cost: 10 }, 
+        { value: 'ancon', label: 'Ancón (+$10)', cost: 10 }
     ];
 
     let services = [
@@ -668,7 +682,19 @@
                 break;
             case 'add-to-cart': {
                 const item = allPurchasableItems.find(s => s.id === itemId);
-                if (item) addToCart(item);
+                if (item) {
+                    const isPackage = itemId.includes('clown_') || itemId.includes('bubble_') || itemId.includes('santa_');
+                    const existing = app.cart.find(i => i.id === itemId);
+                    
+                    if (isPackage) {
+                        if (!existing) {
+                            addToCart(item); 
+                        }
+                        showModal('cartModal');
+                    } else {
+                        addToCart(item);
+                    }
+                }
                 break;
             }
             case 'remove-from-cart':
@@ -727,13 +753,13 @@
         if (existing) existing.quantity += quantity; 
         else app.cart.push({ ...item, quantity });
         updateCartUI(); 
-        showToast(`${item.name} añadido`, 'success');
+        showToast(`${item.name} añadido al carrito`, 'success');
     }
 
     function removeFromCart(itemId) {
         app.cart = app.cart.filter(i => i.id !== itemId);
         updateCartUI(); 
-        showToast('Eliminado', 'info');
+        showToast('Plan eliminado', 'info');
     }
 
     function updateCartUI() {
@@ -747,21 +773,54 @@
         
         if(itemCountEl) itemCountEl.textContent = count;
         if(totalPriceEl) totalPriceEl.textContent = `$${total.toFixed(2)}`;
-        if(cartSummaryEl) count > 0 ? cartSummaryEl.classList.remove('hidden') : cartSummaryEl.classList.add('hidden');
+        
+        if(cartSummaryEl) {
+            if (count > 0) {
+                cartSummaryEl.classList.remove('hidden');
+                document.body.classList.add('has-cart');
+            } else {
+                cartSummaryEl.classList.add('hidden');
+                document.body.classList.remove('has-cart');
+            }
+        }
 
         const cartItemsEl = $('#cartItems');
         if (cartItemsEl) {
-            cartItemsEl.innerHTML = app.cart.length === 0 
-                ? '<p class="text-center text-slate-400 py-4">Tu carrito está vacío</p>' 
-                : app.cart.map(item => `
-                    <div class="flex justify-between items-center py-3 border-b border-slate-700 last:border-0 bg-slate-800 rounded-xl px-3 mb-2 shadow-sm">
-                        <img src="${item.image || 'https://placehold.co/48x48/cbd5e1/ffffff?text=IMG'}" alt="${item.name}" class="w-10 h-10 object-cover rounded-lg mr-3 shadow-sm border border-slate-700" loading="lazy">
-                        <span class="text-sm font-semibold text-white flex-1 leading-tight">${item.name} <span class="text-slate-400 font-normal">x${item.quantity}</span></span>
-                        <div class="flex items-center gap-3">
-                            <span class="font-bold text-pink-400">$${(item.price * item.quantity).toFixed(2)}</span>
-                            <button data-action="remove-from-cart" data-item-id="${item.id}" class="text-slate-500 hover:text-rose-400 transition-colors" aria-label="Eliminar"><i data-lucide="x-circle" class="w-5 h-5"></i></button>
+            if (app.cart.length === 0) {
+                // DISEÑO ULTRA PRO: CARRITO VACÍO MODAL
+                cartItemsEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full py-8 px-2 text-center animate-slide-up mt-4">
+                        <div class="w-20 h-20 bg-[#162032] border border-purple-500/40 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(168,85,247,0.25)] relative badge-float">
+                            <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/30 to-pink-500/10 rounded-[1.5rem]"></div>
+                            <i data-lucide="shopping-cart" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(192,132,252,0.6)] relative z-10"></i>
                         </div>
-                    </div>`).join('');
+                        <h3 class="text-3xl font-black text-white mb-2 font-nunito tracking-tight">Carrito Vacío</h3>
+                        <p class="mb-8 text-slate-400 font-medium text-sm">¡Vamos a llenarlo de diversión!</p>
+                        <div class="flex flex-col w-full gap-3 mt-auto">
+                            <a href="#clowns" data-action="close-modal" class="nav-action w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
+                                <i data-lucide="smile" class="w-5 h-5"></i> Ver Planes
+                            </a>
+                            <a href="#services" data-action="close-modal" class="nav-action w-full bg-[#162032] border border-slate-700 hover:border-pink-500/50 text-slate-300 hover:text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-inner hover:shadow-[0_0_20px_rgba(236,72,153,0.2)] hover:-translate-y-1">
+                                <i data-lucide="gift" class="w-5 h-5 text-pink-400"></i> Otros Servicios
+                            </a>
+                        </div>
+                    </div>`;
+            } else {
+                cartItemsEl.innerHTML = '<div class="bg-[#162032]/80 backdrop-blur-sm border border-slate-700/50 rounded-[20px] p-2 space-y-2 shadow-inner">' + app.cart.map(item => `
+                    <div class="flex justify-between items-center bg-slate-800 p-3 rounded-[16px] transition-colors border border-slate-700/30 group">
+                        <div class="flex items-center gap-3 overflow-hidden flex-1">
+                            <img src="${item.image || 'https://placehold.co/48x48/cbd5e1/ffffff?text=IMG'}" alt="${item.name}" class="w-10 h-10 object-cover rounded-xl shadow-sm shrink-0 border border-slate-700" loading="lazy">
+                            <div class="flex flex-col min-w-0 pr-2">
+                                <span class="font-bold text-white text-[13px] leading-tight truncate">${item.name}</span>
+                                <span class="text-slate-400 text-[10px] font-semibold mt-0.5">Cant: ${item.quantity}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0 pl-1">
+                            <span class="font-extrabold text-pink-400 text-[14px] drop-shadow-sm w-16 text-right">$${(item.price * item.quantity).toFixed(2)}</span>
+                            <button data-action="remove-from-cart" data-item-id="${item.id}" class="w-7 h-7 rounded-full bg-slate-700/50 text-slate-400 hover:text-white hover:bg-rose-500/80 flex items-center justify-center transition-all border border-slate-600/50 ml-1" aria-label="Eliminar"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>`).join('') + '</div>';
+            }
         }
         
         const cartTotalEl = $('#cartTotal');
@@ -772,6 +831,31 @@
         if(transportCostEl) transportCostEl.textContent = `$${transportCost.toFixed(2)}`;
         if(finalTotalEl) finalTotalEl.textContent = `$${(total + transportCost).toFixed(2)}`;
         
+        $$('button[data-action="add-to-cart"]').forEach(btn => {
+            const itemId = btn.dataset.itemId;
+            const isPackage = itemId && (itemId.includes('clown_') || itemId.includes('bubble_') || itemId.includes('santa_'));
+            
+            if (isPackage) {
+                const inCart = app.cart.some(i => i.id === itemId);
+                
+                if (!btn.dataset.origHtml) {
+                    btn.dataset.origHtml = btn.innerHTML;
+                }
+                
+                const isCurrentlySelected = btn.classList.contains('!bg-emerald-600');
+                
+                if (inCart && !isCurrentlySelected) {
+                    btn.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-white"></i> Plan Seleccionado`;
+                    btn.classList.add('!bg-emerald-600', '!text-white', '!border-emerald-500', '!shadow-[0_0_20px_rgba(16,185,129,0.4)]', '!bg-none');
+                    lucide.createIcons({ root: btn });
+                } else if (!inCart && isCurrentlySelected) {
+                    btn.innerHTML = btn.dataset.origHtml;
+                    btn.classList.remove('!bg-emerald-600', '!text-white', '!border-emerald-500', '!shadow-[0_0_20px_rgba(16,185,129,0.4)]', '!bg-none');
+                    lucide.createIcons({ root: btn });
+                }
+            }
+        });
+
         populateLocationSelects();
         const cartLocationEl = $('#cartLocation');
         if (cartLocationEl) cartLocationEl.value = app.location;
@@ -1372,8 +1456,24 @@
         const transportCost = calculateTransportCost(app.location);
         const finalTotal = subtotal + transportCost;
         
+        // DISEÑO ULTRA PRO: CARRITO VACÍO EN PÁGINA DE RESERVA (SIN MODAL)
         const cartSummary = app.cart.length === 0 
-            ? `<div class="text-center py-10"><div class="w-16 h-16 mx-auto bg-slate-800 border border-slate-700 rounded-full flex items-center justify-center mb-4 text-slate-400"><i data-lucide="shopping-cart" class="w-8 h-8"></i></div><h3 class="text-xl font-bold text-white mb-2">Carrito Vacío</h3><p class="mb-6 text-slate-400 font-medium text-sm">¡Vamos a llenarlo de diversión!</p><div class="flex flex-col sm:flex-row justify-center gap-3"><a href="#clowns" class="btn-premium bg-slate-800 border border-slate-700 text-white nav-action text-sm hover:bg-slate-700"><i data-lucide="smile" class="w-4 h-4 text-purple-400"></i>Ver Planes</a><a href="#services" class="btn-premium bg-slate-800 border border-slate-700 text-white nav-action text-sm hover:bg-slate-700"><i data-lucide="gift" class="w-4 h-4 text-pink-400"></i>Otros Servicios</a></div></div>` 
+            ? `<div class="text-center py-10 animate-slide-up">
+                <div class="w-20 h-20 bg-[#162032] border border-purple-500/40 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(168,85,247,0.25)] relative badge-float">
+                    <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/30 to-pink-500/10 rounded-[1.5rem]"></div>
+                    <i data-lucide="shopping-cart" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(192,132,252,0.6)] relative z-10"></i>
+                </div>
+                <h3 class="text-2xl font-black text-white mb-2 font-nunito">Carrito Vacío</h3>
+                <p class="mb-8 text-slate-400 font-medium text-sm">¡Vamos a llenarlo de diversión!</p>
+                <div class="flex flex-col sm:flex-row justify-center gap-4 px-2">
+                    <a href="#clowns" class="nav-action flex-1 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-3.5 rounded-[18px] transition-all duration-300 text-sm flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
+                        <i data-lucide="smile" class="w-4 h-4"></i> Ver Planes
+                    </a>
+                    <a href="#services" class="nav-action flex-1 bg-[#162032] border border-slate-700 hover:border-pink-500/50 text-slate-300 hover:text-white font-extrabold py-3.5 rounded-[18px] transition-all duration-300 text-sm flex justify-center items-center gap-2 shadow-inner hover:shadow-[0_0_20px_rgba(236,72,153,0.2)] hover:-translate-y-1">
+                        <i data-lucide="gift" class="w-4 h-4 text-pink-400"></i> Otros Servicios
+                    </a>
+                </div>
+            </div>` 
             : app.cart.map(item => `<div class="flex justify-between items-center bg-slate-800 p-3.5 rounded-xl shadow-sm mb-2.5 border border-slate-700"><span class="font-semibold text-white text-sm leading-tight pr-2">${item.name} <span class="text-slate-400 text-xs font-normal">x${item.quantity}</span></span><span class="font-extrabold text-purple-400 text-sm">$${(item.price * item.quantity).toFixed(2)}</span></div>`).join('');
             
         const locationOptionsHtml = locations.map(opt => `<option value="${opt.value}" ${app.location === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('');
@@ -1620,6 +1720,10 @@
 
     function setActiveSection(sectionId) {
         if (!sectionId) sectionId = 'home';
+        
+        // Cerrar todos los modales de manera segura al navegar a otra sección
+        $$('.modal-backdrop').forEach(m => m.classList.remove('show'));
+
         if (sectionId === 'booking' && !sessionStorage.getItem('bookingNoticeShown')) { 
             sessionStorage.setItem('bookingNoticeShown', 'true'); 
             showModal('bookingConfirmModal'); 
