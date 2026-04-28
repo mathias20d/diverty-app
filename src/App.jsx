@@ -1,1933 +1,2075 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Diverty Eventos | Planes de Fiestas en Panamá</title>
-    <meta name="description" content="¡Celebra con Diverty Eventos! Fiestas infantiles en Panamá. Payasitos, animadores, pintacaritas y shows de burbujas.">
-    <meta name="keywords" content="fiestas infantiles panama, payasos panama, animadores panama, pintacaritas panama, shows burbujas, fiestas cumpleaños panama">
-    <meta name="geo.region" content="PA">
-    <meta name="geo.placename" content="Ciudad de Panamá">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://divertyeventos.online/">
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Navigation, Zap, PieChart, ChevronDown, Moon, Sun, Award, FileSpreadsheet, Copy, MessageSquareText, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+
+const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
+const app = initializeApp(firebaseConfig); const db = getFirestore(app); const auth = getAuth(app); const appId = "diverty-oficial";
+
+const sheetUrl = 'https://docs.google.com/spreadsheets/d/1dvIWaYZQte_IU9JsBZLnLEmKYVxfO9An1XjpRuIHD5g/edit?usp=drivesdk'; 
+const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; 
+const META_MENSUAL = 1500; 
+
+const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
+const ZONAS_TRANSPORTE = { "Panamá Centro": 0, "San Miguelito": 5, "Panamá Norte": 10, "Panamá Este": 10, "Arraiján / Chorrera": 15, "Colón": 25 };
+const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'config', icon:Settings, text:'Ajustes'} ];
+const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', total: '', abono: '', estado: 'Pendiente', colisionAprobada: false });
+
+const PAQUETES_BASE = [
+  { id: 'p1', nombre: 'Plan circo', precio: 85, short: 'Circo 🎪', descripcion: 'Servicio de animación tipo circo.\n• 1 Payasit@ profesional\n• Juegos\n• Figuras con globos' },
+  { id: 'p2', nombre: 'Plan diverty total', precio: 200, short: 'Diverty ⭐', descripcion: '3 horas de entretenimiento completo.\n• 1 Payasit@ o Animador@\n• 1 Pintacaritas profesional\n• Show de Burbujas Gigantes\n• Globoflexia para los invitados' },
+  { id: 'p3', nombre: 'Plan recreativo', precio: 110, short: 'Recreativo 🎉', descripcion: '2 Horas de actividades.\n• Animador@\n• Pintacaritas\n• Juegos' },
+  { id: 'p4', nombre: 'Plan magic', precio: 135, short: 'Magic 🎩', descripcion: '2.5 horas mágicas.\n• Animador@\n• Pintacaritas\n• Magia\n• Obsequio' },
+  { id: 'p5', nombre: 'Pintacaritas profesionales', precio: 50, short: 'Pinta Pro 🎨', descripcion: 'Pintacaritas con gemas.', isPorHora: true },
+  { id: 'p6', nombre: 'Pintacaritas básicas', precio: 35, short: 'Pinta Básica 🖍️', descripcion: 'Diseños rápidos.', isPorHora: true },
+  { id: 'p7', nombre: 'Globoflexia', precio: 35, short: 'Globos 🎈', descripcion: 'Figuras con globos.', isPorHora: true },
+  { id: 'p8', nombre: 'Show Burbujas Premium', precio: 150, short: 'Burbujas Pro 🫧', descripcion: 'Show de burbujas gigantes.' },
+  { id: 'p9', nombre: 'Paquete Fiesta Burbuja', precio: 190, short: 'Fiesta 🫧', descripcion: '2 Horas. Animación + Burbujas.' },
+  { id: 'p10', nombre: 'Maquinas de snack', precio: 85, short: 'Snacks 🍿', descripcion: 'Popcorn o Algodón.', isPorHora: true },
+  { id: 'p11', nombre: 'Alquiler de inflable', precio: 80, short: 'Inflable 🏰', descripcion: 'Inflable infantil.', isPorHora: true },
+  { id: 'p12', nombre: 'Personaje temático', precio: 55, short: 'Personaje 🦸‍♂️', descripcion: 'Visita de personaje.', isPorHora: true },
+  { id: 'p13', nombre: 'Personaje con animación', precio: 100, short: 'Pers. Animado 🦸‍♀️', descripcion: 'Visita interactiva.', isPorHora: true }
+];
+
+const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id);
+const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id);
+
+export const utils = {
+  normalizeText: (text) => String(text || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+  getSafeLocal: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } },
+  setSafeLocal: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
+  triggerHaptic: (t = 'light') => { if (window?.navigator?.vibrate) try { window.navigator.vibrate(t === 'light' ? 30 : 50); } catch (e) {} },
+  safeNum: (v) => { if (typeof v === 'number') return isNaN(v) ? 0 : v; if (!v) return 0; const p = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(p) ? 0 : p; },
+  formatTime12h: (t) => { if (!t) return 'Por definir'; const [h, m] = String(t).split(':'); if (!h || !m) return t; let hrs = parseInt(h, 10); const suf = hrs >= 12 ? 'PM' : 'AM'; hrs = hrs % 12 || 12; return `${hrs}:${m} ${suf}`; },
+  getLocalYYYYMMDD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+  getWeekRange: (b = new Date()) => { const t = new Date(b), d = t.getDay() === 0 ? -6 : 1 - t.getDay(); const s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
+  getServiceDetails: (name) => { if (!name) return undefined; const nl = utils.normalizeText(name); return PAQUETES_BASE.find(p => nl.includes(utils.normalizeText(p.nombre).replace('plan ', '').replace('paquete ', '').trim())); },
+  parseCSV: (str) => { const arr = []; let q = false; for (let r = 0, c = 0, i = 0; i < str.length; i++) { let cc = str[i], nc = str[i+1]; arr[r] = arr[r] || []; arr[r][c] = arr[r][c] || ''; if (cc === '"' && q && nc === '"') { arr[r][c] += cc; ++i; continue; } if (cc === '"') { q = !q; continue; } if (cc === ',' && !q) { ++c; continue; } if (cc === '\r' && nc === '\n' && !q) { ++r; c = 0; ++i; continue; } if (cc === '\n' && !q) { ++r; c = 0; continue; } if (cc === '\r' && !q) { ++r; c = 0; continue; } arr[r][c] += cc; } return arr; },
+  openWhatsAppBusiness: (phone, msg) => { window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank'); }
+};
+
+const getWhatsAppMessage = (ev, type, empresa) => {
+    const tot = utils.safeNum(ev.total), abo = utils.safeNum(ev.abono), saldo = (tot - abo).toFixed(2);
+    const fec = String(ev.fecha||'').split('-').reverse().join('/'), hor = utils.formatTime12h(ev.hora);
+    switch(type) {
+        case 'cotizacion': return `¡Hola *${ev.cliente}*! ✨\nTe comparto la cotización para tu evento el *${fec}*.\n🎉 *Paquetes:* ${ev.servicio}\n💰 *Inversión Total:* $${tot.toFixed(2)}\n\n*He adjuntado el PDF con todos los detalles a este mensaje.*\n\nSi deseas agendar, puedes confirmarnos por aquí. ¡Estamos a la orden! 🥳`;
+        case 'recibo': return `¡Hola *${ev.cliente}*! 🥳\nTu reserva está *Confirmada* ✅\n📅 *Fecha:* ${fec}\n⏰ *Hora:* ${hor}\n📍 *Lugar:* ${ev.ubicacion}\n💰 *Total:* $${tot.toFixed(2)}\n💳 *Abono recibido:* $${abo.toFixed(2)}\n⚠️ *Saldo a cancelar en evento:* $${saldo}\n\n*Te adjunto el recibo oficial en PDF.*\n¡Gracias por preferirnos! ✨`;
+        case 'recordatorio': return `¡Hola *${ev.cliente}*! 🥳\n¡Se acerca tu gran día! Recuerda tu evento para el *${fec}* a las *${hor}*.\n📍 Llegaremos a *${ev.ubicacion}*.\n💰 Saldo pendiente: *$${saldo}*.\n¡Nos vemos pronto para la diversión! ✨`;
+        case 'cobro': return `¡Hola *${ev.cliente}*! 👋\nTe contactamos de Diverty Eventos.\nTe recordamos amablemente que tienes un saldo pendiente de *$${saldo}* para asegurar tu fecha del *${fec}*.\n\nSi deseas realizar el abono mediante Yappy o Transferencia, por favor avísanos por aquí. ¡Estamos a tu disposición! ✨`;
+        case 'banco': return `¡Hola *${ev.cliente}*! 👋\nNuestros datos bancarios:\n🏦 *Banco:* ${empresa.banco}\n📋 *Tipo:* ${empresa.tipoCuenta}\n🔢 *Cuenta:* ${empresa.numeroCuenta}\n👤 *Nombre:* ${empresa.nombreTitular}\nPor favor envía comprobante. ¡Gracias! ✨`;
+        case 'agradecimiento': default: return `¡Hola *${ev.cliente}*! 🌟\n¡GRACIAS por permitirnos estar en tu evento!\n¿Qué tal la pasaron? Nos encantaría ver fotitos 📸🎉\n¡Un abrazo mágico de todo el equipo! ✨`;
+    }
+}
+
+// 🎨 UI CONSTANTS
+const GLASS_CARD = "bg-[#0B1221] border border-white/5 rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.3)] ring-1 ring-white/[0.02]";
+const inputClass = "w-full bg-[#0F172A] focus:bg-[#0B1221] border border-white/10 rounded-2xl p-4 text-[15px] font-medium text-white/90 outline-none focus:border-blue-500/50 transition-colors placeholder:text-white/30";
+const labelClass = "block text-xs uppercase text-white/60 font-semibold tracking-wider mb-2 ml-1";
+const modalSectionClass = "bg-[#0B1221] rounded-t-[32px] sm:rounded-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.8)] border border-white/5 transition-transform duration-300";
+
+const useCountUp = (end, duration = 1000) => {
+    const [count, setCount] = useState(0);
+    useEffect(() => {
+        if (end === 0) { setCount(0); return; }
+        let start = 0, stepTime = 16, steps = duration / stepTime, increment = end / steps, timer;
+        const delay = setTimeout(() => { timer = setInterval(() => { start += increment; if ((increment > 0 && start >= end) || (increment < 0 && start <= end)) { setCount(end); clearInterval(timer); } else { setCount(start); } }, stepTime); }, 200);
+        return () => { clearTimeout(delay); if (timer) clearInterval(timer); };
+    }, [end, duration]);
+    return count;
+};
+
+const AnimatedProgress = React.memo(({ value }) => {
+  const [width, setWidth] = useState(0); const barRef = useRef(null);
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) { setTimeout(() => setWidth(value), 200); observer.disconnect(); } }, { threshold: 0.1 });
+    if (barRef.current) observer.observe(barRef.current);
+    return () => observer.disconnect();
+  }, [value]);
+  return (
+    <div ref={barRef} className="h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden bg-[#060B14] shadow-inner" style={{ width: `${width}%` }}>
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent w-[200%] animate-[shimmer_2s_infinite]"></div>
+    </div>
+  );
+});
+
+const SkeletonCard = React.memo(() => ( 
+    <div className={`${GLASS_CARD} p-6 animate-pulse flex flex-col gap-4 h-[280px]`}>
+        <div className="flex justify-between w-full"><div className="h-5 bg-white/5 rounded-full w-1/3"></div><div className="h-6 bg-white/5 rounded-xl w-16"></div></div>
+        <div className="h-10 bg-white/5 rounded-full w-3/4 mt-3"></div>
+        <div className="space-y-4 mt-4"><div className="h-4 bg-white/5 rounded-full w-1/2"></div><div className="h-4 bg-white/5 rounded-full w-2/3"></div></div>
+        <div className="mt-auto h-14 bg-[#0F172A] rounded-[16px] w-full"></div>
+    </div> 
+));
+
+const EmptyState = React.memo(({ icon: Icon, title, message, actionBtn }) => {
+    return (
+        <div className={`${GLASS_CARD} p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-2 border-white/10 min-h-[300px]`}>
+            <div className={`w-24 h-24 rounded-[24px] flex items-center justify-center mb-6 border border-white/5 relative overflow-hidden bg-[#0F172A] rotate-3 transition-transform hover:rotate-0 duration-300`}>
+                <Icon size={48} strokeWidth={1.5} className="relative z-10 text-white/40 drop-shadow-md" />
+            </div>
+            <h3 className="text-xl font-bold text-white/90 mb-3 tracking-tight">{title}</h3>
+            <p className="text-sm font-medium text-white/50 max-w-md mb-8 leading-relaxed">{message}</p>
+            {actionBtn}
+        </div>
+    );
+});
+
+const AppButton = React.memo(({ children, variant = 'primary', icon: Icon, onClick, className = '', ...props }) => {
+    const baseStyle = "font-bold rounded-[16px] transition-all duration-200 ease-out active:scale-[0.98] hover:opacity-90 flex items-center justify-center gap-2.5 px-5 py-3.5";
+    let vS = "";
+    if (variant === 'warning') vS = `bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20`;
+    else if (variant === 'success') vS = `bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20`;
+    else if (variant === 'danger') vS = `bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20`;
+    else if (variant === 'primary') vS = `bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/20`;
+    else vS = "bg-white/5 text-white/90 hover:bg-white/10";
     
-    <!-- Open Graph / PWA -->
-    <meta property="og:title" content="Diverty Eventos | Fiestas Inolvidables en Panamá">
-    <meta property="og:description" content="¡Diversión garantizada! Planes de fiesta, burbujas y mucha alegría.">
-    <meta property="og:image" content="https://divertyeventos.online/android-chrome-512x512.png">
-    <meta property="og:url" content="https://divertyeventos.online/">
-    <meta name="theme-color" content="#0F172A">
-    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiRGl2ZXJ0eSBFdmVudG9zIiwic2hvcnRfbmFtZSI6IkRpdmVydHkiLCJzdGFydF91cmwiOiIvIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZmZmZiI sInRoZW1lX2NvbG9yIjoiIzBkOTQ4OCIsImljb25zIjpbeyJzcmMiOiJodHRwczovL2RpdmVydHlldmVudG9zLm9ubGluZS9hbmRyb2lkLWNocm9tZS01MTJ4NTEyLnBuZyIsInNpemVzIjoiNTEyeDUxMiIsInR5cGUiOiJpbWFnZS9wbmcifV19">
+    return (<button type="button" onClick={onClick} className={`${baseStyle} ${vS} ${className}`} {...props}>{Icon && <Icon size={18} strokeWidth={2} className="shrink-0" />}<span className="truncate tracking-wide">{children}</span></button>);
+});
 
-    <!-- Schema.org JSON-LD Tags -->
-    <script id="schema-event-planner" type="application/ld+json"></script>
-    <script id="schema-faq" type="application/ld+json"></script>
+const AppCard = React.memo(({ children, title, icon: Icon, iconColor = 'primary', className = '' }) => {
+    const iconColors = { primary: "text-blue-400", success: "text-emerald-400", danger: "text-rose-400", warning: "text-amber-400" };
+    return (
+        <div className={`${GLASS_CARD} hover:-translate-y-1 transition-transform duration-200 p-6 sm:p-7 flex flex-col justify-center relative overflow-hidden ${className}`}>
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-[radial-gradient(circle,rgba(255,255,255,0.05)_0%,transparent_60%)] pointer-events-none"></div>
+            {(title || Icon) && (<div className="flex items-center gap-2.5 text-white/50 mb-4 relative z-10">{Icon && <Icon size={20} className={iconColors[iconColor] || "text-white"} strokeWidth={2} />}{title && <span className="text-xs font-bold uppercase tracking-wider opacity-90">{title}</span>}</div>)}
+            <div className="relative z-10">{children}</div>
+        </div>
+    );
+});
 
-    <!-- Librerías -->
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=Poppins:wght@400;600;700;800&family=Quicksand:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" as="style">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=Poppins:wght@400;600;700;800&family=Quicksand:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js" defer></script>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SBYYJTHTEF"></script>
-    <script> window.dataLayer = window.dataLayer || []; function gtag() { dataLayer.push(arguments); } gtag('js', new Date()); gtag('config', 'G-SBYYJTHTEF'); </script>
-    
-    <style>
-        /* === 1. VARIABLES Y BASE === */
-        :root {
-            --primary-purple: #7C3AED; 
-            --primary-pink: #E11D48;
-            --gradient-rainbow: linear-gradient(90deg, #ec4899, #8b5cf6, #06b6d4, #f59e0b);
-            --bg-dark: #0F172A;
-        }
+const ClientCardItem = React.memo(({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient }) => {
+    const phoneClean = String(c.telefono).replace(/\D/g,'');
+    const msgPromo = `¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`; 
+    const msgSeguimiento = `¡Hola ${c.nombre}! 👋 Pasábamos a saludarte de Diverty Eventos. ¿Qué tal estuvo tu última fiesta con nosotros? ¡Nos encantaría saber de ti! ✨`; 
+    const msgRecordatorio = `¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
+    const avatarGradients = ['from-blue-600 to-indigo-600', 'from-emerald-400 to-teal-600', 'from-purple-500 to-fuchsia-600', 'from-cyan-400 to-blue-500']; 
+    const grad = c.isVIP ? 'from-amber-400 via-orange-500 to-rose-500' : avatarGradients[String(c.nombre).length % avatarGradients.length];
 
-        body { font-family: 'Quicksand', sans-serif; background-color: var(--bg-dark); color: #f8fafc; -webkit-font-smoothing: antialiased; line-height: 1.7; }
-        h2, h3, h4, .font-poppins { font-family: 'Poppins', sans-serif; letter-spacing: -0.02em; }
-        h1, .font-nunito { font-family: 'Nunito', sans-serif; font-weight: 800; letter-spacing: -0.02em; }
+    const handleExpand = useCallback((e) => { if(e){e.preventDefault(); e.stopPropagation();} utils.triggerHaptic('light'); onToggleExpand(c.nombre); }, [c.nombre, onToggleExpand, utils]);
+    const handlePromo = useCallback((e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgPromo); }, [phoneClean, msgPromo, utils]);
+    const handleSeguimiento = useCallback((e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgSeguimiento); }, [phoneClean, msgSeguimiento, utils]);
+    const handleRecordatorio = useCallback((e) => { e.stopPropagation(); utils.openWhatsAppBusiness(phoneClean, msgRecordatorio); }, [phoneClean, msgRecordatorio, utils]);
+    const handleReserve = useCallback((e) => { e.stopPropagation(); openModal(); }, [openModal]);
+    const handleDelete = useCallback((e) => { e.stopPropagation(); onDeleteClient(c.nombre, c.eventos); }, [c.nombre, c.eventos, onDeleteClient]);
 
-        @media (max-width: 1024px) { body { padding-bottom: 120px; } } 
-        @media (max-width: 768px) { body { font-size: 16px; } h2 { font-size: 1.75rem!important; } h3 { font-size: 1.25rem!important; } }
-        
-        /* FOUC FIX */
-        body:not(.js-loaded) footer, body:not(.js-loaded) #mobile-nav, body:not(.js-loaded) .whatsapp-container { opacity: 0; visibility: hidden; pointer-events: none; }
-        body.js-loaded footer, body.js-loaded #mobile-nav, body.js-loaded .whatsapp-container { transition: opacity 0.5s ease-in; opacity: 1; visibility: visible; pointer-events: auto; }
-
-        /* === 2. HEADER Y NAVEGACIÓN === */
-        #mainHeader { transition: background-color 0.2s ease, box-shadow 0.2s ease; padding-top: 1rem; padding-bottom: 1rem; background: linear-gradient(to bottom, rgba(15, 23, 42, 0.95), transparent); will-change: background-color, box-shadow; }
-        #mainHeader.scrolled { background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); } 
-        .nav-link { transition: all .2s ease; position: relative; padding: .75rem 1rem; border-radius: 12px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; color: #cbd5e1; }
-        .nav-link::before { content: ''; position: absolute; bottom: 0; left: 50%; width: 0; height: 3px; background: var(--gradient-rainbow); transition: all .2s ease; transform: translateX(-50%); border-radius: 2px; }
-        .nav-link.active::before, .nav-link:hover::before { width: 80%; }
-        .nav-link.active, .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); transform: translateY(-2px); } 
-        
-        #mobileMenu { position: fixed; top: 0; right: -100%; width: 85%; max-width: 380px; height: 100vh; background: rgba(15, 23, 42, 0.98); backdrop-filter: blur(10px); border-left: 1px solid rgba(255,255,255,0.05); box-shadow: -20px 0 60px rgba(0,0,0,0.8); transition: right .3s ease-out; z-index: 1000; display: flex; flex-direction: column; overflow-y: auto; will-change: right; }
-        #mobileMenu.open { right: 0; }
-        .mobile-menu-header { padding: 2rem 1.5rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .mobile-nav-link { padding: 1rem 1.25rem; margin: 0.25rem 1rem; border-radius: 16px; transition: all .2s ease; display: flex; align-items: center; font-weight: 600; gap: 1rem; color: #cbd5e1; text-decoration: none; }
-        .mobile-nav-link:hover, .mobile-nav-link.active { color: #fff; background: rgba(255,255,255,0.1); transform: translateX(5px); }
-        
-        /* === 3. BOTONES GLOBALES === */
-        .btn-premium { font-weight: 700; border-radius: 9999px; transition: transform .2s ease, filter .2s ease; border: none; display: inline-flex; align-items: center; justify-content: center; gap: .75rem; position: relative; overflow: hidden; text-decoration: none; font-size: 1rem; }
-        .btn-premium:hover { transform: translateY(-2px); filter: brightness(1.05); }
-        .btn-premium:active { transform: translateY(0); } 
-        
-        /* === 4. MODALES BLINDADOS === */
-        .modal-backdrop { 
-            position: fixed; inset: 0; background: rgba(15, 23, 42,.85); z-index: 1050; 
-            display: flex; align-items: center; justify-content: center; 
-            padding: 1.5rem; opacity: 0; visibility: hidden; transition: opacity .3s ease; backdrop-filter: blur(8px); 
-        }
-        @media (max-width: 640px) { .modal-backdrop { padding: 1rem; } }
-        .modal-backdrop.show { opacity: 1; visibility: visible; }
-        
-        .modal-content { 
-            background: #0B1121; color: white; border-radius: 32px; 
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); 
-            width: 100%; max-width: 28rem; max-height: 100%; display: flex; flex-direction: column; 
-            transform: scale(.95) translateY(10px); transition: transform .3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
-            border: 1px solid rgba(255,255,255,0.1); position: relative; overflow: hidden; 
-        }
-        .modal-backdrop.show .modal-content { transform: scale(1) translateY(0); }
-        
-        .wizard-content { display: none; } 
-        .wizard-content.active { display: block; }
-        
-        .loading-spinner { border: 3px solid #334155; border-top: 3px solid #8B5CF6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
-        @keyframes spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
-
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
-        
-        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 11000; padding: 1rem 1.5rem; border-radius: 12px; color: #fff; font-weight: 600; opacity: 0; visibility: hidden; transition: all .3s cubic-bezier(.25,.46,.45,.94); display: flex; align-items: center; gap: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        #toast.show { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(10px); }
-        #toast.success { background: linear-gradient(135deg,#10b981,#059669); }
-        #toast.error { background: linear-gradient(135deg,#ef4444,#dc2626); }
-        
-        #confetti-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-
-        /* === 5. ANIMACIONES === */
-        .animate-slide-up { animation: slideUpFadeIn .3s ease-out forwards; } 
-        @keyframes slideUpFadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } } 
-        @keyframes float-fun { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-5px); } }
-        .badge-float { animation: float-fun 3s ease-in-out infinite; will-change: transform; }
-        @keyframes gradient-xy { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-        .btn-animated-gradient { background-size: 200% 200%; animation: gradient-xy 3s ease infinite; }
-
-        .group-hover-playful:hover img { transform: scale(1.08) rotate(3deg); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .group-hover-playful img { transition: transform 0.4s ease; }
-
-        /* === 6. NAVEGACIÓN INFERIOR Y WHATSAPP === */
-        .nav-pill-float { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.8); }
-        .animate-swipe { animation: swipe 2s ease-in-out infinite; }
-        @keyframes swipe { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(40px); } }
-
-        .whatsapp-container { position: fixed; bottom: 110px; right: 20px; z-index: 998; display: flex; align-items: center; gap: 12px; pointer-events: none; transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .whatsapp-container > * { pointer-events: auto; }
-        body.has-cart .whatsapp-container { bottom: 200px; }
-        .whatsapp-tooltip { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 9999px; color: white; font-size: 13px; font-weight: 700; white-space: nowrap; box-shadow: 0 10px 25px rgba(0,0,0,0.5); animation: float-tooltip 3s ease-in-out infinite; position: relative; }
-        .whatsapp-tooltip::after { content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%); border-width: 6px 0 6px 6px; border-style: solid; border-color: transparent transparent transparent rgba(15, 23, 42, 0.95); }
-        @keyframes float-tooltip { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-        .whatsapp-btn { width: 60px; height: 60px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(37,211,102,0.5); animation: glowing-wa 2s infinite; transition: transform 0.2s ease; }
-        .whatsapp-btn:hover, .whatsapp-btn:active { transform: scale(1.05); }
-        @keyframes glowing-wa { 0% { box-shadow: 0 0 15px rgba(37,211,102,0.4); } 50% { box-shadow: 0 0 30px rgba(37,211,102,0.8), 0 0 10px rgba(255,255,255,0.3) inset; } 100% { box-shadow: 0 0 15px rgba(37,211,102,0.4); } }
-        
-        /* === 7. OPTIMIZACIONES EXTREMAS === */
-        video.bg-video-optimized { transform: translateZ(0); will-change: transform; backface-visibility: hidden; perspective: 1000; }
-        @media (max-width: 768px) {
-            .backdrop-blur-md, .backdrop-blur-sm, #mainHeader.scrolled, .whatsapp-tooltip, .nav-pill-float {
-                backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-color: rgba(15, 23, 42, 0.98) !important;
-            }
-            .btn-animated-gradient { animation: none !important; background-size: 100% 100% !important; }
-            .whatsapp-btn { animation: none !important; box-shadow: 0 4px 10px rgba(37,211,102,0.4) !important; }
-            #confetti-canvas { display: none !important; }
-        }
-    </style>
-</head>
-<body class="flex flex-col relative">
-    
-    <canvas id="confetti-canvas"></canvas>
-
-    <!-- Header Principal -->
-    <header id="mainHeader" class="fixed top-0 left-0 w-full z-40 px-4 transition-all duration-200 pointer-events-none">
-        <div class="container mx-auto flex justify-between items-center pointer-events-auto">
-            <a href="#home" class="flex items-center logo-container nav-action" aria-label="Inicio">
-                <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-tr from-purple-600 to-pink-500 p-[2px] mr-3 shadow-sm">
-                    <img src="https://images.weserv.nl/?url=divertyeventos.online/android-chrome-512x512.png&w=100&output=webp" alt="Diverty Eventos" class="w-full h-full rounded-full object-cover border border-[#0F172A]" loading="eager">
+    return (
+        <div className={`${GLASS_CARD} flex flex-col relative overflow-hidden transition-transform duration-200 hover:-translate-y-1 animate-fadeInUp`} style={{ animationFillMode: 'both', animationDelay: `${idx * 20}ms` }}>
+            <div onClick={handleExpand} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent hover:bg-white/5 transition-colors duration-200">
+                <div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-lg bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1"><h4 className="font-bold text-[17px] text-white/90 capitalize truncate tracking-tight">{String(c.nombre)}</h4></div><div className="flex flex-wrap items-center gap-1.5"><p className="text-xs font-semibold text-white/60 flex items-center gap-1.5"><Smartphone size={14}/> {String(c.telefono) || 'Sin número'}</p></div></div></div>
+                <div className="flex items-center gap-3 shrink-0"><div className="text-right"><p className="text-xl font-bold text-emerald-400 leading-none tracking-tight">${c.totalGastado.toFixed(0)}</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400 shadow-sm" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400 shadow-sm" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400 shadow-sm" title="Contactar"></span>}</div></div></div>
+            </div>
+            {isExpanded && (
+                <div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-white/5 mt-1 pt-4">
+                    <div className="flex justify-between items-center bg-[#0F172A] p-4 rounded-[16px] mb-5 border border-white/5"><div className="text-center flex-1 border-r border-white/5"><p className="text-xs uppercase tracking-wider font-semibold text-white/50 mb-1">Eventos</p><p className="font-bold text-base text-white/90">{c.eventos}</p></div><div className="text-center flex-1 border-r border-white/5"><p className="text-xs uppercase tracking-wider font-semibold text-white/50 mb-1">Último</p><p className="font-bold text-base text-white/90">{c.ultimoEventoFecha ? String(c.ultimoEventoFecha).split('-').reverse().join('/') : 'N/A'}</p></div><div className="text-center flex-1"><p className="text-xs uppercase tracking-wider font-semibold text-white/50 mb-1">Estado</p><p className="font-bold text-base text-white/90 capitalize flex justify-center items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${String(c.ultimoEstado).toLowerCase() === 'completado' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div></div>
+                    <div className="flex gap-3 mb-4">
+                        <button type="button" onClick={handlePromo} className="flex-1 bg-white/5 hover:bg-emerald-500/10 py-3 rounded-[14px] font-bold text-xs uppercase tracking-wider transition-colors duration-200 active:scale-[0.98] flex flex-col items-center justify-center gap-2 border border-transparent hover:border-emerald-500/30 text-emerald-400"><Sparkles size={18}/> Promo</button>
+                        <button type="button" onClick={handleSeguimiento} className="flex-1 bg-white/5 hover:bg-blue-500/10 py-3 rounded-[14px] font-bold text-xs uppercase tracking-wider transition-colors duration-200 active:scale-[0.98] flex flex-col items-center justify-center gap-2 border border-transparent hover:border-blue-500/30 text-blue-400"><RefreshCw size={18}/> Seguir</button>
+                        <button type="button" onClick={handleRecordatorio} className="flex-1 bg-white/5 hover:bg-amber-500/10 py-3 rounded-[14px] font-bold text-xs uppercase tracking-wider transition-colors duration-200 active:scale-[0.98] flex flex-col items-center justify-center gap-2 border border-transparent hover:border-amber-500/30 text-amber-400"><BellRing size={18}/> Recordar</button>
+                    </div>
+                    <div className="flex gap-3">
+                        <AppButton variant="primary" icon={Plus} onClick={handleReserve} className="flex-1 text-[13px] uppercase tracking-wider">Reservar a este cliente</AppButton>
+                        <button type="button" onClick={handleDelete} title="Eliminar Cliente" className="px-5 bg-rose-500/10 text-rose-400 rounded-[16px] hover:bg-rose-500/20 transition-colors duration-200 active:scale-[0.97] flex items-center justify-center border border-rose-500/20">
+                            <Trash2 size={20} />
+                        </button>
+                    </div>
                 </div>
-                <div class="flex flex-col drop-shadow-md">
-                    <span class="text-2xl sm:text-3xl font-extrabold text-white font-nunito leading-none">Diverty</span>
-                    <span class="text-[10px] sm:text-xs font-bold text-purple-300 uppercase tracking-widest mt-0.5">Eventos</span>
-                </div>
-            </a>
-            
-            <nav class="hidden lg:flex items-center space-x-1 bg-white/5 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-sm text-white">
-                <a href="#home" id="navHome" class="nav-link !text-white hover:!text-purple-300"><i data-lucide="sun" class="w-4 h-4 mr-2 text-yellow-400"></i>Inicio</a>
-                <a href="#services" id="navServices" class="nav-link !text-white hover:!text-purple-300"><i data-lucide="gift" class="w-4 h-4 mr-2 text-pink-400"></i>Servicios</a>
-                <a href="#clowns" id="navClowns" class="nav-link font-bold !text-white hover:!text-purple-300"><i data-lucide="smile" class="w-4 h-4 mr-2 text-purple-400"></i>Planes</a>
-                <a href="#bubbles" id="navBubbles" class="nav-link !text-white hover:!text-purple-300"><i data-lucide="droplet" class="w-4 h-4 mr-2 text-cyan-400"></i>Burbujas</a>
-                <a href="#gallery" id="navGallery" class="nav-link !text-white hover:!text-purple-300"><i data-lucide="image" class="w-4 h-4 mr-2 text-emerald-400"></i>Galería</a>
-                <a href="#booking" id="navBooking" class="bg-gradient-to-r from-purple-600 to-pink-600 btn-animated-gradient nav-action text-white shadow-md ml-2 py-2 px-4 rounded-full flex items-center font-bold text-sm"><i data-lucide="calendar-check" class="w-4 h-4 mr-1.5"></i>Reservar</a>
-            </nav>
-            
-            <button id="mobileToggle" class="lg:hidden px-4 py-2 rounded-full text-white bg-gradient-to-r from-purple-600 to-indigo-600 shadow-[0_0_15px_rgba(139,92,246,0.4)] border border-purple-400/30 transition-transform hover:scale-105 flex items-center gap-2" aria-label="Abrir menú">
-                <span class="text-[11px] font-extrabold uppercase tracking-widest">Menú</span>
-                <i data-lucide="menu" class="w-4 h-4"></i>
+            )}
+        </div>
+    );
+});
+
+const TransactionItem = React.memo(({ ev, isExpanded, onToggleExpand, utils }) => {
+    const tot = utils.safeNum(ev.total), gas = utils.safeNum(ev.gastos), neta = tot - gas;
+    const handleToggle = useCallback((e) => { if(e){e.preventDefault(); e.stopPropagation();} onToggleExpand(ev.id); }, [ev.id, onToggleExpand]);
+    return (
+        <div className="group">
+            <button type="button" onClick={handleToggle} className="w-full flex justify-between items-center p-5 rounded-[20px] bg-transparent hover:bg-white/5 transition-colors duration-200 text-left border border-transparent hover:border-white/5 active:scale-[0.99]">
+                <div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-bold capitalize text-[16px] text-white/90 truncate tracking-tight">{String(ev.cliente || '')}</p><p className="text-xs font-medium text-white/50 mt-1.5">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''} • {String(ev.tipoEvento || '').substring(0,15)}</p></div>
+                <div className="text-right shrink-0 flex items-center gap-4"><div className="flex flex-col items-end"><span className="font-bold text-emerald-400 text-lg leading-none block mb-2 tracking-tight">+${neta.toFixed(2)}</span>{gas > 0 && <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400 leading-none px-2 py-1 bg-rose-500/10 rounded-lg">Gastos: -${gas}</span>}</div><ChevronDown size={18} className={`text-white/40 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}/></div>
             </button>
+            {isExpanded && (
+                <div className="mx-5 mb-3 p-5 bg-[#0F172A] rounded-[16px] border border-white/5 animate-fadeIn">
+                    <div className="flex justify-between items-center mb-3"><span className="text-xs text-white/60 uppercase tracking-wider font-semibold">Ingreso Bruto</span><span className="font-bold text-[15px] text-white/90">${tot.toFixed(2)}</span></div>
+                    <div className="flex justify-between items-center mb-3"><span className="text-xs text-white/60 uppercase tracking-wider font-semibold">Gastos Operativos</span><span className="font-bold text-[15px] text-rose-400">-${gas.toFixed(2)}</span></div>
+                    {ev.detalleGastos && (<div className="mt-4 pt-4 border-t border-white/5"><span className="text-[11px] uppercase font-semibold tracking-wider text-white/50 block mb-2">Desglose de Gastos:</span><p className="text-[13px] font-medium text-white/70 italic leading-relaxed">{String(ev.detalleGastos)}</p></div>)}
+                </div>
+            )}
         </div>
-    </header>
+    );
+});
+
+const EventCardItem = React.memo(({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir }) => {
+    const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false);
+    const startX = useRef(0);
+    const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []);
+    const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]);
+    const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
+
+    const estNormalized = utils.normalizeText(ev.estado);
+    const isCotizacion = estNormalized.includes('cotizaci') || estNormalized.includes('cot.');
+    const tot = utils.safeNum(ev.total), abo = utils.safeNum(ev.abono), restante = Math.max(0, tot - abo);
     
-    <!-- Resumen del Carrito Flotante -->
-    <div id="cartSummary" class="hidden fixed bottom-28 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-40 bg-[#1E293B]/95 backdrop-blur-sm border border-slate-700 p-3 shadow-2xl rounded-2xl">
-        <div class="flex justify-between items-center gap-3">
-            <div class="flex items-center gap-2 text-white font-semibold">
-                <div id="cart-icon-container" class="bg-purple-600/20 p-2 rounded-full text-purple-400"><i data-lucide="shopping-cart" class="w-5 h-5"></i></div>
-                <div class="flex flex-col leading-tight">
-                    <span class="text-[10px] text-slate-400 uppercase">Total (<span id="itemCount" class="text-pink-400 font-bold">0</span>)</span>
-                    <span id="totalPrice" class="text-emerald-400 font-extrabold text-base">$0.00</span>
-                </div>
-            </div>
-            <button id="viewCart" class="bg-white text-slate-900 font-bold text-xs py-2.5 px-4 rounded-xl shadow-md transition-transform hover:scale-105">Ver Carrito</button>
-        </div>
-    </div>
+    let sideColor = "bg-white/10", dotColor = "bg-white/20";
+    if (estNormalized === 'completado') { sideColor = 'bg-emerald-500'; dotColor = 'bg-emerald-400'; }
+    else if (estNormalized.includes('aprobada')) { sideColor = 'bg-teal-500'; dotColor = 'bg-teal-400'; }
+    else if (estNormalized.includes('rechazada')) { sideColor = 'bg-gray-500'; dotColor = 'bg-gray-400'; }
+    else if (isCotizacion) { sideColor = 'bg-amber-300'; dotColor = 'bg-amber-300'; }
+    else if (estNormalized === 'confirmado') { sideColor = 'bg-blue-500'; dotColor = 'bg-blue-400'; }
+    else if (estNormalized === 'pendiente') { sideColor = 'bg-amber-500'; dotColor = 'bg-amber-400'; }
+    else if (estNormalized === 'cancelado') { sideColor = 'bg-rose-500'; dotColor = 'bg-rose-400'; }
 
-    <!-- Menú Móvil Lateral -->
-    <div id="mobileMenuOverlay" class="fixed inset-0 bg-black/60 z-[999] opacity-0 visibility-hidden transition-opacity duration-200"></div>
-    <nav id="mobileMenu">
-        <div class="mobile-menu-header">
-            <div class="flex justify-between items-center relative z-10">
-                <h2 class="text-2xl font-extrabold font-nunito text-white">Menú Diverty</h2>
-                <button id="closeMobile" class="p-2 text-slate-400 hover:text-white rounded-full bg-white/5 transition-colors border border-white/10"><i data-lucide="x" class="h-5 w-5"></i></button>
-            </div>
-        </div>
-        <div class="flex-1 p-2 py-4">
-            <div class="space-y-1">
-                <a href="#home" id="mobileHome" class="mobile-nav-link nav-action"><i data-lucide="sun" class="w-5 h-5 text-yellow-400"></i>Inicio</a>
-                <a href="#portal" id="mobilePortal" class="mobile-nav-link nav-action"><i data-lucide="search" class="w-5 h-5 text-indigo-400"></i>Mi Reserva</a>
-                <a href="#services" id="mobileServices" class="mobile-nav-link nav-action"><i data-lucide="gift" class="w-5 h-5 text-pink-400"></i>Servicios</a>
-                <a href="#clowns" id="mobileClowns" class="mobile-nav-link text-white font-bold nav-action bg-white/10 border border-white/5"><i data-lucide="smile" class="w-5 h-5 text-purple-400"></i>Planes de Fiestas</a>
-                <a href="#bubbles" id="mobileBubbles" class="mobile-nav-link nav-action"><i data-lucide="droplet" class="w-5 h-5 text-cyan-400"></i>Burbujas</a>
-                <a href="#santa" id="mobileSanta" class="mobile-nav-link nav-action"><i data-lucide="bell" class="w-5 h-5 text-red-400"></i>Santa</a>
-                <a href="#gallery" id="mobileGallery" class="mobile-nav-link nav-action"><i data-lucide="image" class="w-5 h-5 text-emerald-400"></i>Galería</a>
-                <a href="#reviews" id="mobileReviews" class="mobile-nav-link nav-action"><i data-lucide="star" class="w-5 h-5 text-yellow-400"></i>Reseñas</a>
-            </div>
-            <div class="mt-8 mx-4">
-                <a href="#booking" id="mobileBooking" class="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl shadow-md nav-action flex justify-center items-center gap-2"><i data-lucide="calendar-check" class="w-5 h-5"></i> ¡Reserva Ahora!</a>
-            </div>
-        </div>
-    </nav>
+    let waType = 'agradecimiento';
+    if (isCotizacion) waType = 'cotizacion';
+    else if (estNormalized === 'pendiente') waType = 'cobro';
+    else if (estNormalized === 'confirmado') waType = 'recordatorio';
 
-    <!-- Contenedor Principal -->
-    <main id="mainContent" class="flex-grow flex flex-col min-h-screen w-full"></main>
-
-    <!-- FOOTER ULTRA PRO -->
-    <footer class="bg-[#0B1121] text-white relative pt-16 pb-36 lg:pb-16 border-t border-slate-800 mt-auto overflow-hidden">
-        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-2xl h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50"></div>
-        <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div class="container mx-auto px-4 text-center relative z-10">
-            <h2 class="text-3xl md:text-4xl font-extrabold text-white font-nunito mb-2">¿Listo para reservar tu fiesta?</h2>
-            <p class="text-slate-400 mb-10 font-medium">Escríbenos ahora y asegura tu fecha</p>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto mb-12">
-                <a href="https://www.instagram.com/diverty_eventos_pty" target="_blank" class="flex items-center justify-start gap-4 bg-white/5 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 hover:bg-white/10 hover:border-purple-500/50 transition-all group">
-                    <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="text-white" viewBox="0 0 16 16">
-                            <path d="M8 0C5.829 0 5.556.01 4.703.048 3.85.088 3.269.222 2.76.42a3.917 3.917 0 0 0-1.417.923A3.927 3.927 0 0 0 .42 2.76C.222 3.268.087 3.85.048 4.7.01 5.555 0 5.827 0 8.001c0 2.172.01 2.444.048 3.297.04.852.174 1.433.372 1.942.205.526.478.972.923 1.417.444.445.89.719 1.416.923.51.198 1.09.333 1.942.372C5.555 15.99 5.827 16 8 16s2.444-.01 3.298-.048c.851-.04 1.434-.174 1.943-.372a3.916 3.916 0 0 0 1.416-.923c.445-.445.718-.891.923-1.417.197-.509.332-1.09.372-1.942C15.99 10.445 16 10.173 16 8s-.01-2.445-.048-3.299c-.04-.851-.175-1.433-.372-1.941a3.926 3.926 0 0 0-.923-1.417A3.911 3.911 0 0 0 13.24.42c-.51-.198-1.092-.333-1.943-.372C10.443.01 10.172 0 7.998 0h.003zm-.717 1.442h.718c2.136 0 2.389.007 3.232.046.78.036 1.204.166 1.486.275.373.145.64.319.92.599.28.28.453.546.598.92.11.281.24.705.275 1.485.039.843.047 1.096.047 3.231s-.008 2.389-.047 3.232c-.035.78-.166 1.203-.275 1.485a2.47 2.47 0 0 1-.599.919c-.28.28-.546.453-.92.598-.28.11-.704.24-1.487.276-.843.038-1.096.047-3.232.047s-2.39-.009-3.233-.047c-.78-.036-1.203-.166-1.485-.276a2.478 2.478 0 0 1-.92-.598 2.48 2.48 0 0 1-.6-.92c-.109-.281-.24-.705-.275-1.485-.038-.843-.046-1.096-.046-3.233 0-2.136.008-2.388.046-3.231.036-.78.166-1.204.276-1.486.145-.373.319-.64.599-.92.28-.28.546-.453.92-.598.282-.11.705-.24 1.485-.276.738-.034 1.024-.044 2.515-.045v.002zm4.988 1.328a.96.96 0 1 0 0 1.92.96.96 0 0 0 0-1.92zm-4.27 1.122a4.109 4.109 0 1 0 0 8.217 4.109 4.109 0 0 0 0-8.217zm0 1.441a2.667 2.667 0 1 1 0 5.334 2.667 2.667 0 0 1 0-5.334z"/>
-                        </svg>
-                    </div>
-                    <span class="font-bold text-slate-200 group-hover:text-white truncate">@diverty_eventos_pty</span>
-                </a>
-                
-                <a href="https://wa.me/50766677965" target="_blank" class="flex items-center justify-start gap-4 bg-white/5 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 hover:bg-white/10 hover:border-emerald-500/50 transition-all group">
-                    <div class="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm shrink-0">
-                        <i data-lucide="phone" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <span class="font-bold text-slate-200 group-hover:text-white truncate">+507 6667-7965</span>
-                </a>
-                
-                <a href="mailto:corporativo@divertyeventos.online" class="flex items-center justify-start gap-4 bg-white/5 backdrop-blur-md px-6 py-4 rounded-2xl border border-white/10 hover:bg-white/10 hover:border-blue-500/50 transition-all group sm:col-span-2 md:col-span-1">
-                    <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-sm shrink-0">
-                        <i data-lucide="mail" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <span class="font-bold text-slate-200 group-hover:text-white truncate">corporativo@divertyeventos.online</span>
-                </a>
-            </div>
-
-            <div class="flex flex-col items-center gap-3 mb-10">
-                <div class="flex items-center gap-2 text-slate-300 font-medium">
-                    <i data-lucide="star" class="w-5 h-5 text-yellow-500 fill-yellow-500"></i>
-                    <span>Más de <span class="text-white font-bold">500 eventos</span> realizados</span>
-                </div>
-                <div class="flex items-center gap-2 text-slate-300 font-medium">
-                    <i data-lucide="star" class="w-5 h-5 text-yellow-500 fill-yellow-500"></i>
-                    <span><span class="text-white font-bold">4.9/5</span> en Google</span>
-                </div>
-                <div class="flex items-center gap-2 text-slate-300 font-medium">
-                    <span class="text-xl leading-none">🎉</span>
-                    <span>Diversión garantizada</span>
-                </div>
-            </div>
-
-            <div class="border-t border-slate-800 pt-8 mt-4 max-w-2xl mx-auto">
-                <p class="text-sm font-medium text-slate-500">&copy; 2026 Diverty Eventos ✨ Haciendo cada fiesta mágica</p>
-            </div>
-        </div>
-    </footer>
-    
-    <!-- NAVEGACIÓN INFERIOR -->
-    <nav id="mobile-nav" class="lg:hidden fixed bottom-6 left-4 right-4 nav-pill-float rounded-[2rem] flex justify-around items-center h-[72px] z-40 px-2 transition-transform duration-300">
-        <a href="#home" class="flex flex-col items-center justify-center text-slate-400 w-14 nav-action transition-colors hover:text-white hover:scale-105">
-            <i data-lucide="sun" class="w-5 h-5 mb-1"></i>
-            <span class="text-[9px] font-bold tracking-wider">Inicio</span>
-        </a>
-        <a href="#clowns" class="flex flex-col items-center justify-center text-slate-400 w-14 nav-action transition-colors hover:text-white hover:scale-105">
-            <i data-lucide="smile" class="w-5 h-5 mb-1"></i>
-            <span class="text-[9px] font-bold tracking-wider">Planes</span>
-        </a>
-        
-        <a href="#booking" class="relative -top-5 bg-gradient-to-tr from-purple-500 to-pink-500 text-white rounded-full w-[64px] h-[64px] flex items-center justify-center border-[4px] border-[#0F172A] shadow-[0_0_20px_rgba(168,85,247,0.5)] transform hover:scale-105 transition-all nav-action">
-            <i data-lucide="calendar-check" class="w-7 h-7"></i>
-        </a>
-        
-        <a href="#gallery" class="flex flex-col items-center justify-center text-slate-400 w-14 nav-action transition-colors hover:text-white hover:scale-105">
-            <i data-lucide="image" class="w-5 h-5 mb-1"></i>
-            <span class="text-[9px] font-bold tracking-wider">Galería</span>
-        </a>
-        <a href="#portal" class="flex flex-col items-center justify-center text-slate-400 w-14 nav-action transition-colors hover:text-white hover:scale-105">
-            <i data-lucide="search" class="w-5 h-5 mb-1"></i>
-            <span class="text-[9px] font-bold tracking-wider">Portal</span>
-        </a>
-    </nav>
-
-    <!-- WHATSAPP FLOTANTE CON TOOLTIP -->
-    <div class="whatsapp-container">
-        <div class="whatsapp-tooltip hidden sm:flex items-center badge-float">¿Reservamos tu fecha?</div>
-        <a href="https://wa.me/50766677965?text=¡Hola! Quiero cotizar mi evento. 🎉" class="whatsapp-btn" target="_blank" rel="noopener noreferrer" aria-label="Contactar por WhatsApp">
-            <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="text-white" viewBox="0 0 16 16">
-                <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592zm3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.729.729 0 0 0-.529.247c-.182.198-.691.677-.691 1.654 0 .977.71 1.916.81 2.049.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/>
-            </svg>
-        </a>
-    </div>
-    
-    <!-- MODAL INFO EXITO ULTRA PRO -->
-    <div id="infoModal" class="modal-backdrop z-[1050]">
-        <div class="modal-content bg-[#0B1121] border border-slate-700/50 text-white rounded-[32px] sm:rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] p-8 sm:p-10 max-w-md w-full relative overflow-hidden text-center justify-center">
-            
-            <div class="absolute -top-32 -right-32 w-64 h-64 bg-emerald-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-teal-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            
-            <div class="relative z-10">
-                <div class="w-20 h-20 bg-[#162032] border border-emerald-500/30 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(16,185,129,0.15)] badge-float relative group">
-                    <div class="absolute inset-0 bg-gradient-to-tr from-emerald-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
-                    <i data-lucide="check-circle" class="w-10 h-10 text-emerald-400 drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]"></i>
-                </div>
-                
-                <h3 class="text-3xl font-black text-white mb-3 font-nunito tracking-tight">¡Solicitud Exitosa!</h3>
-                <p id="modalMessage" class="text-sm text-slate-400 font-medium leading-relaxed mb-8 px-2"></p>
-                
-                <button id="closeModal" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 btn-animated-gradient border border-emerald-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.6)] hover:-translate-y-1">
-                    <i data-lucide="check" class="w-5 h-5"></i> Entendido
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL DEL CARRITO (REDISEÑO ESTRUCTURAL PARA MÓVILES) -->
-    <div id="cartModal" class="modal-backdrop z-[1050]">
-        <div class="modal-content border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)]">
-            
-            <div class="absolute -top-32 -right-32 w-64 h-64 bg-purple-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-indigo-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            
-            <!-- Cabecera Fija -->
-            <div class="shrink-0 p-5 sm:p-6 pb-2 relative z-10">
-                <h2 class="text-2xl sm:text-3xl font-extrabold flex items-center justify-center gap-2 text-white font-nunito tracking-tight">
-                    <i data-lucide="shopping-cart" class="text-purple-400 w-6 h-6 sm:w-7 sm:h-7"></i>Tu Carrito
-                </h2>
-            </div>
-                
-            <!-- Lista de Items SCROLLABLE -->
-            <div id="cartItems" class="flex-1 overflow-y-auto px-5 sm:px-6 custom-scrollbar relative z-10 min-h-[80px]"></div>
-                
-            <!-- Footer Fijo -->
-            <div class="shrink-0 p-5 sm:p-6 pt-4 relative z-10 border-t border-slate-800/50 bg-[#0B1121]/95 backdrop-blur-md">
-                
-                <div class="mb-4">
-                    <label for="cartLocation" class="font-bold text-slate-400 text-[10px] uppercase tracking-wider mb-2 block pl-1">Ubicación del Evento:</label>
-                    <div class="relative group">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <i data-lucide="map-pin" class="w-4 h-4 text-rose-400"></i>
-                        </div>
-                        <select id="cartLocation" class="w-full bg-[#162032] border border-slate-700/50 rounded-xl py-3 pl-10 pr-10 text-sm font-bold text-white outline-none focus:border-purple-400 transition-all appearance-none shadow-inner cursor-pointer group-hover:border-slate-600"></select>
-                        <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400"></i>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="mb-5 pl-1 pr-1 bg-[#162032]/50 p-4 rounded-xl border border-slate-700/30 shadow-inner">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-xs font-medium text-slate-400">Subtotal:</span>
-                        <span id="cartTotal" class="text-xs font-bold text-white w-20 text-right">$0.00</span>
-                    </div>
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="text-xs font-medium text-slate-400">Transporte:</span>
-                        <span id="transportCost" class="text-xs font-bold text-white w-20 text-right">$0.00</span>
-                    </div>
-                    <div class="w-full h-px bg-slate-700/50 mb-3"></div>
-                    <div class="flex justify-between items-end">
-                        <span class="text-sm font-extrabold text-white uppercase tracking-wider">Total</span>
-                        <span id="finalTotal" class="text-2xl font-black text-emerald-400 drop-shadow-md leading-none">$0.00</span>
-                    </div>
-                </div>
-                
-                <!-- Botones Ultra Pro -->
-                <div class="flex gap-3">
-                    <button id="closeCart" class="bg-[#1E293B] border border-slate-700 text-slate-300 flex-1 hover:bg-[#2A364A] hover:text-white hover:border-slate-500 font-extrabold rounded-[18px] transition-all duration-300 text-[15px] shadow-sm flex items-center justify-center gap-2 h-[54px]">
-                        Cerrar
-                    </button>
-                    <a href="#booking" id="proceedBooking" class="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white flex-1 nav-action font-extrabold rounded-[18px] text-center transition-all duration-300 text-[15px] flex justify-center items-center shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1 gap-2 h-[54px]">
-                        Reservar <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- MODAL CALCULADORA -->
-    <div id="calculatorModal" class="modal-backdrop z-[1050]">
-        <div class="modal-content border border-slate-700/50 shadow-[0_0_50px_rgba(0,0,0,0.8)] max-w-2xl">
-            
-            <div class="shrink-0 p-5 sm:p-6 pb-2 relative z-10 border-b border-slate-800/50">
-                <h2 class="text-2xl font-extrabold flex items-center justify-center gap-2 text-white"><i data-lucide="calculator" class="text-cyan-400"></i>Calculadora Rápida</h2>
-            </div>
-                
-            <div class="flex-1 overflow-y-auto px-5 sm:px-6 py-4 custom-scrollbar relative z-10 min-h-[80px]">
-                <div class="bg-slate-800/50 rounded-2xl p-5 mb-5 border border-slate-700">
-                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Servicios:</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="calculatorServices"></div>
-                </div>
-                <div class="bg-slate-800/50 rounded-2xl p-5 mb-2 border border-slate-700">
-                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Ubicación:</h3>
-                    <select id="calculatorLocation" class="w-full bg-[#1E293B] border border-slate-600 rounded-2xl py-3.5 px-4 text-sm font-bold text-white outline-none focus:border-cyan-400 transition-colors"></select>
-                </div>
-            </div>
-                
-            <div class="shrink-0 p-5 sm:p-6 pt-4 relative z-10 border-t border-slate-800/50 bg-[#0B1121]/95 backdrop-blur-md">
-                <div class="bg-slate-950 text-white rounded-3xl p-5 mb-5 border border-slate-800 shadow-inner">
-                    <div class="flex justify-between items-center mb-1"><span class="text-sm font-medium text-slate-400">Subtotal:</span><span id="calcSubtotal" class="text-lg font-bold text-white">$0.00</span></div>
-                    <div class="flex justify-between items-center mb-3"><span class="text-sm font-medium text-slate-400">Transporte:</span><span id="calcTransport" class="text-lg font-bold text-white">$0.00</span></div>
-                    <div class="border-t border-slate-800 pt-3"><div class="flex justify-between items-baseline"><span class="text-sm font-bold text-slate-400 uppercase">TOTAL ESTIMADO:</span><span id="calcTotal" class="text-3xl font-extrabold text-emerald-400 drop-shadow-md">$0.00</span></div></div>
-                </div>
-                <div class="flex gap-3">
-                    <button id="closeCalculator" class="bg-[#1E293B] border border-slate-700 text-slate-300 flex-1 hover:bg-[#2A364A] hover:text-white font-extrabold rounded-[18px] transition-all duration-300 text-[15px] shadow-sm h-[54px]">Cerrar</button>
-                    <button id="addCalculatedToCart" class="bg-emerald-500 hover:bg-emerald-400 flex-1 text-white font-bold rounded-[18px] flex justify-center items-center gap-2 transition-colors h-[54px] shadow-md"><i data-lucide="check" class="w-5 h-5"></i> Aceptar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL CONFIRMAR RESERVA ULTRA PRO -->
-    <div id="bookingConfirmModal" class="modal-backdrop z-[1050]">
-        <div class="modal-content bg-[#0B1121] border border-slate-700/50 text-white rounded-[32px] sm:rounded-[40px] shadow-[0_0_50px_rgba(0,0,0,0.8)] p-8 sm:p-10 max-w-md w-full relative overflow-hidden text-center justify-center">
-            
-            <div class="absolute -top-32 -right-32 w-64 h-64 bg-indigo-600/20 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            <div class="absolute -bottom-32 -left-32 w-64 h-64 bg-purple-600/10 rounded-full blur-[60px] pointer-events-none z-0"></div>
-            
-            <div class="relative z-10">
-                <div class="w-20 h-20 bg-[#162032] border border-slate-700 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner badge-float relative group">
-                    <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl"></div>
-                    <i data-lucide="calendar" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)]"></i>
-                </div>
-                
-                <h2 class="text-3xl font-black mb-3 text-white font-nunito tracking-tight leading-tight">Verificar<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Disponibilidad</span></h2>
-                
-                <p class="text-slate-400 mb-8 text-sm font-medium leading-relaxed px-2">
-                    Nuestra agenda se llena rápidamente. El sistema validará su fecha de forma automática en el siguiente paso.
-                </p>
-                
-                <button id="continueToBookingBtn" class="w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
-                    Continuar a Reserva <i data-lucide="arrow-right" class="w-5 h-5"></i>
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <div id="toast"></div>
-
-    <script type="module">
-    // IMPORTANTE: Prevenir que el navegador recuerde la posición y salte hacia abajo
-    if ('scrollRestoration' in history) {
-        history.scrollRestoration = 'manual';
+    let diff = null, dateBadgeContent = null;
+    if (ev.fecha) { 
+        const [y, m, d] = String(ev.fecha).split('-'); 
+        if (y && m && d) { 
+            const evtD = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime(); 
+            diff = Math.ceil((evtD - todayTime) / (1000 * 60 * 60 * 24)); 
+        } 
+    }
+    if (diff === 0 && !isCotizacion) dateBadgeContent = (<span className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div> HOY</span>);
+    else if (diff === 1 && !isCotizacion) dateBadgeContent = (<span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-[10px] text-xs font-bold uppercase tracking-wider flex items-center gap-1 shrink-0">MAÑANA</span>);
+    else if (isCotizacion) {
+        if (estNormalized.includes('aprobada')) dateBadgeContent = (<span className="bg-teal-500/10 border border-teal-500/20 text-teal-400 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0">COT. Aprobada</span>);
+        else if (estNormalized.includes('rechazada')) dateBadgeContent = (<span className="bg-gray-500/10 border border-gray-500/20 text-gray-400 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0">COT. Rechazada</span>);
+        else dateBadgeContent = (<span className="bg-amber-300/10 border border-amber-300/20 text-amber-300 px-3 py-1 rounded-[10px] text-[10px] font-bold uppercase tracking-wider shrink-0 flex items-center gap-1.5"><FileText size={12}/> Cotización</span>);
     }
 
-    // ==========================================
-    // 1. CONFIGURACIÓN Y FIREBASE
-    // ==========================================
-    import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, getDoc, collection, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    const handleExpand = useCallback((e) => { if(e){e.preventDefault(); e.stopPropagation();} utils.triggerHaptic('light'); setIsExpanded(p => !p); }, [utils]);
+    const handleMap = useCallback((e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }, [ev.direccion, ev.ubicacion, onMapClick]);
+    const handleWA = useCallback((e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }, [ev, waType, empresa, onWhatsApp]);
+    const handleFactura = useCallback((e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }, [ev, onViewDoc]);
+    const handleContrato = useCallback((e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }, [ev, onViewDoc]);
 
-    const firebaseConfig = { 
-        apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", 
-        authDomain: "diverty-eventos.firebaseapp.com", 
-        projectId: "diverty-eventos", 
-        storageBucket: "diverty-eventos.firebasestorage.app", 
-        messagingSenderId: "491130670516", 
-        appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" 
-    };
-    
-    const CRM_APP_ID = "diverty-oficial";
-    const LOGO_URL = 'https://images.weserv.nl/?url=i.postimg.cc/GhFd4tcm/1000047880.png&w=150&output=webp';
-    
-    let db, auth;
-    let bookedEvents = []; 
-    let currentCalDate = new Date();
-    let bookingFormState = {};
-    let calculatorItems = [];
-    let selectedCalendarDate = null; 
-    
-    const app = { 
-        activeSection: 'home', 
-        cart: [], 
-        location: 'panama-centro', 
-        wizardStep: 1 
-    };
+    return (
+        <div className={`relative w-full ${GLASS_CARD} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}>
+            <div className={`absolute inset-0 bg-gradient-to-r from-rose-600 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div>
+            <div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-[#0B1221] cursor-pointer" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)', touchAction: 'pan-y' }} onClick={handleExpand}>
+                <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor}`}></div>
+                <div className="pl-3">
+                    <div className="flex justify-between items-center gap-4">
+                        <div className="flex items-center gap-3 min-w-0"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`}></div><h3 className="text-lg font-bold text-white/90 truncate tracking-tight">{String(ev.cliente)}</h3>{dateBadgeContent}</div>
+                        {!isExpanded && (
+                            <div className="flex items-center gap-4 shrink-0">
+                                <span className="text-white/90 font-bold text-lg tracking-tight">${tot.toFixed(2)}</span>
+                                {isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-500/10 text-rose-400 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider border border-rose-500/20">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-400"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}
+                            </div>
+                        )}
+                    </div>
+                    <div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-6' : 'grid-rows-[0fr] opacity-0 mt-0'}`}>
+                        <div className="overflow-hidden">
+                            <div className="flex flex-col gap-4 mb-6 pt-2">
+                                <div className="flex items-center gap-4 text-white/70"><Sparkles size={18} className="text-white/40 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div>
+                                <div onClick={handleMap} className="flex items-center justify-between gap-4 text-white/70 cursor-pointer hover:bg-white/5 p-2 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-white/5" title="Abrir en Google Maps">
+                                    <div className="flex items-center gap-4 min-w-0"><MapPin size={18} className="text-white/40 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div>
+                                    <div className="bg-white/5 p-2 rounded-lg border border-white/10"><MapIcon size={14} className="text-blue-400" /></div>
+                                </div>
+                                <div className="flex items-center gap-4 text-white/70"><Smartphone size={18} className="text-white/40 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div>
+                            </div>
+                            <div className="bg-[#0F172A] rounded-2xl p-5 sm:p-6 border border-white/5 mb-6 relative overflow-hidden">
+                                <div className="flex justify-between items-end mb-5"><div className="flex flex-col"><span className="text-xs font-bold text-white/60 uppercase tracking-wider mb-1.5">Total</span><span className="text-2xl font-bold text-white/90 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-xs font-bold text-white/60 uppercase tracking-wider mb-1.5">Pendiente</span><span className={`text-2xl font-bold tracking-tight leading-none ${restante > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>${restante.toFixed(2)}</span></div></div>
+                                <div className="w-full bg-[#0B1221] rounded-full h-2 mb-3 overflow-hidden"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div>
+                                <div className="flex justify-between items-center"><p className="text-xs font-medium text-white/70 flex items-center gap-1.5">Recibido: ${abo.toFixed(2)}</p><p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <AppButton onClick={handleWA} className="w-full sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-400/50 shadow-sm" icon={MessageCircle}>Contactar</AppButton>
+                                {isCotizacion ? (
+                                    <div className="flex gap-3 w-full sm:flex-1">
+                                        <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="w-full" icon={FileText}>Ver PDF</AppButton>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-3 w-full sm:flex-1">
+                                        <AppButton onClick={handleFactura} variant="default" className="flex-1" icon={Receipt}>Factura</AppButton>
+                                        <AppButton onClick={handleContrato} variant="default" className="flex-1" icon={FileSignature}>Contrato</AppButton>
+                                    </div>
+                                )}
+                            </div>
 
-    // ==========================================
-    // 2. DATOS DEL CATÁLOGO
-    // ==========================================
-    const locations = [
-        { value: 'panama-centro', label: 'Panamá Centro (+$5)', cost: 5 }, 
-        { value: 'arraijan', label: 'Arraiján (+$15)', cost: 15 }, 
-        { value: 'la-chorrera', label: 'La Chorrera (+$20)', cost: 20 }, 
-        { value: 'panama-norte', label: 'Panamá Norte (+$10)', cost: 10 }, 
-        { value: 'panama-este', label: 'Panamá Este (+$10)', cost: 10 }, 
-        { value: 'ancon', label: 'Ancón (+$10)', cost: 10 }
-    ];
+                            {/* Acciones específicas para Cotizaciones */}
+                            {isCotizacion && (
+                                <div className="flex gap-3 mt-4 pt-4 border-t border-white/5">
+                                    {estNormalized === 'cotizacion' && (
+                                        <>
+                                            <AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3">Aprobar</AppButton>
+                                            <AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 bg-white/5 text-white/50 hover:text-white/80">Rechazar</AppButton>
+                                        </>
+                                    )}
+                                    {estNormalized.includes('aprobada') && (
+                                        <AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-[0_8px_20px_rgba(37,99,235,0.3)]">Convertir en Reserva</AppButton>
+                                    )}
+                                </div>
+                            )}
 
-    let services = [
-        { id: 'service_facepaint', name: 'Pintacaritas', price: 50, description: 'Arte facial profesional con colores neón. Servicio por 1 hora.', image: 'https://images.weserv.nl/?url=i.ibb.co/Kj8pkBJP/IMG-20250711-211956.jpg&w=600&output=webp', isHourly: true },
-        { id: 'service_balloons', name: 'Globoflexia', price: 55, description: '¡Magia con globos! Servicio por 1 hora.', image: 'https://images.weserv.nl/?url=i.ibb.co/3nNBDNh/1000156690-f40525f3ffe7fcc4f65d41f55096c0bc-Editado-20250808-161453-0000.jpg&w=600&output=webp', isHourly: true },
-        { id: 'service_snacks', name: 'Máquinas de Snack', price: 120, description: 'Algodón de azúcar y palomitas. Servicio por 3 horas.', image: 'https://images.weserv.nl/?url=i.ibb.co/ycF665wh/1000166060-468200627b3f51bc4bbb7d47cc634544-Editado-20250812-132914-0000.jpg&w=600&output=webp' },
-        { id: 'service_inflatable', name: 'Alquiler de Inflables', price: 90, description: 'Consultar modelos disponibles. 4 horas.', image: 'https://images.weserv.nl/?url=i.ibb.co/zWqyrbKP/1000171895-1915883b5932d9d77d10e75b74d8102b-Editado-20250812-133521-0000.jpg&w=600&output=webp' },
-        { id: 'service_magic', name: 'Show de Magia Cómica', price: 100, description: 'Espectáculo interactivo de 1.5 horas.', image: 'https://images.weserv.nl/?url=i.ibb.co/Gvwbr34b/1000166148-07728f00941825383160a10b58da6f49-Editado-Editado-20250808-161017-0000.jpg&w=600&output=webp' },
-        { id: 'service_characters', name: 'Personajes Temáticos', type: 'character-group', description: '¡Tus personajes favoritos listos para la foto y el baile!', characters: [ 
-            { id: 'char_mickey', name: 'Personaje: Mickey Mouse', price: 75, image: 'https://images.weserv.nl/?url=i.ibb.co/qMzjGmVP/1000115409-2be9f20a9f4b71257a0ef39431ce5e81-Editado-20250812-145651-0000.jpg&w=150&output=webp' }, 
-            { id: 'char_minnie', name: 'Personaje: Minnie Mouse', price: 75, image: 'https://images.weserv.nl/?url=i.ibb.co/7J86Pshb/1000173618-c8140aed0fade6ffd165667c35177481-Editado-20250812-152335-0000.jpg&w=150&output=webp' }, 
-            { id: 'char_mario', name: 'Personaje: Mario Bros', price: 75, image: 'https://images.weserv.nl/?url=i.ibb.co/V0L3smxc/9bc62c03-03f6-4693-be31-1ee6fc9cabaf-20250812-145204-0000.jpg&w=150&output=webp' }, 
-            { id: 'char_stitch', name: 'Personaje: Stitch', price: 75, image: 'https://images.weserv.nl/?url=i.ibb.co/39pNmTvD/1000173616-67a0a0a93ba9656714e1d4090d078cf7-Editado-20250812-145043-0000.jpg&w=150&output=webp' } 
-        ] },
-        { id: 'service_workshop', name: 'Taller de Arte', price: 12.00, description: 'Mínimo 10 niños.', image: 'https://images.weserv.nl/?url=i.ibb.co/ynXVt81f/IMG-20250709-164447.jpg&w=600&output=webp', isPerChild: true, minChildren: 10 },
-        { id: 'service_photos', name: 'Foto Impresa Extra', price: 2.00, description: 'Llévate el recuerdo al instante.', image: 'https://images.weserv.nl/?url=i.ibb.co/zvx6hbd/IMG-20251023-WA0020.jpg&w=600&output=webp', isPerChild: true, minChildren: 1 },
-        { id: 'service_decor', name: 'Decoración Temática', price: 100, description: 'Transformamos tu espacio.', image: 'https://images.weserv.nl/?url=i.ibb.co/p61CY7CW/IMG-20250624-WA0000.jpg&w=600&output=webp' }
-    ];
+                            <div className="flex gap-3 mt-4 pt-4 border-t border-white/5">
+                                <button onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} className="flex-1 text-white/70 hover:text-white/90 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-white/5 rounded-xl hover:bg-white/10"><Edit size={16} strokeWidth={2}/> Editar</button>
+                                <button onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} className="flex-1 text-blue-400/90 hover:text-blue-400 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-blue-500/10 rounded-xl hover:bg-blue-500/20"><Copy size={16} strokeWidth={2}/> Duplicar</button>
+                                <button onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} className="flex-1 text-rose-400/90 hover:text-rose-400 font-semibold py-3 flex items-center justify-center gap-2 text-xs uppercase tracking-wider active:scale-[0.98] transition-colors duration-200 bg-rose-500/10 rounded-xl hover:bg-rose-500/20"><Trash2 size={16} strokeWidth={2}/> Eliminar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
 
-    const clownPackages = [
-        { id: 'clown_circus', name: 'Paquete Circo', originalPrice: 85, price: 85.00, discountApplied: false, discountMessage: '', services: ['1 Payasit@ o Animador@', 'Juegos y concursos', 'Figuras básicas globos', 'Música infantil'], description: '1.5h de pura risa. El clásico que nunca falla.', image: 'https://images.weserv.nl/?url=i.ibb.co/XZSZ4zTV/1000071229-68972d392b6b1b8ff16caa7bd7f56686-Editado-20250808-152555-0000.jpg&w=600&output=webp' },
-        { id: 'clown_recreative', name: 'Plan Recreativo', originalPrice: 110, price: 110.00, discountApplied: false, discountMessage: '', services: ['1 Payasit@ o Animador@', '1 Pintacaritas (1 hora)', 'Animación (1 hora)', 'Juegos y concursos', 'Globoflexia', 'Música infantil'], description: '2h de aventura: pintacaritas, animación y diversión.', image: 'https://images.weserv.nl/?url=i.ibb.co/ZRBN0mb5/2913b329-e65a-4574-846d-03d72a8ed6e1-20250808-145823-0000.jpg&w=600&output=webp' },
-        { id: 'clown_magic', name: 'Plan Magic', originalPrice: 135, price: 121.50, discountApplied: true, discountMessage: '10% OFF', services: ['1 Payasit@ o Animador@', 'Animación completa (1.5 horas)', '1 Pintacaritas profesional', 'Show de magia con conejo real', 'Obsequio especial'], description: 'El favorito de los niños 💕', image: 'https://images.weserv.nl/?url=i.ibb.co/Gvwbr34b/1000166148-07728f00941825383160a10b58da6f49-Editado-Editado-20250808-161017-0000.jpg&w=600&output=webp' },
-        { id: 'clown_diverty', name: 'Plan Diverty Total', originalPrice: 200, price: 200.00, discountApplied: false, discountMessage: '', services: ['1 Payasit@ o Animador@', 'Juegos y concursos', '1 Pintacaritas', 'Globoflexia', 'Show de Burbujas Gigantes'], description: 'Para fiestas inolvidables 👑', image: 'https://images.weserv.nl/?url=i.ibb.co/JXbv2Hy/1000099577-6bef3c87bff7ee22e2b0606e02467bf8-Editado-20250808-150335-0000.jpg&w=600&output=webp' }
-    ];
+const EventFormModal = React.memo(({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert }) => {
+    const [formData, setFormData] = useState(initialData || { ...defaultFormData, fecha: utils.getLocalYYYYMMDD(new Date()) });
+    const [searchTermService, setSearchTermService] = useState('');
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [isCustomOpen, setIsCustomOpen] = useState(false);
+    const [customData, setCustomData] = useState({ nombre: '', precio: '' });
+    const nameInputRef = useRef(null);
 
-    const bubblePackages = [
-        { id: 'bubble_party', name: 'Paquete Fiesta Burbuja', price: 190, services: ['Animación infantil', 'Juegos y concursos', '1 Payasit@ o Animador@', 'Show de Burbujas Gigantes'], description: '2 horas mágicas con show de burbujas gigantes incluido.', image: 'https://images.weserv.nl/?url=i.ibb.co/p6gZT5JD/d8f8cf5e-4117-4f65-990e-43730827aa41-20250412-012526-0000.jpg&w=600&output=webp' },
-        { id: 'bubble_premium', name: 'Show Burbujas Premium', price: 150, services: ['Burbujas gigantes', 'Efecto Humo', 'Burbujas LED', 'Interacción', 'Fotos dentro de burbuja'], description: '1 hora de espectáculo visual impactante con luces y humo.', image: 'https://images.weserv.nl/?url=i.ibb.co/MJQgpHx/IMG-20250706-172005.jpg&w=600&output=webp' },
-        { id: 'bubble_corporate', name: 'Show Corporativo', price: 220, services: ['Show personalizado', 'Para malls o escuelas', 'Luces especiales', 'Sonido profesional'], description: 'Impacto visual garantizado para grandes eventos.', image: 'https://images.weserv.nl/?url=i.ibb.co/qLdys8KJ/IMG-20250711-195845.jpg&w=600&output=webp' }
-    ];
-
-    const santaPackages = [
-        { id: 'santa_express', name: 'Visita Express Santa', price: 50, services: ['Visita de Santa (15-30 min)', 'Entrega regalos', 'Fotos familiares'], description: 'La magia de la Navidad en una visita inolvidable.', image: 'https://images.weserv.nl/?url=i.ibb.co/FkcPQZdW/IMG-20251023-213119.jpg&w=600&output=webp' },
-        { id: 'santa_pintacaritas', name: 'Paquete Navideño', price: 135, services: ['Visita Santa Claus (1 Hora)', 'Entrega regalos', 'Animación', 'Juegos', 'Globoflexia'], description: 'Una hora completa de alegría navideña y juegos.', image: 'https://images.weserv.nl/?url=i.ibb.co/xKpznmQS/IMG-20251023-213325.jpg&w=600&output=webp' }
-    ];
-
-    const customerReviews = [ 
-        { id: 1, name: "María G.", rating: 5, comment: "¡A todos les encantó!", color: "from-pink-500 to-rose-500", initial: "M", location: "Panamá Centro" }, 
-        { id: 2, name: "Carlos M.", rating: 5, comment: "Muy profesionales.", color: "from-blue-500 to-cyan-500", initial: "C", location: "Arraiján" }, 
-        { id: 3, name: "Ana R.", rating: 5, comment: "Diseños hermosos.", color: "from-purple-500 to-indigo-500", initial: "A", location: "La Chorrera" } 
-    ];
-
-    const gallery = [ 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/MJQgpHx/IMG-20250706-172005.jpg&w=600&output=webp', alt: 'Burbujas' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/Kj8pkBJP/IMG-20250711-211956.jpg&w=600&output=webp', alt: 'Pintacaritas' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/21gCBMm3/IMG-20230423-173048-1.jpg&w=600&output=webp', alt: 'Globos' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/p6gZT5JD/d8f8cf5e-4117-4f65-990e-43730827aa41-20250412-012526-0000.jpg&w=600&output=webp', alt: 'Jardín' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/p61CY7CW/IMG-20250624-WA0000.jpg&w=600&output=webp', alt: 'Decoración' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/nqvDyb7Y/IMG-20250623-WA0019.jpg&w=600&output=webp', alt: 'Personajes' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/ynXVt81f/IMG-20250709-164447.jpg&w=600&output=webp', alt: 'Taller' }, 
-        { image: 'https://images.weserv.nl/?url=i.ibb.co/XZSZ4zTV/1000071229-68972d392b6b1b8ff16caa7bd7f56686-Editado-20250808-152555-0000.jpg&w=600&output=webp', alt: 'Payaso' } 
-    ];
-
-    const blogPosts = [ 
-        { id: 'blog1', title: 'Juegos de Verano', description: 'Ideas refrescantes.', image: 'https://images.weserv.nl/?url=i.ibb.co/LX4wC8zS/file-0000000009586230bcad512887ad5a53-1.png&w=600&output=webp', date: '2026-01-02', author: 'Equipo Diverty' }, 
-        { id: 'blog2', title: 'Magia al Sol', description: 'Burbujas gigantes bajo el sol.', image: 'https://images.weserv.nl/?url=i.ibb.co/7J5JM84n/file-000000003a0461fa918e3a8f30f312e2.png&w=600&output=webp', date: '2025-12-10', author: 'Equipo Diverty' }, 
-        { id: 'blog3', title: 'Fiestas Seguras', description: 'Cuidar a los pequeños.', image: 'https://images.weserv.nl/?url=i.ibb.co/gb4WkYzD/aichat-423527.jpg&w=600&output=webp', date: '2025-12-05', author: 'Equipo Diverty' } 
-    ];
-
-    let allServices = [...services, ...clownPackages, ...bubblePackages, ...santaPackages];
-    let allPurchasableItems = [...services.filter(s => s.type !== 'character-group'), ...clownPackages, ...bubblePackages, ...santaPackages, ...(services.find(s => s.type === 'character-group')?.characters || [])];
-
-    // ==========================================
-    // 3. FUNCIONES DE UTILIDAD GLOBALES
-    // ==========================================
-    const $ = (selector) => document.querySelector(selector);
-    const $$ = (selector) => document.querySelectorAll(selector);
-
-    function setContent(html) {
-        const mainContent = $('#mainContent');
-        if (mainContent) {
-            mainContent.innerHTML = html;
-            lucide.createIcons({ root: mainContent });
+    useEffect(() => {
+        if (isOpen && initialData) { 
+            setFormData(initialData); 
+            setSearchTermService('');
+            setShowDropdown(false);
+            setIsCustomOpen(false);
         }
-    }
+    }, [isOpen, initialData]);
 
-    function showModal(modalId) { 
-        const modal = $(`#${modalId}`);
-        if (modal) modal.classList.add('show'); 
-    }
-    function hideModal(modalId) { 
-        const modal = $(`#${modalId}`);
-        if (modal) modal.classList.remove('show'); 
-    }
+    useEffect(() => {
+        if (isOpen && nameInputRef.current && (!initialData || !initialData.id)) {
+            const t = setTimeout(() => nameInputRef.current.focus(), 400);
+            return () => clearTimeout(t);
+        }
+    }, [isOpen, initialData]);
+
+    useEffect(() => {
+        if (isOpen && !isCotizacionMode && (!initialData || !initialData.id)) {
+            const timer = setTimeout(() => { 
+                utils.setSafeLocal('diverty_form_draft', JSON.stringify(formData)); 
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [formData, isOpen, isCotizacionMode, initialData]);
+
+    const filteredPaquetes = useMemo(() => {
+        if (!searchTermService) return PAQUETES;
+        const s = utils.normalizeText(searchTermService);
+        return PAQUETES.filter(p => utils.normalizeText(p.nombre).includes(s) || utils.normalizeText(p.short || '').includes(s));
+    }, [searchTermService, PAQUETES]);
+
+    const procesarServicios = useCallback((prev, newSelected) => { 
+        const sumPrecios = newSelected.reduce((sum, s) => sum + utils.safeNum(s.precio), 0); 
+        const newTotal = sumPrecios + utils.safeNum(prev.transporte) + utils.safeNum(prev.gastos); 
+        const resumenServicios = newSelected.map(s => s.cantidad > 1 ? `${s.nombre} (x${s.cantidad})` : s.nombre).join(' + '); 
+        return { ...prev, serviciosSeleccionados: newSelected, servicio: resumenServicios, total: newTotal > 0 ? newTotal.toString() : '' }; 
+    }, []);
     
-    function showToast(message, type = 'info') { 
-        const toast = $('#toast'); 
-        if(!toast) return;
-        toast.className = `show ${type}`; 
-        toast.innerHTML = `<i data-lucide="${type === 'success' ? 'check-circle' : 'info'}"></i> ${message}`; 
-        lucide.createIcons({ root: toast }); 
-        setTimeout(() => toast.classList.remove('show'), 3000); 
-    }
-
-    const popSound = new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 6, envelope: { attack: 0.001, decay: 0.3, sustain: 0.01, release: 0.2, }, }).toDestination();
-    let isSoundPlaying = false;
-    
-    function playPopSound() { 
-        if (isSoundPlaying) return; 
-        if (Tone.context.state !== 'running') Tone.start(); 
-        popSound.triggerAttackRelease("C2", "8n", Tone.now()); 
-        isSoundPlaying = true; 
-        setTimeout(() => { isSoundPlaying = false; }, 100); 
-    }
-
-    function calculateTransportCost(locationValue) { 
-        const location = locations.find(l => l.value === locationValue); 
-        return location ? location.cost : 0; 
-    }
-
-    function populateLocationSelects() { 
-        const optionsHtml = locations.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join(''); 
-        $$('#cartLocation, #calculatorLocation, select[name="location"]').forEach(select => { 
-            if (select) { 
-                const cv = select.value; 
-                select.innerHTML = optionsHtml; 
-                if (cv) select.value = cv; 
-            } 
+    const addService = useCallback((pkg) => { 
+        utils.triggerHaptic('light'); 
+        setFormData(prev => { 
+            const actuales = Array.isArray(prev.serviciosSeleccionados) ? [...prev.serviciosSeleccionados] : []; 
+            const existeIdx = actuales.findIndex(s => s.nombre === pkg.nombre); 
+            if (existeIdx !== -1) { actuales[existeIdx].cantidad += 1; actuales[existeIdx].precio = actuales[existeIdx].precioOriginal * actuales[existeIdx].cantidad; } 
+            else { actuales.push({ ...pkg, cantidad: 1, precioOriginal: pkg.precio, precio: pkg.precio }); } 
+            return procesarServicios(prev, actuales); 
         }); 
-    }
-
-    function toggleMobileMenu(show) { 
-        const menu = $('#mobileMenu'); 
-        const overlay = $('#mobileMenuOverlay'); 
-        if(!menu || !overlay) return;
-        if (show) { 
-            overlay.style.opacity = '1'; overlay.style.visibility = 'visible'; menu.classList.add('open'); 
-        } else { 
-            overlay.style.opacity = '0'; overlay.style.visibility = 'hidden'; menu.classList.remove('open'); 
-        } 
-    }
-
-    // ==========================================
-    // 5. EVENTOS GLOBALES Y CLICK HANDLER
-    // ==========================================
-    function handleGlobalClick(e) {
-        const target = e.target.closest('[data-action]');
-        
-        if (e.target.closest('#prevMonth')) {
-            currentCalDate.setMonth(currentCalDate.getMonth() - 1);
-            renderCalendar();
-            return;
-        }
-        if (e.target.closest('#nextMonth')) {
-            currentCalDate.setMonth(currentCalDate.getMonth() + 1);
-            renderCalendar();
-            return;
-        }
-
-        if (!target) return;
-        playPopSound();
-        const { action, itemId, change, date } = target.dataset;
-
-        switch (action) {
-            case 'select-date':
-                selectedCalendarDate = date; 
-                renderCalendar(); 
-                break;
-            case 'confirm-date':
-                setActiveSection('booking');
-                setTimeout(() => {
-                    const dateInput = document.querySelector('input[name="date"]');
-                    if (dateInput && selectedCalendarDate) {
-                        dateInput.value = selectedCalendarDate;
-                        validateAvailability();
-                    }
-                    const bForm = document.getElementById('bookingForm');
-                    if(bForm) bForm.scrollIntoView({behavior: 'smooth', block: 'center'});
-                    showToast('Fecha seleccionada. ¡Asegura tu cupo!', 'success');
-                }, 50);
-                break;
-            case 'add-to-cart': {
-                const item = allPurchasableItems.find(s => s.id === itemId);
-                if (item) {
-                    const isPackage = itemId.includes('clown_') || itemId.includes('bubble_') || itemId.includes('santa_');
-                    const existing = app.cart.find(i => i.id === itemId);
-                    
-                    if (isPackage) {
-                        if (!existing) {
-                            addToCart(item); 
-                        }
-                        showModal('cartModal');
-                    } else {
-                        addToCart(item);
-                    }
-                }
-                break;
-            }
-            case 'remove-from-cart':
-                removeFromCart(itemId);
-                break;
-            case 'add-hourly-to-cart': {
-                const serviceHourly = services.find(s => s.id === itemId);
-                const qtyEl = document.querySelector(`#qty-${itemId}`);
-                const quantityHourly = qtyEl ? parseInt(qtyEl.textContent) : 1;
-                if (serviceHourly && quantityHourly > 0) {
-                    const item = { ...serviceHourly, id: `${serviceHourly.id}_${quantityHourly}h`, name: `${serviceHourly.name} (${quantityHourly} horas)`, price: serviceHourly.price * quantityHourly, quantity: 1 };
-                    addToCart(item);
-                }
-                break;
-            }
-            case 'add-workshop-to-cart': {
-                const serviceWorkshop = services.find(s => s.id === itemId);
-                const qtyEl = document.querySelector(`#qty-${itemId}`);
-                let quantityWorkshop = qtyEl ? parseInt(qtyEl.value) : 10;
-                if (!serviceWorkshop) return;
-                const minQty = (serviceWorkshop.id === 'service_photos') ? 1 : (serviceWorkshop.minChildren || 10);
-                if (quantityWorkshop < minQty) {
-                    showToast(`Se requiere un mínimo de ${minQty}.`, 'error');
-                    quantityWorkshop = minQty;
-                    if(qtyEl) qtyEl.value = minQty;
-                }
-                const itemWorkshop = { ...serviceWorkshop, id: `${serviceWorkshop.id}_${quantityWorkshop}kids`, name: `${serviceWorkshop.name} (${quantityWorkshop})`, price: serviceWorkshop.price * quantityWorkshop, quantity: 1 };
-                addToCart(itemWorkshop);
-                break;
-            }
-            case 'change-service-qty': {
-                const qtyElement = document.querySelector(`#qty-${itemId}`);
-                if (qtyElement) {
-                    let currentQty = parseInt(qtyElement.textContent);
-                    const newQty = Math.max(1, currentQty + parseInt(change));
-                    qtyElement.textContent = newQty;
-                }
-                break;
-            }
-            case 'change-calc-qty':
-                changeCalculatorQuantity(itemId, parseInt(change));
-                break;
-            case 'close-modal': {
-                const modal = target.closest('.modal-backdrop');
-                if(modal) modal.classList.remove('show');
-                break;
-            }
-        }
-    }
-
-    // ==========================================
-    // 6. FUNCIONES DEL CARRITO Y CALCULADORA
-    // ==========================================
-    function addToCart(item, quantity = 1) {
-        const existing = app.cart.find(i => i.id === item.id);
-        if (existing) existing.quantity += quantity; 
-        else app.cart.push({ ...item, quantity });
-        updateCartUI(); 
-        showToast(`${item.name} añadido al carrito`, 'success');
-    }
-
-    function removeFromCart(itemId) {
-        app.cart = app.cart.filter(i => i.id !== itemId);
-        updateCartUI(); 
-        showToast('Plan eliminado', 'info');
-    }
-
-    function updateCartUI() {
-        const count = app.cart.reduce((sum, item) => sum + item.quantity, 0);
-        const total = app.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const transportCost = calculateTransportCost(app.location);
-        
-        const itemCountEl = $('#itemCount');
-        const totalPriceEl = $('#totalPrice');
-        const cartSummaryEl = $('#cartSummary');
-        
-        if(itemCountEl) itemCountEl.textContent = count;
-        if(totalPriceEl) totalPriceEl.textContent = `$${total.toFixed(2)}`;
-        
-        if(cartSummaryEl) {
-            if (count > 0) {
-                cartSummaryEl.classList.remove('hidden');
-                document.body.classList.add('has-cart');
-            } else {
-                cartSummaryEl.classList.add('hidden');
-                document.body.classList.remove('has-cart');
-            }
-        }
-
-        const cartItemsEl = $('#cartItems');
-        if (cartItemsEl) {
-            if (app.cart.length === 0) {
-                // DISEÑO ULTRA PRO: CARRITO VACÍO MODAL
-                cartItemsEl.innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-full py-8 px-2 text-center animate-slide-up mt-4">
-                        <div class="w-20 h-20 bg-[#162032] border border-purple-500/40 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(168,85,247,0.25)] relative badge-float">
-                            <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/30 to-pink-500/10 rounded-[1.5rem]"></div>
-                            <i data-lucide="shopping-cart" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(192,132,252,0.6)] relative z-10"></i>
-                        </div>
-                        <h3 class="text-3xl font-black text-white mb-2 font-nunito tracking-tight">Carrito Vacío</h3>
-                        <p class="mb-8 text-slate-400 font-medium text-sm">¡Vamos a llenarlo de diversión!</p>
-                        <div class="flex flex-col w-full gap-3 mt-auto">
-                            <a href="#clowns" data-action="close-modal" class="nav-action w-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
-                                <i data-lucide="smile" class="w-5 h-5"></i> Ver Planes
-                            </a>
-                            <a href="#services" data-action="close-modal" class="nav-action w-full bg-[#162032] border border-slate-700 hover:border-pink-500/50 text-slate-300 hover:text-white font-extrabold py-4 rounded-[20px] transition-all duration-300 text-[15px] flex justify-center items-center gap-2 shadow-inner hover:shadow-[0_0_20px_rgba(236,72,153,0.2)] hover:-translate-y-1">
-                                <i data-lucide="gift" class="w-5 h-5 text-pink-400"></i> Otros Servicios
-                            </a>
-                        </div>
-                    </div>`;
-            } else {
-                cartItemsEl.innerHTML = '<div class="bg-[#162032]/80 backdrop-blur-sm border border-slate-700/50 rounded-[20px] p-2 space-y-2 shadow-inner">' + app.cart.map(item => `
-                    <div class="flex justify-between items-center bg-slate-800 p-3 rounded-[16px] transition-colors border border-slate-700/30 group">
-                        <div class="flex items-center gap-3 overflow-hidden flex-1">
-                            <img src="${item.image || 'https://placehold.co/48x48/cbd5e1/ffffff?text=IMG'}" alt="${item.name}" class="w-10 h-10 object-cover rounded-xl shadow-sm shrink-0 border border-slate-700" loading="lazy">
-                            <div class="flex flex-col min-w-0 pr-2">
-                                <span class="font-bold text-white text-[13px] leading-tight truncate">${item.name}</span>
-                                <span class="text-slate-400 text-[10px] font-semibold mt-0.5">Cant: ${item.quantity}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2 shrink-0 pl-1">
-                            <span class="font-extrabold text-pink-400 text-[14px] drop-shadow-sm w-16 text-right">$${(item.price * item.quantity).toFixed(2)}</span>
-                            <button data-action="remove-from-cart" data-item-id="${item.id}" class="w-7 h-7 rounded-full bg-slate-700/50 text-slate-400 hover:text-white hover:bg-rose-500/80 flex items-center justify-center transition-all border border-slate-600/50 ml-1" aria-label="Eliminar"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
-                        </div>
-                    </div>`).join('') + '</div>';
-            }
-        }
-        
-        const cartTotalEl = $('#cartTotal');
-        const transportCostEl = $('#transportCost');
-        const finalTotalEl = $('#finalTotal');
-        
-        if(cartTotalEl) cartTotalEl.textContent = `$${total.toFixed(2)}`;
-        if(transportCostEl) transportCostEl.textContent = `$${transportCost.toFixed(2)}`;
-        if(finalTotalEl) finalTotalEl.textContent = `$${(total + transportCost).toFixed(2)}`;
-        
-        $$('button[data-action="add-to-cart"]').forEach(btn => {
-            const itemId = btn.dataset.itemId;
-            const isPackage = itemId && (itemId.includes('clown_') || itemId.includes('bubble_') || itemId.includes('santa_'));
-            
-            if (isPackage) {
-                const inCart = app.cart.some(i => i.id === itemId);
-                
-                if (!btn.dataset.origHtml) {
-                    btn.dataset.origHtml = btn.innerHTML;
-                }
-                
-                const isCurrentlySelected = btn.classList.contains('!bg-emerald-600');
-                
-                if (inCart && !isCurrentlySelected) {
-                    btn.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-white"></i> Plan Seleccionado`;
-                    btn.classList.add('!bg-emerald-600', '!text-white', '!border-emerald-500', '!shadow-[0_0_20px_rgba(16,185,129,0.4)]', '!bg-none');
-                    lucide.createIcons({ root: btn });
-                } else if (!inCart && isCurrentlySelected) {
-                    btn.innerHTML = btn.dataset.origHtml;
-                    btn.classList.remove('!bg-emerald-600', '!text-white', '!border-emerald-500', '!shadow-[0_0_20px_rgba(16,185,129,0.4)]', '!bg-none');
-                    lucide.createIcons({ root: btn });
-                }
-            }
-        });
-
-        populateLocationSelects();
-        const cartLocationEl = $('#cartLocation');
-        if (cartLocationEl) cartLocationEl.value = app.location;
-        lucide.createIcons({root: cartItemsEl});
-    }
-
-    function changeCalculatorQuantity(serviceId, change) {
-        const service = allServices.find(s => s.id === serviceId);
-        if (!service) return;
-        const existingItem = calculatorItems.find(item => item.id === serviceId);
-        if (existingItem) {
-            existingItem.quantity = Math.max(0, existingItem.quantity + change);
-            if (existingItem.quantity === 0) calculatorItems = calculatorItems.filter(item => item.id !== serviceId);
-        } else if (change > 0) {
-            calculatorItems.push({ ...service, quantity: 1 });
-        }
-        const calcQtyEl = $(`#calc-qty-${service.id}`);
-        if(calcQtyEl) calcQtyEl.textContent = calculatorItems.find(item => item.id === serviceId)?.quantity || 0;
-        updateCalculatorTotal();
-    }
-
-    function updateCalculatorTotal() {
-        const subtotal = calculatorItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const locEl = $('#calculatorLocation');
-        const transportCost = calculateTransportCost(locEl ? locEl.value : 'panama-centro');
-        
-        const calcSubtotal = $('#calcSubtotal');
-        const calcTransport = $('#calcTransport');
-        const calcTotal = $('#calcTotal');
-        
-        if(calcSubtotal) calcSubtotal.textContent = `$${subtotal.toFixed(2)}`;
-        if(calcTransport) calcTransport.textContent = `$${transportCost.toFixed(2)}`;
-        if(calcTotal) calcTotal.textContent = `$${(subtotal + transportCost).toFixed(2)}`;
-    }
-
-    function addCalculatedToCart() {
-        if (calculatorItems.length === 0) { showToast('Selecciona al menos un servicio', 'error'); return; }
-        calculatorItems.forEach(item => { if(item.quantity > 0) addToCart(item, item.quantity); });
-        hideModal('calculatorModal'); 
-        showToast('Servicios agregados al carrito', 'success'); 
-        calculatorItems = [];
-    }
-
-    function openCalculator() {
-        const container = $('#calculatorServices');
-        if(container) {
-            container.innerHTML = allPurchasableItems.map(item => `
-                <div class="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-sm mb-2">
-                    <div class="flex flex-col"><span class="text-sm font-bold text-white">${item.name}</span><span class="text-xs text-purple-400 font-bold">$${item.price.toFixed(2)}</span></div>
-                    <div class="flex items-center gap-3 bg-slate-900 p-1 rounded-lg border border-slate-700">
-                        <button data-action="change-calc-qty" data-item-id="${item.id}" data-change="-1" class="w-7 h-7 bg-slate-800 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"><i data-lucide="minus" class="w-3 h-3"></i></button>
-                        <span id="calc-qty-${item.id}" class="text-sm font-bold w-6 text-center text-white">${calculatorItems.find(i => i.id === item.id)?.quantity || 0}</span>
-                        <button data-action="change-calc-qty" data-item-id="${item.id}" data-change="1" class="w-7 h-7 bg-slate-800 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"><i data-lucide="plus" class="w-3 h-3"></i></button>
-                    </div>
-                </div>
-            `).join('');
-        }
-        updateCalculatorTotal();
-        showModal('calculatorModal');
-        lucide.createIcons({root: container});
-    }
-
-    // ==========================================
-    // 7. GENERADORES DE HTML Y RENDERIZADO UI
-    // ==========================================
-    function createInput(label, name, type, extra='') {
-        return `
-        <div class="form-group">
-            <label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">${label} *</label>
-            <input type="${type}" name="${name}" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner" ${extra}>
-        </div>`;
-    }
-
-    function createWizardStep(step, icon, text, opacity) {
-        return `
-        <div class="wizard-step flex flex-col items-center relative z-10 ${opacity}">
-            <div class="w-10 h-10 rounded-full ${opacity ? 'bg-slate-800 text-slate-500 border border-slate-700' : 'bg-purple-600 text-white border-2 border-purple-400'} flex items-center justify-center font-bold shadow-sm"><i data-lucide="${icon}" class="w-5 h-5"></i></div>
-            <span class="text-xs font-bold ${opacity ? 'text-slate-500' : 'text-purple-400'} mt-2">${text}</span>
-        </div>`;
-    }
-
-    function getPortalResultCard(ev, index) {
-        const tot = parseFloat(ev.total || 0), abo = parseFloat(ev.abono || 0), saldo = Math.max(0, tot - abo);
-        let statusColor = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-        if (ev.estado.toLowerCase() === 'confirmado') statusColor = 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-        if (ev.estado.toLowerCase() === 'completado') statusColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-
-        return `
-        <div class="border border-slate-700 rounded-2xl overflow-hidden bg-[#1E293B] shadow-lg transition-all animate-slide-up">
-            <div class="p-6 border-b border-slate-700/50">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${statusColor} shadow-sm">
-                        <div class="w-1.5 h-1.5 rounded-full bg-current mr-1.5 opacity-80"></div> ${ev.estado}
-                    </span>
-                </div>
-                <h4 class="text-2xl font-black text-white mb-1 capitalize">${ev.cliente}</h4>
-                <p class="text-sm text-slate-400 flex items-center gap-1.5 font-semibold mb-4">
-                    <i data-lucide="calendar-days" class="w-4 h-4 text-purple-400"></i> ${ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Por definir'} a las ${ev.hora}
-                </p>
-                <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
-                    <div class="bg-purple-500/20 p-2 rounded-lg text-purple-400 mt-0.5"><i data-lucide="gift" class="w-5 h-5"></i></div>
-                    <div>
-                        <p class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1">Paquete / Servicio</p>
-                        <p class="text-sm font-bold text-white leading-snug">${ev.servicio || 'Servicio no especificado'}</p>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-slate-900/50 p-6 flex flex-col gap-3">
-                <div class="flex justify-between items-center text-sm font-semibold text-slate-400">
-                    <span>Costo Total</span><span class="text-white">$${tot.toFixed(2)}</span>
-                </div>
-                <div class="flex justify-between items-center text-sm font-semibold text-emerald-400">
-                    <span>Abono Realizado</span><span>$${abo.toFixed(2)}</span>
-                </div>
-                <div class="w-full h-px bg-slate-700 my-1"></div>
-                <div class="flex justify-between items-center">
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Saldo Pendiente</span>
-                    <span class="text-2xl font-black ${saldo > 0 ? 'text-pink-500' : 'text-emerald-400'}">$${saldo.toFixed(2)}</span>
-                </div>
-                ${saldo === 0 ? `<div class="mt-2 text-center bg-emerald-500/20 text-emerald-400 py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1 border border-emerald-500/30"><i data-lucide="check-circle" class="w-4 h-4"></i> Totalmente Pagado</div>` : ''}
-            </div>
-        </div>`;
-    }
-
-    function createDetailedCardHTML(item) {
-        const isPackage = item.id && (item.id.includes('clown') || item.id.includes('bubble') || item.id.includes('santa'));
-        const isFeatured = item.isRecommended || item.discountApplied; 
-        
-        let badgeHTML = '';
-        let cardClasses = 'bg-slate-900 border border-slate-800 rounded-[2rem] p-5 flex flex-col relative transition-all duration-300 h-full group group-hover-playful overflow-hidden';
-        let btnColor = 'bg-slate-800 border border-[#334155] text-slate-200 shadow-md hover:bg-gradient-to-r hover:from-purple-600 hover:to-pink-600 hover:text-white hover:border-transparent hover:scale-[1.02] transition-all group-hover:shadow-[0_8px_20px_rgba(139,92,246,0.3)]';
-        let iconColor = 'text-purple-400 group-hover:text-white transition-colors';
-        
-        let titleClasses = 'text-xl sm:text-2xl font-extrabold leading-tight font-poppins drop-shadow-sm transition-all duration-300 ';
-
-        if (item.id === 'clown_magic') {
-            badgeHTML = `<div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-[0_4px_10px_rgba(219,39,119,0.5)] z-20 flex items-center gap-1.5 badge-float"><i data-lucide="star" class="w-3 h-3 fill-white"></i> Más Popular</div>`;
-            cardClasses = 'bg-slate-900 border border-purple-500/50 rounded-[2rem] p-5 flex flex-col relative transition-all duration-300 shadow-[0_0_25px_rgba(168,85,247,0.15)] h-full group group-hover-playful hover:shadow-[0_0_40px_rgba(168,85,247,0.3)] hover:-translate-y-2';
-            btnColor = 'bg-gradient-to-r from-purple-600 to-pink-600 btn-animated-gradient text-white shadow-[0_8px_20px_rgba(219,39,119,0.4)] border-none hover:scale-[1.02]';
-            iconColor = 'text-white';
-            titleClasses += 'text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 drop-shadow-[0_2px_10px_rgba(219,39,119,0.2)]';
-        } else if (item.id === 'clown_diverty') {
-            badgeHTML = `<div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-400 to-teal-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-[0_4px_10px_rgba(16,185,129,0.5)] z-20 flex items-center gap-1.5 badge-float"><i data-lucide="thumbs-up" class="w-3 h-3 fill-white"></i> Recomendado</div>`;
-            cardClasses = 'bg-slate-900 border border-emerald-500/50 rounded-[2rem] p-5 flex flex-col relative transition-all duration-300 shadow-[0_0_25px_rgba(16,185,129,0.15)] h-full group group-hover-playful hover:shadow-[0_0_40px_rgba(16,185,129,0.3)] hover:-translate-y-2';
-            btnColor = 'bg-gradient-to-r from-emerald-500 to-teal-500 btn-animated-gradient text-white shadow-[0_8px_20px_rgba(16,185,129,0.4)] border-none hover:scale-[1.02]';
-            iconColor = 'text-white';
-            titleClasses += 'text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 drop-shadow-[0_2px_10px_rgba(16,185,129,0.2)]';
-        } else {
-            cardClasses += ' hover:border-purple-500/40 hover:shadow-[0_10px_30px_rgba(139,92,246,0.15)] hover:-translate-y-2';
-            titleClasses += 'text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-300 group-hover:to-pink-300';
-        }
-
-        let priceDisplayHTML = '';
-        let priceText = item.price || (item.type === 'character-group' && item.characters && item.characters[0].price);
-        if (priceText) {
-            if (item.discountApplied) {
-                priceDisplayHTML = `
-                <div class="flex items-end justify-between mt-auto mb-3 w-full relative z-10">
-                    <div class="flex items-end gap-2.5">
-                        <span class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-500 leading-none tracking-tight">$${item.price.toFixed(2)}</span>
-                        <span class="text-slate-500 line-through text-sm font-bold leading-none mb-1.5">$${item.originalPrice.toFixed(2)}</span>
-                    </div>
-                    <span class="bg-pink-500/20 text-pink-400 text-[10px] font-black px-2.5 py-1 rounded-lg border border-pink-500/30 badge-float shadow-lg">10% OFF</span>
-                </div>`;
-            } else {
-                priceDisplayHTML = `
-                <div class="flex items-end justify-end mt-auto mb-3 w-full relative z-10">
-                    <span class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-slate-100 to-slate-300 group-hover:from-purple-400 group-hover:to-pink-400 transition-all duration-300 leading-none tracking-tight">$${priceText.toFixed(2)}</span>
-                    ${item.isHourly ? '<span class="text-slate-500 text-[10px] font-bold ml-1 mb-1 uppercase tracking-wider">/hr</span>' : ''}
-                    ${item.isPerChild ? '<span class="text-slate-500 text-[10px] font-bold ml-1 mb-1 uppercase tracking-wider">/niño</span>' : ''}
-                </div>`;
-            }
-        }
-
-        let servicesListHTML = '';
-        if (item.services) {
-            servicesListHTML = `<ul class="space-y-2 mt-4 mb-4 relative z-20 w-full flex-grow">` + 
-                item.services.map(s => `<li class="flex items-start text-[13px] text-slate-300 font-medium leading-snug group/item transition-colors hover:text-white"><div class="mt-0.5 mr-3 bg-purple-500/10 p-1 rounded-full group-hover/item:bg-pink-500/20 transition-colors border border-purple-500/20"><i data-lucide="check" class="w-3 h-3 text-purple-400 group-hover/item:text-pink-400 transition-colors"></i></div><span class="flex-1 mt-0.5">${s}</span></li>`).join('') + 
-                `</ul>`;
-        }
-
-        let actionButtonHTML = '';
-        if (item.author) {
-             actionButtonHTML = `<button data-action="show-blog" data-item-id="${item.id}" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-2xl transition-colors mt-auto shadow-md tracking-wide uppercase text-[11px] sm:text-xs">Leer Más</button>`;
-        } else if (item.isHourly) {
-            actionButtonHTML = `
-            <div class="mt-auto w-full pt-3 relative z-10">
-                <div class="flex items-center justify-between mb-3 bg-[#1E293B] border border-[#334155] p-1.5 rounded-[20px]">
-                    <button data-action="change-service-qty" data-item-id="${item.id}" data-change="-1" class="w-10 h-10 bg-slate-700 hover:bg-slate-600 rounded-xl flex items-center justify-center text-white transition-colors"><i data-lucide="minus" class="w-4 h-4"></i></button>
-                    <span id="qty-${item.id}" class="text-base font-bold text-white w-10 text-center">1</span>
-                    <button data-action="change-service-qty" data-item-id="${item.id}" data-change="1" class="w-10 h-10 bg-slate-700 hover:bg-slate-600 rounded-xl flex items-center justify-center text-white transition-colors"><i data-lucide="plus" class="w-4 h-4"></i></button>
-                </div>
-                <button data-action="add-hourly-to-cart" data-item-id="${item.id}" class="w-full bg-slate-800 border border-[#334155] hover:bg-gradient-to-r hover:from-emerald-400 hover:to-teal-500 hover:border-transparent text-white font-extrabold py-3.5 rounded-2xl shadow-md transition-all flex justify-center items-center gap-2 group/addbtn tracking-wide uppercase text-[11px] sm:text-xs"><i data-lucide="shopping-cart" class="w-4 h-4 text-emerald-400 group-hover/addbtn:text-white"></i> Añadir al Carrito</button>
-            </div>`;
-        } else if (item.isPerChild) {
-            const minQty = item.id === 'service_photos' ? 1 : (item.minChildren || 10);
-            actionButtonHTML = `
-            <div class="mt-auto w-full pt-3 relative z-10">
-                <div class="mb-3">
-                    <label for="qty-${item.id}" class="text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Cantidad (mín. ${minQty}):</label>
-                    <input type="number" id="qty-${item.id}" class="w-full bg-[#1E293B] border border-[#334155] text-center font-bold text-white p-2.5 rounded-xl outline-none focus:border-purple-400 shadow-inner" value="${minQty}" min="${minQty}">
-                </div>
-                <button data-action="add-workshop-to-cart" data-item-id="${item.id}" class="w-full bg-slate-800 border border-[#334155] hover:bg-gradient-to-r hover:from-emerald-400 hover:to-teal-500 hover:border-transparent text-white font-extrabold py-3.5 rounded-2xl shadow-md transition-all flex justify-center items-center gap-2 group/addbtn tracking-wide uppercase text-[11px] sm:text-xs"><i data-lucide="shopping-cart" class="w-4 h-4 text-emerald-400 group-hover/addbtn:text-white"></i> Añadir al Carrito</button>
-            </div>`;
-        } else if (item.type === 'character-group') {
-            actionButtonHTML = `<div class="max-h-40 overflow-y-auto pr-1 space-y-2 custom-scrollbar mt-auto w-full pt-3 relative z-10">` + item.characters.map(char => `
-                <div class="flex items-center justify-between p-2 bg-[#1E293B] rounded-xl border border-[#334155] hover:border-purple-500/50 transition-colors group/btn">
-                    <div class="w-10 h-10 rounded-full overflow-hidden mr-3 border border-slate-600"><img src="${char.image}" alt="${char.name}" class="w-full h-full object-cover group-hover/btn:scale-110 transition-transform" loading="lazy"></div>
-                    <div class="flex-1"><p class="font-extrabold text-white text-xs tracking-tight">${char.name.replace('Personaje: ', '')}</p><p class="font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 text-[11px]">$${char.price.toFixed(0)}</p></div>
-                    <button data-action="add-to-cart" data-item-id="${char.id}" class="w-8 h-8 rounded-lg bg-slate-700 hover:bg-gradient-to-r hover:from-purple-500 hover:to-pink-500 text-white flex items-center justify-center transition-colors shadow-sm"><i data-lucide="plus" class="w-4 h-4"></i></button>
-                </div>
-            `).join('') + `</div>`;
-        } else {
-            const btnIcon = isPackage ? 'calendar-plus' : 'shopping-cart';
-            const btnText = isPackage ? 'Reservar este plan' : 'Añadir al carrito';
-            
-            actionButtonHTML = `<button data-action="add-to-cart" data-item-id="${item.id}" class="w-full ${btnColor} font-extrabold py-3.5 px-6 rounded-2xl transition-transform flex justify-center items-center gap-2.5 tracking-wide uppercase text-[11px] sm:text-xs relative z-10"><i data-lucide="${btnIcon}" class="w-5 h-5 ${iconColor} group-hover:animate-pulse"></i> ${btnText}</button>`;
-        }
-        
-        let topSection = `
-            <div class="flex items-center gap-4 mb-1 relative z-10">
-                <div class="w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-[1.25rem] overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.4)] border border-slate-700/50 bg-slate-800 relative group-hover:border-purple-500/50 transition-colors">
-                    <img src="${item.image}" alt="${item.name || item.title}" class="w-full h-full object-cover" loading="lazy">
-                    <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                </div>
-                <div class="flex flex-col justify-center flex-1">
-                    <h3 class="${titleClasses}">${item.name || item.title}</h3>
-                    <p class="text-pink-400 text-[11px] sm:text-xs font-bold mt-1.5 leading-snug drop-shadow-sm opacity-90 group-hover:opacity-100 transition-opacity">${item.description}</p>
-                </div>
-            </div>
-        `;
-
-        if (item.author) {
-            topSection = `
-            <div class="w-full h-36 shrink-0 rounded-[1.25rem] overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.4)] border border-slate-700/50 bg-slate-800 mb-3 relative group-hover:border-purple-500/50 transition-colors">
-                <img src="${item.image}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy">
-                <div class="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent opacity-60"></div>
-            </div>
-            <div class="flex items-center text-[10px] text-slate-400 mb-2 font-bold uppercase tracking-wider relative z-10"><i data-lucide="calendar" class="w-3 h-3 mr-1 text-purple-400"></i>${item.date}<span class="mx-2 text-slate-600">|</span><i data-lucide="user" class="w-3 h-3 mr-1 text-pink-400"></i>${item.author}</div>
-            <h3 class="${titleClasses} mb-1 relative z-10">${item.title}</h3>
-            <p class="text-slate-400 text-xs font-medium line-clamp-2 leading-tight mb-2 relative z-10">${item.description}</p>
-            `;
-            servicesListHTML = '';
-        }
-
-        return `
-        <div class="w-[85vw] max-w-[360px] md:w-full snap-center flex-shrink-0 h-full snap-container animate-slide-up">
-            <div class="${cardClasses}">
-                <!-- Reflejo sutil de fondo que da elegancia extra a la tarjeta -->
-                <div class="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/5 rounded-full blur-3xl pointer-events-none group-hover:bg-purple-500/10 transition-colors duration-500"></div>
-                ${badgeHTML}
-                ${topSection}
-                ${servicesListHTML}
-                ${priceDisplayHTML}
-                ${actionButtonHTML}
-            </div>
-        </div>`;
-    }
-
-    function renderSection(items, title, icon) { 
-        setContent(`
-            <div class="container mx-auto px-4 pt-28">
-                <section class="mb-10">
-                    <h2 class="text-3xl lg:text-4xl font-extrabold text-center mb-8 text-white font-nunito flex justify-center items-center gap-3">
-                        ${title} <i data-lucide="${icon}" class="w-8 h-8 text-slate-400 animate-bounce" style="animation-duration: 2s;"></i>
-                    </h2>
-                    
-                    <div class="flex md:hidden items-center justify-center mb-5 opacity-80 animate-slide-up w-full">
-                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mr-3 border border-slate-700 bg-slate-800/50 px-3 py-1 rounded-full">Desliza para ver más 👉</span>
-                        <div class="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden relative border border-slate-700">
-                            <div class="w-4 h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full absolute top-0 left-0 animate-swipe"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="flex overflow-x-auto snap-x snap-mandatory scroll-smooth gap-5 hide-scrollbar -mx-4 px-4 md:grid md:grid-cols-2 xl:grid-cols-3 md:overflow-visible md:mx-auto place-items-stretch">
-                        ${items.map(createDetailedCardHTML).join('')}
-                    </div>
-                </section>
-            </div>
-        `);
-    }
-
-    // Funciones de renderizado de catálogos llamadas desde navegación
-    const renderServices = () => renderSection(services, 'Nuestros Servicios', 'gift');
-    const renderClowns = () => renderSection(clownPackages, 'Planes de Fiestas Infantiles', 'smile'); 
-    const renderBubbles = () => renderSection(bubblePackages, 'Shows de Burbujas', 'droplet');
-    const renderBlog = () => renderSection(blogPosts, 'Blog Diverty', 'book-open');
-    const renderSanta = () => renderSection(santaPackages, 'Especial Navideño', 'bell'); 
-
-    // === RENDERIZACIÓN DE GALERÍA ===
-    function renderGallery() {
-        setContent(`
-            <div class="container mx-auto px-4 pt-28">
-                <section class="mb-10 animate-slide-up">
-                    <h2 class="text-3xl lg:text-4xl font-extrabold text-center mb-4 text-white font-nunito">Nuestra Galería</h2>
-                    <p class="text-center text-slate-400 max-w-2xl mx-auto mb-10 font-medium text-sm">Momentos llenos de alegría.</p>
-                    <div class="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-4 pb-6 -mx-4 px-4 md:grid md:grid-cols-3 lg:grid-cols-4 md:overflow-visible md:mx-auto">
-                        ${gallery.map((item, index) => `
-                            <a href="${item.image}" class="gallery-item min-w-[70vw] md:min-w-0 snap-center block group">
-                                <img src="${item.image}" alt="${item.alt}" loading="lazy" class="w-full h-64 object-cover group-hover:scale-110 transition-transform duration-500">
-                                <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <i data-lucide="zoom-in" class="text-white w-8 h-8"></i>
-                                </div>
-                            </a>`).join('')}
-                    </div>
-                    <div class="text-center mt-4">
-                        <a href="https://www.instagram.com/diverty_eventos_pty" target="_blank" class="btn-premium bg-slate-800 border border-slate-700 text-white hover:bg-slate-700 shadow-sm"><i data-lucide="instagram" class="w-4 h-4 text-pink-500"></i>Ver más en Instagram</a>
-                    </div>
-                </section>
-            </div>
-        `);
-    }
+    }, [procesarServicios]);
     
-    // === RENDERIZACIÓN DE RESEÑAS ===
-    function renderReviews() {
-        setContent(`
-            <div class="container mx-auto px-4 pt-28">
-                <section class="mb-10">
-                    <h2 class="text-3xl lg:text-4xl font-extrabold text-center mb-10 text-white font-nunito flex justify-center items-center gap-3">Reseñas de Clientes</h2>
-                    <div class="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar gap-5 pb-6 -mx-4 px-4 md:grid md:grid-cols-2 xl:grid-cols-3 md:overflow-visible md:mx-auto">
-                        ${customerReviews.map((review, index) => `
-                            <div class="review-card min-w-[85vw] md:min-w-0 snap-center animate-slide-up bg-slate-900 border border-slate-800 flex flex-col h-full hover:-translate-y-2 transition-transform">
-                                <div class="review-header flex items-center gap-3 mb-4">
-                                    <div class="w-12 h-12 rounded-full border border-slate-700 bg-gradient-to-tr ${review.color} flex items-center justify-center text-white font-black text-xl shadow-sm shrink-0 badge-float" style="animation-delay: ${index * 100}ms;">
-                                        ${review.initial}
-                                    </div>
-                                    <div><div class="text-white font-bold">${review.name}</div><div class="text-xs text-slate-400">${review.location}</div></div>
-                                </div>
-                                <div class="review-body text-slate-300 mb-4 flex-grow"><p class="font-medium">"${review.comment}"</p></div>
-                                <div class="review-footer border-t border-slate-800 pt-3 flex justify-between items-center">
-                                    <div class="text-sm">${'⭐'.repeat(review.rating)}</div>
-                                    <div class="text-xs flex items-center"><i data-lucide="check-circle" class="w-3 h-3 mr-1 text-emerald-500"></i>Verificado</div>
-                                </div>
-                            </div>`).join('')}
-                    </div>
-                </section>
-            </div>
-        `);
-    }
+    const updateServiceQuantity = useCallback((idx, delta) => { 
+        utils.triggerHaptic('light'); 
+        setFormData(prev => { 
+            const actuales = [...prev.serviciosSeleccionados]; const nuevoItem = { ...actuales[idx] }; 
+            nuevoItem.cantidad = Math.max(1, nuevoItem.cantidad + delta); nuevoItem.precio = nuevoItem.precioOriginal * nuevoItem.cantidad; 
+            actuales[idx] = nuevoItem; return procesarServicios(prev, actuales); 
+        }); 
+    }, [procesarServicios]);
+    
+    const removeService = useCallback((idx) => { 
+        utils.triggerHaptic('light'); 
+        setFormData(prev => { const ns = [...prev.serviciosSeleccionados]; ns.splice(idx, 1); return procesarServicios(prev, ns); }); 
+    }, [procesarServicios]);
 
-    // === RENDERIZACIÓN DE CALENDARIO ===
-    function renderCalendar() {
-        const grid = $('#availability-calendar-grid');
-        if(!grid) return;
-
-        const year = currentCalDate.getFullYear();
-        const month = currentCalDate.getMonth();
-        const firstDay = new Date(year, month, 1).getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-        let html = '';
-        ['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].forEach(d => { 
-            html += `<div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">${d}</div>`; 
+    const handleServiceEdit = useCallback((idx, field, val) => {
+        setFormData(prev => {
+            const actuales = [...prev.serviciosSeleccionados];
+            const nuevoItem = { ...actuales[idx] };
+            if (field === 'precio') {
+                const nuevoPrecio = utils.safeNum(val);
+                nuevoItem.precio = nuevoPrecio;
+                nuevoItem.precioOriginal = nuevoPrecio / Math.max(1, nuevoItem.cantidad || 1);
+            } else if (field === 'descripcion') {
+                nuevoItem.descripcion = val;
+            }
+            actuales[idx] = nuevoItem;
+            return procesarServicios(prev, actuales);
         });
-        
-        let adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
-        for(let i=0; i<adjustedFirstDay; i++) html += `<div></div>`;
+    }, [procesarServicios]);
 
-        const today = new Date();
-        today.setHours(0,0,0,0);
-
-        for(let d=1; d<=daysInMonth; d++) {
-            const currentDate = new Date(year, month, d);
-            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            let eventsThisDay = bookedEvents.filter(ev => ev.fecha === dateStr).length;
-            
-            const isSelected = selectedCalendarDate === dateStr;
-            let dayClasses = "w-9 h-9 sm:w-10 sm:h-10 mx-auto rounded-full flex items-center justify-center font-bold text-[15px] transition-all duration-200 cursor-pointer ";
-            
-            if (currentDate < today) {
-                html += `<div class="flex items-center justify-center"><div class="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-slate-600 font-medium">${d}</div></div>`;
-            } else if (eventsThisDay >= 3) {
-                dayClasses += "bg-rose-600 text-white cursor-not-allowed";
-                html += `<div class="flex items-center justify-center relative pointer-events-none"><div class="${dayClasses}">${d}</div></div>`;
-            } else if (eventsThisDay >= 1) {
-                dayClasses += isSelected ? "bg-amber-500 text-white ring-2 ring-amber-400 ring-offset-2 ring-offset-[#0F172A] scale-110" : "bg-amber-500 text-white hover:scale-110";
-                html += `<div class="flex items-center justify-center relative" data-action="select-date" data-date="${dateStr}"><div class="${dayClasses}">${d}</div></div>`;
-            } else {
-                dayClasses += isSelected ? "bg-emerald-600 text-white ring-2 ring-emerald-400 ring-offset-2 ring-offset-[#0F172A] scale-110" : "bg-emerald-600 text-white hover:scale-110";
-                html += `<div class="flex items-center justify-center relative" data-action="select-date" data-date="${dateStr}"><div class="${dayClasses}">${d}</div></div>`;
-            }
+    const handleCreateCustom = useCallback(async () => {
+        const newSrv = await onAddCustomService(customData.nombre, customData.precio);
+        if (newSrv) {
+            addService(newSrv);
+            setIsCustomOpen(false);
+            setCustomData({ nombre: '', precio: '' });
         }
-        grid.innerHTML = html;
-        const monthName = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(currentCalDate);
-        const calMonthYear = $('#cal-month-year');
-        if(calMonthYear) calMonthYear.textContent = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    }, [customData.nombre, customData.precio, onAddCustomService, addService]);
 
-        const calendarSection = $('#calendar-section');
-        let bottomBox = $('#calendar-bottom-box');
-        
-        if (!bottomBox) {
-            bottomBox = document.createElement('div');
-            bottomBox.id = 'calendar-bottom-box';
-            $('#calendar-card-inner').appendChild(bottomBox);
+    const handleZoneChange = useCallback((e) => { 
+        const z = e.target.value; const cost = ZONAS_TRANSPORTE[z] || 0; 
+        setFormData(p => ({ ...p, ubicacion: z, transporte: cost.toString(), total: ((Array.isArray(p.serviciosSeleccionados) ? p.serviciosSeleccionados : []).reduce((s, x) => s + utils.safeNum(x.precio), 0) + cost + utils.safeNum(p.gastos)).toString() })); 
+    }, []);
+
+    const handleClearDraft = useCallback(() => {
+        if (window.confirm("¿Deseas limpiar el formulario y empezar de cero?")) {
+            const cleared = { ...defaultFormData, fecha: utils.getLocalYYYYMMDD(new Date()) };
+            setFormData(cleared);
+            utils.setSafeLocal('diverty_form_draft', '');
         }
+    }, []);
 
-        if (selectedCalendarDate) {
-            const dateObj = new Date(selectedCalendarDate + 'T00:00:00');
-            const formattedDate = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-            bottomBox.innerHTML = `
-                <div class="mt-6 border border-emerald-500/30 bg-emerald-500/10 rounded-2xl p-4 text-left animate-slide-up shadow-lg">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 rounded-full border-2 border-emerald-500 flex items-center justify-center text-emerald-400 shrink-0">
-                            <i data-lucide="check" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-white font-bold text-base">Fecha seleccionada</p>
-                            <p class="text-slate-300 text-sm capitalize">${formattedDate}</p>
-                            <p class="text-emerald-400 text-sm font-bold mt-0.5">Asegura tu cupo ahora 🎉</p>
-                        </div>
-                    </div>
-                    <button data-action="confirm-date" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-transform hover:scale-[1.02] flex justify-center items-center gap-2 shadow-[0_4px_15px_rgba(5,150,105,0.4)]">
-                        <i data-lucide="calendar-plus" class="w-5 h-5"></i> Reservar este día
-                    </button>
-                </div>
-            `;
-        } else {
-            bottomBox.innerHTML = `
-                <div class="flex justify-center gap-4 mt-6 pt-5 border-t border-slate-700/50 flex-wrap">
-                    <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider"><div class="w-2.5 h-2.5 rounded-full bg-emerald-600"></div> Disponible</div>
-                    <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider"><div class="w-2.5 h-2.5 rounded-full bg-amber-500"></div> Pocos cupos</div>
-                    <div class="flex items-center gap-1.5 text-[11px] font-bold text-slate-300 uppercase tracking-wider"><div class="w-2.5 h-2.5 rounded-full bg-rose-600"></div> Lleno</div>
-                </div>
-            `;
-        }
-        lucide.createIcons({root: calendarSection});
-    }
-
-    function renderHome() {
-        const featuredMagic = clownPackages.find(p => p.id === 'clown_magic');
-        const featuredDiverty = clownPackages.find(p => p.id === 'clown_diverty');
-        if(featuredDiverty) featuredDiverty.isRecommended = true;
-        
-        setContent(`
-            <div id="hero-section-identifier">
-                <div class="bg-[#0F172A]">
-                    <!-- SECCIÓN PRINCIPAL RESTAURADA -->
-                    <section class="relative min-h-[75vh] flex flex-col justify-end pb-16 pt-40 isolate overflow-hidden">
-                        
-                        <video autoplay loop muted playsinline preload="auto" poster="https://res.cloudinary.com/dv40hkeyz/video/upload/w_720,q_auto/v1723578146/20250813_151416_0001_p5lwst.jpg" class="absolute inset-0 w-full h-full object-cover z-0 bg-video-optimized">
-                            <source src="https://res.cloudinary.com/dv40hkeyz/video/upload/w_720,q_auto,f_mp4,vc_h264:baseline,fps_30/v1723578146/20250813_151416_0001_p5lwst.mp4" type="video/mp4">
-                        </video>
-                        
-                        <div class="absolute inset-0 bg-gradient-to-b from-[#0F172A]/60 via-[#0F172A]/80 to-[#0F172A] z-10 pointer-events-none"></div>
-                        
-                        <div class="hero-content z-20 relative px-6 w-full max-w-lg mx-auto flex flex-col items-start text-left mt-auto animate-slide-up">
-                            
-                            <div class="inline-flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-full border border-yellow-500/30 text-yellow-400 text-[11px] font-bold mb-5 shadow-lg badge-float">
-                                <span>✨</span> Diversión garantizada
-                            </div>
-                            
-                            <h1 class="text-4xl sm:text-5xl font-extrabold mb-4 font-poppins leading-[1.1] text-white drop-shadow-2xl">
-                                Fiestas infantiles inolvidables en <span class="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-500 btn-animated-gradient">Panamá</span>
-                            </h1>
-                            
-                            <p class="text-base sm:text-lg mb-6 text-slate-300 font-medium drop-shadow-md font-quicksand leading-relaxed">
-                                Animación, magia y shows espectaculares para hacer de cada celebración un momento único.
-                            </p>
-                            
-                            <div class="flex justify-between items-center w-full mb-6 border-y border-white/10 py-4 gap-2">
-                                <div class="flex flex-col items-start flex-1 border-r border-white/10 pr-2">
-                                    <div class="flex items-center gap-1 text-cyan-400 mb-1"><i data-lucide="users" class="w-4 h-4"></i> <span class="font-bold text-white text-[13px]">+500</span></div>
-                                    <span class="text-[9px] text-slate-400 leading-tight">eventos<br>realizados</span>
-                                </div>
-                                <div class="flex flex-col items-center flex-1 border-r border-white/10 px-2 text-center">
-                                    <div class="flex items-center gap-1 text-yellow-400 mb-1"><i data-lucide="star" class="w-4 h-4 fill-yellow-400"></i> <span class="font-bold text-white text-[13px]">4.9/5</span></div>
-                                    <span class="text-[9px] text-slate-400 leading-tight">en Google</span>
-                                </div>
-                                <div class="flex flex-col items-end flex-1 pl-2 text-right">
-                                    <div class="flex items-center gap-1 text-pink-400 mb-1"><i data-lucide="smile" class="w-4 h-4"></i> <span class="font-bold text-white text-[13px]">100%</span></div>
-                                    <span class="text-[9px] text-slate-400 leading-tight">diversión<br>asegurada</span>
-                                </div>
-                            </div>
-                            
-                            <div class="flex flex-col gap-3 w-full mb-6">
-                                <a href="#booking" class="nav-action w-full bg-gradient-to-r from-pink-500 to-purple-600 btn-animated-gradient text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 transition-transform hover:scale-[1.02] shadow-[0_8px_20px_rgba(219,39,119,0.4)] font-bold text-base">
-                                    <i data-lucide="calendar-check" class="w-5 h-5 group-hover:animate-pulse"></i> Reservar ahora
-                                </a>
-                                <a href="#clowns" class="nav-action w-full bg-slate-800 border border-slate-600 hover:bg-slate-700 text-white rounded-2xl py-3.5 flex items-center justify-center gap-2 transition-colors font-bold text-base shadow-md">
-                                    <i data-lucide="eye" class="w-5 h-5"></i> Ver planes
-                                </a>
-                            </div>
-
-                            <div class="flex items-center justify-start gap-3 w-full pl-2 mb-4">
-                                <div class="flex -space-x-2">
-                                    <div class="w-8 h-8 rounded-full border-2 border-[#0F172A] bg-gradient-to-tr from-yellow-400 to-orange-500 flex items-center justify-center shadow-sm"><i data-lucide="star" class="w-4 h-4 text-white fill-white"></i></div>
-                                    <div class="w-8 h-8 rounded-full border-2 border-[#0F172A] bg-gradient-to-tr from-pink-500 to-rose-500 flex items-center justify-center shadow-sm"><i data-lucide="heart" class="w-4 h-4 text-white fill-white"></i></div>
-                                    <div class="w-8 h-8 rounded-full border-2 border-[#0F172A] bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center shadow-sm"><i data-lucide="smile" class="w-4 h-4 text-white"></i></div>
-                                </div>
-                                <span class="text-[11px] text-slate-300 font-medium leading-tight">Más de 500 familias<br>confían en nosotros</span>
-                            </div>
-                            
-                        </div>
-                    </section>
-                    
-                    <!-- Planes Destacados -->
-                    <div class="container mx-auto px-4 relative z-30 flex flex-col items-center mt-4">
-                        
-                        <!-- EL INDICADOR DE SWIPE AHORA ESTÁ ARRIBA ANTES DE LAS TARJETAS -->
-                        <div class="flex md:hidden items-center justify-center mb-3 opacity-80 animate-slide-up w-full">
-                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mr-3 border border-slate-700 bg-slate-800/50 px-3 py-1 rounded-full">Desliza para ver más 👉</span>
-                            <div class="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden relative border border-slate-700">
-                                <div class="w-4 h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full absolute top-0 left-0 animate-swipe"></div>
-                            </div>
-                        </div>
-
-                        <div class="flex overflow-x-auto snap-x snap-mandatory gap-5 pb-4 w-full hide-scrollbar pt-2 items-stretch px-2">
-                            ${createDetailedCardHTML(featuredMagic)}
-                            ${createDetailedCardHTML(featuredDiverty)}
-                        </div>
-                        
-                    </div>
-                </div>
-                
-                <div class="container mx-auto px-4 relative z-10 pb-12">
-                    
-                    <!-- Calendario -->
-                    <section id="calendar-section" class="mt-4 py-4 animate-slide-up">
-                        <div class="max-w-3xl mx-auto px-2 sm:px-4">
-                            <div class="bg-[#0B1121] p-6 sm:p-8 rounded-[32px] shadow-[0_20px_40px_-10px_rgba(0,0,0,0.6)] border border-slate-800 relative overflow-hidden" id="calendar-card-inner">
-                                <div class="absolute -top-24 -right-24 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
-                                
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-10 h-10 rounded-xl border border-purple-500/30 bg-purple-500/10 flex items-center justify-center text-purple-400">
-                                        <i data-lucide="calendar" class="w-5 h-5"></i>
-                                    </div>
-                                    <div class="text-left">
-                                        <h2 class="text-2xl font-extrabold text-white font-poppins leading-none">Selecciona tu fecha</h2>
-                                        <p class="text-slate-400 text-sm mt-1">Elige un día disponible para tu fiesta</p>
-                                    </div>
-                                </div>
-                                
-                                <div class="bg-indigo-900/20 border border-indigo-500/20 rounded-xl p-3 flex items-start gap-3 mb-6 mt-4">
-                                    <i data-lucide="clock" class="w-5 h-5 text-indigo-400 mt-0.5 shrink-0"></i>
-                                    <p class="text-indigo-200 text-sm font-medium leading-tight">Selecciona una fecha disponible para reservar en segundos</p>
-                                </div>
-
-                                <div class="flex justify-between items-center mb-6 px-2 relative z-10 bg-slate-900/50 py-2 rounded-xl border border-slate-800">
-                                    <button data-action="prevMonth" id="prevMonth" class="w-8 h-8 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg flex items-center justify-center transition-colors"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
-                                    <h3 id="cal-month-year" class="text-lg font-bold text-white capitalize leading-none font-poppins">Cargando...</h3>
-                                    <button data-action="nextMonth" id="nextMonth" class="w-8 h-8 hover:bg-white/10 text-slate-400 hover:text-white rounded-lg flex items-center justify-center transition-colors"><i data-lucide="chevron-right" class="w-5 h-5"></i></button>
-                                </div>
-                                
-                                <div id="availability-calendar-grid" class="grid grid-cols-7 gap-y-3 gap-x-2 text-center relative z-10 w-full"></div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- Cómo Reservar -->
-                    <section class="mt-12 mb-8 py-4 relative z-20">
-                        <div class="text-center mb-8 px-4 animate-slide-up">
-                            <p class="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 font-bold text-[11px] uppercase tracking-widest mb-1">Es muy fácil</p>
-                            <h2 class="text-3xl md:text-4xl font-extrabold text-white font-nunito mb-2">¿Cómo reservar?</h2>
-                        </div>
-                        
-                        <div class="max-w-md mx-auto relative px-2 sm:px-6">
-                            <div class="absolute top-[40px] sm:top-[45px] left-[15%] right-[15%] h-0.5 border-t-2 border-dashed border-slate-600/60 z-0"></div>
-
-                            <div class="flex justify-between items-start relative z-10">
-                                <div class="flex flex-col items-center w-1/3 px-1 animate-slide-up" style="animation-delay: 100ms;">
-                                    <div class="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full bg-[#0F172A] border-[3px] border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.4)] flex items-center justify-center relative mb-3">
-                                        <div class="absolute -top-3 bg-purple-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-extrabold text-xs shadow-md">1</div>
-                                        <i data-lucide="gift" class="w-7 h-7 sm:w-9 sm:h-9 text-purple-400"></i>
-                                    </div>
-                                    <h3 class="text-white font-bold text-[12px] sm:text-sm mb-1 text-center leading-tight">Elige tu plan</h3>
-                                    <p class="text-slate-400 text-[9px] sm:text-[10px] text-center leading-tight px-1">Selecciona el plan que más te guste.</p>
-                                </div>
-
-                                <div class="flex flex-col items-center w-1/3 px-1 animate-slide-up" style="animation-delay: 200ms;">
-                                    <div class="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full bg-[#0F172A] border-[3px] border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.4)] flex items-center justify-center relative mb-3">
-                                        <div class="absolute -top-3 bg-blue-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-extrabold text-xs shadow-md">2</div>
-                                        <i data-lucide="calendar" class="w-7 h-7 sm:w-9 sm:h-9 text-blue-400"></i>
-                                    </div>
-                                    <h3 class="text-white font-bold text-[12px] sm:text-sm mb-1 text-center leading-tight">Selecciona tu fecha</h3>
-                                    <p class="text-slate-400 text-[9px] sm:text-[10px] text-center leading-tight px-1">Revisa la disponibilidad y elige tu día.</p>
-                                </div>
-
-                                <div class="flex flex-col items-center w-1/3 px-1 animate-slide-up" style="animation-delay: 300ms;">
-                                    <div class="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] rounded-full bg-[#0F172A] border-[3px] border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] flex items-center justify-center relative mb-3">
-                                        <div class="absolute -top-3 bg-emerald-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-extrabold text-xs shadow-md">3</div>
-                                        <i data-lucide="check-circle" class="w-7 h-7 sm:w-9 sm:h-9 text-emerald-400"></i>
-                                    </div>
-                                    <h3 class="text-white font-bold text-[12px] sm:text-sm mb-1 text-center leading-tight">¡Reserva lista!</h3>
-                                    <p class="text-slate-400 text-[9px] sm:text-[10px] text-center leading-tight px-1">Tu fecha se asegura automáticamente.</p>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                </div>
-            </div>
-        `);
-        renderCalendar(); 
-    }
-
-    function renderBooking() {
-        const subtotal = app.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const transportCost = calculateTransportCost(app.location);
-        const finalTotal = subtotal + transportCost;
-        
-        // DISEÑO ULTRA PRO: CARRITO VACÍO EN PÁGINA DE RESERVA (SIN MODAL)
-        const cartSummary = app.cart.length === 0 
-            ? `<div class="text-center py-10 animate-slide-up">
-                <div class="w-20 h-20 bg-[#162032] border border-purple-500/40 rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-[0_0_40px_rgba(168,85,247,0.25)] relative badge-float">
-                    <div class="absolute inset-0 bg-gradient-to-tr from-purple-600/30 to-pink-500/10 rounded-[1.5rem]"></div>
-                    <i data-lucide="shopping-cart" class="w-10 h-10 text-purple-400 drop-shadow-[0_0_15px_rgba(192,132,252,0.6)] relative z-10"></i>
-                </div>
-                <h3 class="text-2xl font-black text-white mb-2 font-nunito">Carrito Vacío</h3>
-                <p class="mb-8 text-slate-400 font-medium text-sm">¡Vamos a llenarlo de diversión!</p>
-                <div class="flex flex-col sm:flex-row justify-center gap-4 px-2">
-                    <a href="#clowns" class="nav-action flex-1 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 btn-animated-gradient border border-purple-400/40 text-white font-extrabold py-3.5 rounded-[18px] transition-all duration-300 text-sm flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] hover:-translate-y-1">
-                        <i data-lucide="smile" class="w-4 h-4"></i> Ver Planes
-                    </a>
-                    <a href="#services" class="nav-action flex-1 bg-[#162032] border border-slate-700 hover:border-pink-500/50 text-slate-300 hover:text-white font-extrabold py-3.5 rounded-[18px] transition-all duration-300 text-sm flex justify-center items-center gap-2 shadow-inner hover:shadow-[0_0_20px_rgba(236,72,153,0.2)] hover:-translate-y-1">
-                        <i data-lucide="gift" class="w-4 h-4 text-pink-400"></i> Otros Servicios
-                    </a>
-                </div>
-            </div>` 
-            : app.cart.map(item => `<div class="flex justify-between items-center bg-slate-800 p-3.5 rounded-xl shadow-sm mb-2.5 border border-slate-700"><span class="font-semibold text-white text-sm leading-tight pr-2">${item.name} <span class="text-slate-400 text-xs font-normal">x${item.quantity}</span></span><span class="font-extrabold text-purple-400 text-sm">$${(item.price * item.quantity).toFixed(2)}</span></div>`).join('');
-            
-        const locationOptionsHtml = locations.map(opt => `<option value="${opt.value}" ${app.location === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('');
-        
-        setContent(`
-            <div class="container mx-auto px-4 max-w-5xl pt-28">
-                <section class="mb-10 animate-slide-up">
-                    <h2 class="text-3xl lg:text-4xl font-extrabold text-center mb-8 text-white font-nunito">Reserva tu Evento</h2>
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                        
-                        <div class="lg:col-span-5 order-2 lg:order-1">
-                            <div class="bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl sticky top-24">
-                                <h3 class="text-lg font-bold text-white mb-5 flex items-center gap-2"><i data-lucide="list-checks" class="w-5 h-5 text-purple-400"></i> Resumen de Selección:</h3>
-                                <div id="booking-cart-summary">${cartSummary}</div>
-                                ${app.cart.length > 0 ? `<div id="booking-totals" class="mt-5 pt-5 border-t border-slate-800 space-y-2 text-right"><p class="text-sm text-slate-400 font-semibold">Subtotal: <span class="font-bold text-white">$${subtotal.toFixed(2)}</span></p><p class="text-sm text-slate-400 font-semibold">Transporte: <span class="font-bold text-white">$${transportCost.toFixed(2)}</span></p><p class="text-2xl font-extrabold text-emerald-400 mt-2">Total: <span>$${finalTotal.toFixed(2)}</span></p></div>` : ''}
-                            </div>
-                        </div>
-                        
-                        <div class="lg:col-span-7 order-1 lg:order-2">
-                            ${app.cart.length > 0 ? `
-                            <form id="bookingForm" class="bg-slate-900 p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-800">
-                                
-                                <div class="flex items-center justify-between mb-8 relative">
-                                    <div class="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-800 z-0 rounded-full"></div>
-                                    <div id="wizard-progress-bar" class="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-emerald-500 z-0 transition-all duration-300 rounded-full" style="width: 0%;"></div>
-                                    ${createWizardStep(1, 'user', 'Contacto', '')}
-                                    ${createWizardStep(2, 'calendar', 'Evento', 'opacity-50')}
-                                    ${createWizardStep(3, 'map-pin', 'Lugar', 'opacity-50')}
-                                </div>
-                                
-                                <div class="space-y-5">
-                                    
-                                    <div class="wizard-content active" id="step-1">
-                                        <h3 class="text-xl font-bold text-white mb-6 border-b border-slate-800 pb-4">Tus Datos</h3>
-                                        <div class="space-y-5">
-                                            ${createInput('Nombre', 'name', 'text', 'placeholder="Tu nombre completo"')}
-                                            ${createInput('Email', 'email', 'email', 'placeholder="correo@ejemplo.com"')}
-                                            ${createInput('Teléfono', 'phone', 'tel', 'placeholder="+507 6000-0000"')}
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="wizard-content" id="step-2">
-                                        <h3 class="text-xl font-bold text-white mb-6 border-b border-slate-800 pb-4">Detalles de la Fiesta</h3>
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 relative">
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Tipo de Evento *</label><select name="eventType" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner"><option value="">Seleccione...</option><option value="Cumpleaños">🎉 Cumpleaños</option><option value="Bautizo">🕊️ Bautizo</option><option value="Comunión">✝️ Comunión</option><option value="Navidad">🎅 Navideña</option><option value="Escolar">🎒 Escolar</option><option value="Otro">⭐ Otro</option></select></div>
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Niños Estimados</label><input type="number" name="guests" class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner" min="1" placeholder="Ej: 25"></div>
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Fecha *</label><input type="date" name="date" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner" min="${new Date().toISOString().split('T')[0]}"></div>
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Hora *</label><input type="time" name="time" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner"></div>
-                                            
-                                            <div id="availability-warning" class="hidden col-span-1 md:col-span-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 p-3 rounded-lg text-sm font-bold flex items-center gap-2 mt-2">
-                                                <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i> <span id="availability-text">Esta fecha y hora ya están ocupadas. Por favor, elige otro horario.</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="wizard-content" id="step-3">
-                                        <h3 class="text-xl font-bold text-white mb-6 border-b border-slate-800 pb-4">¿Dónde Celebramos?</h3>
-                                        <div class="space-y-5">
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Ubicación (Zona) *</label><select name="location" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner">${locationOptionsHtml}</select></div>
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Dirección Completa *</label><textarea name="address" required class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner" rows="2" placeholder="Barriada, calle, número de casa/apto..."></textarea></div>
-                                            <div class="form-group"><label class="form-label font-bold text-slate-400 text-xs uppercase tracking-wider mb-1.5 block">Comentarios Especiales</label><textarea name="comments" class="w-full bg-[#1E293B] border border-slate-700 text-white rounded-2xl py-3.5 px-4 text-sm outline-none focus:border-purple-500 transition-colors shadow-inner" rows="2" placeholder="Temática, indicaciones de llegada..."></textarea></div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="flex justify-between pt-6 mt-6 border-t border-slate-800">
-                                        <button type="button" id="btn-prev" class="bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 font-bold py-3.5 px-6 rounded-full transition-colors hidden flex items-center"><i data-lucide="chevron-left" class="w-4 h-4 mr-1"></i>Atrás</button>
-                                        <button type="button" id="btn-next" class="bg-white text-slate-900 hover:bg-slate-200 ml-auto font-bold py-3.5 px-6 rounded-full transition-colors flex items-center">Siguiente<i data-lucide="chevron-right" class="w-4 h-4 ml-1"></i></button>
-                                        <button type="submit" id="btn-submit" class="bg-emerald-500 hover:bg-emerald-400 text-white hidden ml-auto shadow-md font-bold py-3.5 px-6 rounded-full transition-colors flex items-center"><i data-lucide="check-circle" class="w-5 h-5 mr-1"></i>Confirmar Reserva</button>
-                                    </div>
-                                </div>
-                            </form>
-                            ` : '<div class="h-full flex items-center justify-center bg-slate-900 rounded-[2rem] border border-slate-800 border-dashed p-8 text-center text-slate-500">Seleccione paquetes o servicios para habilitar el formulario de reserva.</div>'}
-                        </div>
-                    </div>
-                </section>
-            </div>
-        `);
-
-        if (app.cart.length > 0) {
-            const bookingForm = $('#bookingForm');
-            if (bookingForm) bookingForm.onsubmit = handleBookingSubmit;
-            
-            const dInput = $('input[name="date"]'), tInput = $('input[name="time"]');
-            if(dInput) dInput.addEventListener('change', validateAvailability);
-            if(tInput) tInput.addEventListener('change', validateAvailability);
-
-            const locationSelect = $('select[name="location"]');
-            if (locationSelect) locationSelect.onchange = (e) => { app.location = e.target.value; renderBooking(); };
-            
-            if (bookingForm && Object.keys(bookingFormState).length > 0) { 
-                for (const key in bookingFormState) { 
-                    if (bookingForm.elements[key]) bookingForm.elements[key].value = bookingFormState[key]; 
-                } 
-            }
-
-            let currentStep = app.wizardStep;
-            const totalSteps = 3;
-
-            const updateWizardUI = () => {
-                app.wizardStep = currentStep;
-                $$('.wizard-content').forEach((el, idx) => el.classList.toggle('active', idx + 1 === currentStep));
-                const progressBar = $('#wizard-progress-bar');
-                if(progressBar) progressBar.style.width = `${((currentStep - 1) / (totalSteps - 1)) * 100}%`;
-
-                $$('.wizard-step').forEach((el, idx) => {
-                    const iconDiv = el.querySelector('.wizard-icon'), textSpan = el.querySelector('.wizard-text');
-                    if (idx + 1 <= currentStep) { 
-                        el.classList.remove('opacity-50'); 
-                        if(iconDiv) { iconDiv.classList.add('bg-purple-600', 'text-white', 'border-2', 'border-purple-400'); iconDiv.classList.remove('bg-slate-800', 'text-slate-500', 'border', 'border-slate-700'); }
-                        if(textSpan) { textSpan.classList.add('text-purple-400'); textSpan.classList.remove('text-slate-500'); }
-                    } else { 
-                        el.classList.add('opacity-50'); 
-                        if(iconDiv) { iconDiv.classList.remove('bg-purple-600', 'text-white', 'border-2', 'border-purple-400'); iconDiv.classList.add('bg-slate-800', 'text-slate-500', 'border', 'border-slate-700'); }
-                        if(textSpan) { textSpan.classList.remove('text-purple-400'); textSpan.classList.add('text-slate-500'); }
-                    }
-                });
-
-                const btnPrev = $('#btn-prev');
-                const btnNext = $('#btn-next');
-                const btnSubmit = $('#btn-submit');
-                
-                if(btnPrev) currentStep === 1 ? btnPrev.classList.add('hidden') : btnPrev.classList.remove('hidden');
-                
-                if (currentStep === totalSteps) { 
-                    if(btnNext) btnNext.classList.add('hidden'); 
-                    if(btnSubmit) btnSubmit.classList.remove('hidden'); 
-                } else { 
-                    if(btnNext) btnNext.classList.remove('hidden'); 
-                    if(btnSubmit) btnSubmit.classList.add('hidden'); 
-                }
-            };
-
-            updateWizardUI();
-
-            const btnNext = $('#btn-next');
-            if (btnNext) {
-                btnNext.onclick = () => {
-                    const inputs = $(`#step-${currentStep}`) ? $(`#step-${currentStep}`).querySelectorAll('input[required], select[required], textarea[required]') : [];
-                    let isValid = true;
-                    for(let input of inputs) { if (!input.checkValidity()) { input.reportValidity(); isValid = false; break; } }
-                    if (isValid && currentStep === 2) { 
-                        isValid = validateAvailability(); 
-                        if(!isValid) { showToast('Revisa las alertas en rojo antes de continuar', 'error'); return; } 
-                    }
-                    if (isValid) { 
-                        currentStep++; 
-                        const bForm = $('#bookingForm');
-                        if (bForm) bookingFormState = Object.fromEntries(new FormData(bForm).entries()); 
-                        updateWizardUI(); 
-                    }
-                };
-            }
-
-            const btnPrev = $('#btn-prev');
-            if (btnPrev) {
-                btnPrev.onclick = () => { 
-                    if (currentStep > 1) { 
-                        currentStep--; 
-                        const bForm = $('#bookingForm');
-                        if (bForm) bookingFormState = Object.fromEntries(new FormData(bForm).entries()); 
-                        updateWizardUI(); 
-                    } 
-                };
-            }
-        }
-    }
-
-    function renderPortal() {
-        setContent(`
-            <div class="container mx-auto px-4 max-w-3xl pt-28">
-                <section class="mb-12 animate-slide-up">
-                    <div class="text-center mb-10">
-                        <div class="w-16 h-16 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-[1.25rem] flex items-center justify-center mx-auto mb-4 shadow-lg"><i data-lucide="search" class="w-8 h-8"></i></div>
-                        <h2 class="text-2xl md:text-3xl font-extrabold text-white font-nunito tracking-tight">Portal del Cliente</h2>
-                        <p class="text-slate-400 mt-2 font-medium text-sm">Consulta el estado de tu evento de forma rápida.</p>
-                    </div>
-                    <div class="bg-slate-900 p-6 sm:p-10 rounded-[2rem] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] border border-slate-800">
-                        <form id="portalSearchForm" class="flex flex-col gap-3 mb-8">
-                            <div class="relative flex-1">
-                                <i data-lucide="phone" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5"></i>
-                                <input type="tel" id="searchPhone" placeholder="Tu WhatsApp (Ej. 60000000)" class="w-full bg-[#1E293B] border border-slate-700 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold text-white outline-none focus:border-indigo-400 transition-colors shadow-inner" required>
-                            </div>
-                            <button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-3.5 rounded-2xl shadow-[0_8px_20px_rgba(79,70,229,0.3)] flex justify-center items-center gap-2 text-sm transition-transform hover:scale-[1.02]"><i data-lucide="search" class="w-4 h-4"></i> Buscar Reserva</button>
-                        </form>
-                        <div id="portalResults" class="space-y-5">
-                            <div class="text-center p-8 border-2 border-dashed border-slate-700 rounded-2xl bg-slate-800/30">
-                                <p class="text-slate-500 font-semibold">Ingresa tu número para ver tus reservas activas.</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-        `);
-
-        const portalSearchForm = $('#portalSearchForm');
-        if (portalSearchForm) {
-            portalSearchForm.onsubmit = (e) => {
-                e.preventDefault();
-                const searchPhone = $('#searchPhone');
-                if(!searchPhone) return;
-                
-                const cleanPhone = (p) => {
-                    let num = String(p || '').replace(/\D/g, '');
-                    if (num.startsWith('00507')) return num.slice(5);
-                    if (num.startsWith('507')) return num.slice(3);
-                    return num;
-                };
-
-                const phoneInput = cleanPhone(searchPhone.value);
-                const resultsContainer = $('#portalResults');
-                if(!resultsContainer) return;
-                
-                if (phoneInput.length < 6) {
-                    resultsContainer.innerHTML = `
-                        <div class="text-center p-8 bg-amber-500/10 rounded-2xl border border-amber-500/20">
-                            <i data-lucide="alert-triangle" class="w-12 h-12 mx-auto text-amber-400 mb-3"></i>
-                            <p class="text-amber-400 font-bold text-lg">Número inválido.</p>
-                            <p class="text-amber-500/70 text-sm mt-1">Ingresa un número telefónico completo.</p>
-                        </div>`;
-                    lucide.createIcons();
-                    return;
-                }
-
-                const results = bookedEvents.filter(ev => {
-                    const evPhone = cleanPhone(ev.telefono);
-                    if (!evPhone) return false; 
-                    return evPhone === phoneInput || evPhone.includes(phoneInput) || phoneInput.includes(evPhone);
-                });
-                
-                if (results.length === 0) {
-                    resultsContainer.innerHTML = `
-                        <div class="text-center p-8 bg-rose-500/10 rounded-2xl border border-rose-500/20">
-                            <i data-lucide="file-question" class="w-12 h-12 mx-auto text-rose-400 mb-3"></i>
-                            <p class="text-rose-400 font-bold text-lg">No encontramos reservas con ese número.</p>
-                            <p class="text-rose-500/70 text-sm mt-1">Verifica que lo hayas escrito igual que cuando reservaste.</p>
-                        </div>`;
-                } else {
-                    resultsContainer.innerHTML = results.map(getPortalResultCard).join('');
-                }
-                lucide.createIcons();
-            }
-        }
-    }
-
-    function setActiveSection(sectionId) {
-        if (!sectionId) sectionId = 'home';
-        
-        // Cerrar todos los modales de manera segura al navegar a otra sección
-        $$('.modal-backdrop').forEach(m => m.classList.remove('show'));
-
-        if (sectionId === 'booking' && !sessionStorage.getItem('bookingNoticeShown')) { 
-            sessionStorage.setItem('bookingNoticeShown', 'true'); 
-            showModal('bookingConfirmModal'); 
-            return; 
-        }
-
-        app.activeSection = sectionId;
-        
-        $$('.nav-link, .mobile-nav-link, .mobile-nav-link-bottom').forEach(link => link.classList.remove('active'));
-        
-        const navMap = { 
-            home: ['#navHome', '#mobileHome'], santa: ['#navSanta', '#mobileSanta'], 
-            services: ['#navServices', '#mobileServices'], clowns: ['#navClowns', '#mobileClowns'], 
-            bubbles: ['#navBubbles', '#mobileBubbles'], gallery: ['#navGallery', '#mobileGallery'], 
-            blog: ['#navBlog', '#mobileBlog'], reviews: ['#navReviews', '#mobileReviews'], 
-            booking: ['#navBooking', '#mobileBooking'], portal: ['#navPortal', '#mobilePortal'] 
-        };
-        
-        if (navMap[sectionId]) navMap[sectionId].forEach(selector => {
-            const el = $(selector);
-            if(el) el.classList.add('active');
-        });
-        
-        const sections = { 
-            home: renderHome, santa: renderSanta, services: renderServices, 
-            clowns: renderClowns, bubbles: renderBubbles, gallery: renderGallery, 
-            blog: renderBlog, reviews: renderReviews, booking: renderBooking, portal: renderPortal 
-        };
-        
-        if (sectionId !== 'home' && sections[sectionId]) {
-            sections[sectionId](); 
-        } else if (sectionId === 'home') { 
-            if(!$('#hero-section-identifier')) renderHome(); 
-        }
-
-        toggleMobileMenu(false); 
-        
-        // Ejecución síncrona del scroll para evitar el pantallazo blanco
-        window.scrollTo(0, 0);
-    }
-
-    // ==========================================
-    // 8. LÓGICA DE FIREBASE Y RESERVAS
-    // ==========================================
-    function validateAvailability() {
-        const dateInput = $('input[name="date"]'), timeInput = $('input[name="time"]'), warningDiv = $('#availability-warning');
-        if(!dateInput || !timeInput || !warningDiv) return true;
-        if(!dateInput.value || !timeInput.value) { warningDiv.classList.add('hidden'); timeInput.classList.remove('border-red-500', 'bg-red-50'); return true; }
-
-        const selectedMins = timeInput.value.split(':').reduce((h, m) => h * 60 + Number(m));
-        const cartHasBubbles = app.cart.some(item => item.id.includes('bubble') || item.name.toLowerCase().includes('burbuja'));
-        let overlappingEvents = 0, overlappingBubbleShows = 0;
-
-        for (let ev of bookedEvents) {
-            if (ev.fecha === dateInput.value && ev.hora) {
-                const evMins = ev.hora.split(':').reduce((h, m) => h * 60 + Number(m));
-                if (Math.abs(evMins - selectedMins) < 180) {
-                    overlappingEvents++;
-                    if ((ev.servicio || '').toLowerCase().includes('burbuja') || (ev.serviciosSeleccionados || []).some(s => s.nombre.toLowerCase().includes('burbuja'))) overlappingBubbleShows++;
-                }
-            }
-        }
-
-        const isCollision = (cartHasBubbles && overlappingBubbleShows >= 1) || overlappingEvents >= 2;
-        if (isCollision) {
-            warningDiv.innerHTML = `<i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i> <span>${cartHasBubbles && overlappingBubbleShows >= 1 ? "El Show de Burbujas ya está reservado para este horario." : "Nuestros animadores ya están ocupados en este horario."} Por favor, elige una hora con al menos 3 horas de diferencia.</span>`;
-            lucide.createIcons(); warningDiv.classList.remove('hidden'); timeInput.classList.add('border-rose-500', 'bg-rose-500/10'); return false;
-        } 
-        warningDiv.classList.add('hidden'); timeInput.classList.remove('border-rose-500', 'bg-rose-500/10'); return true;
-    }
-
-    async function handleBookingSubmit(e) {
+    const handleSubmit = useCallback((e) => {
         e.preventDefault();
-        if (app.cart.length === 0) return showToast('Selecciona al menos un servicio', 'error');
-        const submitBtn = e.target.querySelector('button[type="submit"]');
-        if(!submitBtn) return;
-        const originalBtnHTML = submitBtn.innerHTML;
-        submitBtn.disabled = true; submitBtn.innerHTML = '<div class="loading-spinner !w-5 !h-5 !border-2 !border-t-white inline-block align-middle mr-2"></div> Conectando...';
+        if (!formData.cliente?.trim()) return showAlert("El nombre del cliente es obligatorio.");
+        if (!formData.telefono?.trim()) return showAlert("El teléfono es obligatorio.");
+        if (!formData.fecha) return showAlert("La fecha del evento es obligatoria.");
+        onSave(formData, isCotizacionMode);
+    }, [formData, isCotizacionMode, onSave, showAlert]);
 
-        try {
-            const formData = new FormData(e.target), subtotal = app.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0), transportCost = calculateTransportCost(app.location);
-            const locObj = locations.find(l => l.value === app.location);
-            const dataToSave = {
-                id: `web-${Date.now()}`, cliente: formData.get('name') || '', email: formData.get('email') || '', telefono: formData.get('phone') || '',
-                tipoEvento: formData.get('eventType') || 'Cumpleaños', ninos: formData.get('guests') || '', fecha: formData.get('date') || '', hora: formData.get('time') || '',
-                ubicacion: locObj ? locObj.label.replace(/📍 |\(\+\$\d+\)/g, '').trim() : 'Panamá Centro', direccion: formData.get('address') || '', comentarios: formData.get('comments') || '',
-                servicio: app.cart.map(item => item.quantity > 1 ? `${item.name} (x${item.quantity})` : item.name).join(' + '),
-                serviciosSeleccionados: app.cart.map(item => ({ id: item.id, nombre: item.name, precioOriginal: item.price, precio: item.price * item.quantity, cantidad: item.quantity, descripcion: item.description || '' })),
-                transporte: transportCost.toString(), gastos: '0', detalleGastos: '', total: (subtotal + transportCost).toString(), abono: '0', estado: 'Pendiente', createdAt: new Date().toISOString(), deletedLocally: false, colisionAprobada: false, origen: 'Web Directa' 
-            };
+    if (!isOpen) return null;
 
-            await setDoc(doc(db, 'artifacts', CRM_APP_ID, 'public', 'data', 'eventos', dataToSave.id), dataToSave);
+    const opcionesEstado = isCotizacionMode 
+        ? ['Cotización', 'Cot. Aprobada', 'Cot. Rechazada'] 
+        : ['Pendiente', 'Confirmado', 'Completado'];
 
-            showModal('infoModal'); 
-            const modalMessage = $('#modalMessage');
-            if(modalMessage) modalMessage.textContent = '¡Gracias por elegir Diverty Eventos! Hemos recibido tu solicitud. Te contactaremos por WhatsApp en breve para confirmarla.';
-            app.cart = []; bookingFormState = {}; app.wizardStep = 1; updateCartUI(); renderBooking();
-        } catch (error) { console.error(error); showToast('Hubo un problema enviando tu reserva.', 'error'); } 
-        finally { submitBtn.disabled = false; submitBtn.innerHTML = originalBtnHTML; }
-    }
+    return (
+        <div className="fixed inset-0 z-[9998] bg-black/70 flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fadeIn">
+            <div className={`${modalSectionClass} w-full h-[92vh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0`}>
+                 <div className="p-6 sm:p-8 border-b border-white/5 flex justify-between items-center z-20 bg-transparent">
+                    <h3 className="font-bold text-white/90 text-2xl flex items-center gap-3 tracking-tight">
+                        {isCotizacionMode ? <FileText className="text-amber-400"/> : (initialData?.id && !initialData?.isDuplicated ? <Edit className="text-blue-400"/> : <Plus className="text-blue-400"/>)} 
+                        {isCotizacionMode ? (initialData?.id ? 'Editar Cotización' : 'Nueva Cotización') : (initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nueva Reserva')}
+                    </h3>
+                    <div className="flex gap-3">{(!initialData?.id || initialData?.isDuplicated) && (<button onClick={handleClearDraft} type="button" className="p-2.5 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-500/20 active:scale-[0.98] transition-colors"><Trash2 size={20}/></button>)}<button onClick={onClose} type="button" className="p-2.5 bg-white/5 text-white/70 hover:text-white rounded-xl hover:bg-white/10 active:scale-[0.98] transition-colors"><X size={20}/></button></div>
+                 </div>
+                 <div className="overflow-y-auto flex-1 p-5 sm:p-8">
+                  <form onSubmit={handleSubmit} className="max-w-xl mx-auto pb-8 space-y-6">
+                     <div className={`${GLASS_CARD} p-6`}>
+                        <div className="flex items-center gap-3 mb-6"><div className="bg-blue-500/10 text-blue-400 p-2.5 rounded-xl border border-blue-500/20"><Users size={20}/></div><h4 className="font-bold text-white/90 text-lg tracking-tight">Datos del Cliente</h4></div>
+                        <div className="space-y-5"><div><label className={labelClass}>Nombre *</label><input ref={nameInputRef} required value={formData.cliente} onChange={e=>setFormData({...formData,cliente:e.target.value})} className={inputClass} /></div><div className="grid grid-cols-2 gap-5"><div><label className={labelClass}>Teléfono *</label><input required value={formData.telefono} onChange={e=>setFormData({...formData,telefono:e.target.value})} className={inputClass} /></div><div><label className={labelClass}>Correo</label><input value={formData.email} onChange={e=>setFormData({...formData,email:e.target.value})} className={inputClass} /></div></div></div>
+                     </div>
 
-    async function initFirebaseAndData() {
-        try {
-            const fbApp = getApps().length === 0 ? initializeApp(firebaseConfig, "DivertyWeb") : getApp("DivertyWeb");
-            db = getFirestore(fbApp); auth = getAuth(fbApp);
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
+                     <div className={`${GLASS_CARD} p-6`}>
+                        <div className="flex items-center gap-3 mb-6"><div className="bg-rose-500/10 text-rose-400 p-2.5 rounded-xl border border-rose-500/20"><MapPin size={20}/></div><h4 className="font-bold text-white/90 text-lg tracking-tight">Logística</h4></div>
+                        <div className="grid grid-cols-2 gap-5 mb-5"><div><label className={labelClass}>Fecha *</label><input required type="date" value={formData.fecha} onChange={e=>setFormData({...formData,fecha:e.target.value})} className={inputClass} /></div><div><label className={labelClass}>Hora *</label><input required type="time" value={formData.hora} onChange={e=>setFormData({...formData,hora:e.target.value})} className={inputClass} /></div></div>
+                        <div className="mb-5"><label className={labelClass}>Zona</label><select value={formData.ubicacion} onChange={handleZoneChange} className={`${inputClass} appearance-none cursor-pointer`}>{Object.keys(ZONAS_TRANSPORTE).map(z => <option key={z} value={z} className="bg-[#0B1221] text-white">{z}</option>)}</select></div>
+                        <div><label className={labelClass}>Dirección Exacta</label><input value={formData.direccion} onChange={e=>setFormData({...formData,direccion:e.target.value})} className={inputClass} /></div>
+                     </div>
 
-            const customSnap = await getDoc(doc(db, 'artifacts', CRM_APP_ID, 'public', 'data', 'configuracion', 'serviciosCustom'));
-            if (customSnap.exists()) {
-                const formattedCustom = (customSnap.data().paquetes || []).map(c => ({ id: c.id, name: c.nombre, price: c.precio, description: c.descripcion || 'Servicio personalizado.', image: LOGO_URL, isCustom: true }));
-                services = [...services, ...formattedCustom]; allServices = [...allServices, ...formattedCustom]; allPurchasableItems = [...allPurchasableItems, ...formattedCustom];
-                if (app.activeSection === 'services') renderServices();
-            }
+                     <div className={`${GLASS_CARD} p-6 relative z-30`}>
+                        <div className="flex items-center gap-3 mb-6"><div className="bg-amber-500/10 text-amber-400 p-2.5 rounded-xl border border-amber-500/20"><Sparkles size={20}/></div><h4 className="font-bold text-white/90 text-lg tracking-tight">Servicios</h4></div>
+                        
+                        <div className="relative mb-6 z-20">
+                            <div className="flex items-center relative group">
+                                <Search className="absolute left-4 text-white/40 group-focus-within:text-blue-400 transition-colors" size={18} />
+                                <input
+                                    type="text"
+                                    value={searchTermService}
+                                    onChange={(e) => { setSearchTermService(e.target.value); setShowDropdown(true); }}
+                                    onFocus={() => setShowDropdown(true)}
+                                    onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                                    placeholder="Buscar o agregar servicio..."
+                                    className={`${inputClass} pl-12`}
+                                />
+                                {searchTermService && (
+                                    <button type="button" onMouseDown={() => { setSearchTermService(''); setShowDropdown(false); }} className="absolute right-4 text-white/40 hover:text-white transition-colors"><X size={16}/></button>
+                                )}
+                            </div>
 
-            const eventsSnap = await getDocs(collection(db, 'artifacts', CRM_APP_ID, 'public', 'data', 'eventos'));
-            bookedEvents = eventsSnap.docs.map(d => d.data()).filter(ev => ev.deletedLocally !== true && !['cancelado', 'rechazada', 'cot'].some(s => (ev.estado || '').toLowerCase().includes(s)));
-            if (app.activeSection === 'home') renderCalendar();
-        } catch(e) { console.warn("No se pudo cargar la agenda dinámicamente.", e); }
-    }
+                            {showDropdown && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-[#0B1221] border border-white/5 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
+                                    {filteredPaquetes.map(p => (
+                                        <button type="button" key={p.id} onMouseDown={(e) => { e.preventDefault(); addService(p); setSearchTermService(''); setShowDropdown(false); }} className="w-full text-left px-5 py-4 hover:bg-white/5 border-b border-white/5 last:border-0 flex justify-between items-center transition-colors">
+                                            <span className="font-medium text-white/90">{String(p.nombre)}</span>
+                                            <span className="text-emerald-400 font-bold">${utils.safeNum(p.precio)}</span>
+                                        </button>
+                                    ))}
+                                    {filteredPaquetes.length === 0 && (
+                                        <div className="px-5 py-6 text-center text-white/50 text-sm font-medium">No se encontraron servicios.</div>
+                                    )}
+                                    <div className="p-2 border-t border-white/5 sticky bottom-0 bg-[#0B1221]">
+                                        <button type="button" onMouseDown={(e) => { e.preventDefault(); setIsCustomOpen(true); setShowDropdown(false); setSearchTermService(''); }} className="w-full py-3 bg-blue-500/10 text-blue-400 rounded-[12px] font-bold text-xs uppercase tracking-wider hover:bg-blue-500/20 transition-colors active:scale-[0.98]">
+                                            + Crear nuevo servicio
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
-    // ==========================================
-    // 9. INICIALIZACIÓN Y EVENTOS DEL DOM
-    // ==========================================
-    function setupEventListeners() {
-        // Eliminar hash al cargar para evitar brinco inicial
-        if (window.location.hash) {
-            history.replaceState(null, null, ' ');
+                        {isCustomOpen && (
+                            <div className="mb-6 p-5 bg-[#0F172A] border border-white/5 rounded-2xl animate-fadeIn">
+                                <h5 className="font-bold text-white/90 text-sm mb-4">Servicio Personalizado</h5>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+                                    <div>
+                                        <label className={labelClass}>Nombre</label>
+                                        <input type="text" value={customData.nombre} onChange={e=>setCustomData({...customData, nombre: e.target.value})} className={inputClass} placeholder="Ej. Hora extra" />
+                                    </div>
+                                    <div>
+                                        <label className={labelClass}>Precio ($)</label>
+                                        <input type="number" value={customData.precio} onChange={e=>setCustomData({...customData, precio: e.target.value})} className={inputClass} placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 justify-end">
+                                    <button type="button" onClick={() => setIsCustomOpen(false)} className="px-5 py-2.5 text-white/60 hover:text-white text-xs font-bold uppercase tracking-wider transition-colors">Cancelar</button>
+                                    <button type="button" onClick={handleCreateCustom} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-500 transition-colors active:scale-[0.98]">Agregar</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {formData.serviciosSeleccionados.length > 0 && (
+                           <div className="space-y-4 mb-2 pt-2 border-t border-white/5">
+                               <label className={labelClass}>Servicios Agregados ({formData.serviciosSeleccionados.length})</label>
+                               {formData.serviciosSeleccionados.map((s, idx) => (
+                                 <div key={idx} className="flex flex-col gap-4 p-5 bg-[#0F172A] rounded-[20px] border border-white/5 relative group hover:border-white/10 transition-colors duration-200">
+                                    <button type="button" onClick={()=>removeService(idx)} className="absolute top-4 right-4 text-white/30 hover:text-rose-400 transition-colors p-1.5"><X size={16}/></button>
+                                    
+                                    <div className="flex justify-between items-center pr-8">
+                                        <span className="font-bold text-[15px] text-white/90 truncate">{String(s.nombre)}</span>
+                                        <div className="flex items-center bg-[#0B1221] rounded-xl p-1 border border-white/5">
+                                            <button type="button" onClick={()=>updateServiceQuantity(idx,-1)} className="w-8 h-8 flex justify-center items-center hover:bg-white/5 rounded-lg text-white/50 hover:text-white transition-colors active:scale-[0.95]"><Minus size={14}/></button>
+                                            <span className="w-8 text-center font-bold text-white/90">{s.cantidad}</span>
+                                            <button type="button" onClick={()=>updateServiceQuantity(idx,1)} className="w-8 h-8 flex justify-center items-center hover:bg-white/5 rounded-lg text-white/50 hover:text-white transition-colors active:scale-[0.95]"><Plus size={14}/></button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-4 border-t border-white/5 pt-4">
+                                        <div>
+                                            <label className={labelClass}>Precio Modificable ($)</label>
+                                            <input type="number" value={s.precio} onChange={(e) => handleServiceEdit(idx, 'precio', e.target.value)} className="w-full bg-[#0B1221] border border-white/5 rounded-xl px-4 py-3 text-[15px] font-medium text-white/90 outline-none focus:border-blue-500/50 transition-colors" />
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Descripción para el PDF</label>
+                                            <textarea value={s.descripcion || ''} onChange={(e) => handleServiceEdit(idx, 'descripcion', e.target.value)} rows={2} className="w-full bg-[#0B1221] border border-white/5 rounded-xl px-4 py-3 text-sm text-white/80 outline-none focus:border-blue-500/50 transition-colors resize-none leading-relaxed" placeholder="Detalles, viñetas, cambios..."/>
+                                        </div>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+
+                     <div className={`${GLASS_CARD} p-6`}>
+                        <div className="flex items-center gap-3 mb-6"><div className="bg-emerald-500/10 text-emerald-400 p-2.5 rounded-xl border border-emerald-500/20"><Receipt size={20}/></div><h4 className="font-bold text-white/90 text-lg tracking-tight">Finanzas</h4></div>
+                        
+                        {!isCotizacionMode && (
+                            <div className="grid grid-cols-2 gap-5 mb-6">
+                                <div><label className={labelClass}>Abono</label><input type="number" value={formData.abono} onChange={e=>setFormData({...formData,abono:e.target.value})} className={`${inputClass} text-emerald-400 font-bold`} /></div>
+                                <div><label className={labelClass}>Viáticos</label><input type="number" value={formData.transporte} onChange={e=>{
+                                    const newTransporte = e.target.value;
+                                    setFormData(prev => ({...prev, transporte: newTransporte, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(newTransporte) + utils.safeNum(prev.gastos)).toString()}));
+                                }} className={inputClass} /></div>
+                            </div>
+                        )}
+
+                        {isCotizacionMode && (
+                            <div className="mb-6">
+                                <div><label className={labelClass}>Viáticos Adicionales ($)</label><input type="number" value={formData.transporte} onChange={e=>{
+                                    const newTransporte = e.target.value;
+                                    setFormData(prev => ({...prev, transporte: newTransporte, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(newTransporte) + utils.safeNum(prev.gastos)).toString()}));
+                                }} className={inputClass} /></div>
+                            </div>
+                        )}
+                        
+                        {!isCotizacionMode && (
+                            <div className="mb-6 space-y-5 border-t border-white/5 pt-6 mt-2">
+                                <div><label className={labelClass}>Gastos operativos reales ($)</label><input type="number" value={formData.gastos} onChange={e=>{
+                                    const newGastos = e.target.value;
+                                    setFormData(prev => ({...prev, gastos: newGastos, total: ((Array.isArray(prev.serviciosSeleccionados) ? prev.serviciosSeleccionados : []).reduce((sum, s) => sum + utils.safeNum(s.precio), 0) + utils.safeNum(prev.transporte) + utils.safeNum(newGastos)).toString()}));
+                                }} className={`${inputClass} text-rose-400`} /></div>
+                                <div><label className={labelClass}>Detalle de gastos internos</label><textarea value={formData.detalleGastos} onChange={e=>setFormData({...formData,detalleGastos:e.target.value})} className={`${inputClass} min-h-[80px] resize-none leading-relaxed`} placeholder="Ej. Transporte, hielo, ayudante..." /></div>
+                            </div>
+                        )}
+
+                        <div className="mb-6 border-t border-white/5 pt-6 mt-2">
+                            <label className={labelClass}>Estado {isCotizacionMode ? 'Cotización' : 'Reserva'}</label>
+                            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
+                                {opcionesEstado.map(est => (
+                                    <button type="button" key={est} onClick={()=>setFormData({...formData,estado:est})} className={`shrink-0 flex-1 py-3.5 px-4 text-[10px] font-bold uppercase tracking-wider rounded-xl border transition-colors active:scale-[0.98] ${formData.estado===est ? 'bg-blue-600 text-white border-blue-500 shadow-md' : 'bg-[#0F172A] text-white/60 border-white/5 hover:bg-[#1E293B] hover:text-white/90'}`}>{est}</button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="bg-[#0F172A] p-6 rounded-2xl flex justify-between items-center border border-white/5 mt-2"><span className="font-bold text-white/50 uppercase tracking-wider text-xs">TOTAL FINAL</span><div className="flex items-center"><span className="text-3xl font-bold text-blue-500 mr-2">$</span><input type="number" value={formData.total} onChange={e=>setFormData({...formData,total:e.target.value})} className="bg-transparent text-right text-4xl font-bold text-white/90 outline-none w-32 tracking-tight" /></div></div>
+                     </div>
+
+                     <AppButton variant="primary" icon={Check} onClick={handleSubmit} className="w-full py-4 text-base uppercase tracking-wider mt-2 mb-4">
+                        {isCotizacionMode ? 'Guardar Cotización' : 'Guardar Reserva'}
+                     </AppButton>
+                  </form>
+                 </div>
+              </div>
+        </div>
+    );
+});
+
+export default function App() {
+  const hasSyncedRef = useRef(false);
+  const lastActivityRef = useRef(Date.now());
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [appSettings, setAppSettings] = useState(() => { const saved = utils.getSafeLocal('diverty_settings'); return saved ? JSON.parse(saved) : { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }; });
+  
+  const [isAuthenticated, setIsAuthenticated] = useState(false); 
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [activeTab, setActiveTab] = useState('inicio'); 
+  const [isDBReady, setIsDBReady] = useState(false);
+  const [eventos, setEventos] = useState([]); 
+  const [paquetesPersonalizados, setPaquetesPersonalizados] = useState([]);
+  const [hiddenClients, setHiddenClients] = useState([]);
+  const [filterDate, setFilterDate] = useState('');
+  const [viewMode, setViewMode] = useState('semana'); 
+  const [calMonth, setCalMonth] = useState(currentTime.getMonth());
+  const [calYear, setCalYear] = useState(currentTime.getFullYear());
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, initialData: defaultFormData, isCotizacion: false });
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+  const [toastAlert, setToastAlert] = useState({ isOpen: false, message: '', success: false });
+  const [isModoOperativo, setIsModoOperativo] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printData, setPrintData] = useState(null);
+  const [printType, setPrintType] = useState(null);
+  const [pdfScale, setPdfScale] = useState(1); 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [clientSort, setClientSort] = useState('gasto'); 
+  const [financePeriod, setFinancePeriod] = useState('mes');
+  const [expandedFinanceId, setExpandedFinanceId] = useState(null);
+  const [expandedClientId, setExpandedClientId] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const [messaging, setMessaging] = useState(null);
+
+  // INICIALIZACIÓN SEGURA (AISLADA)
+  useEffect(() => {
+    const initMessaging = async () => {
+      try {
+        const supported = await isSupported();
+        if (supported) setMessaging(getMessaging(app));
+      } catch (e) {
+        console.warn("FCM no soportado:", e);
+      }
+    };
+    setTimeout(() => { initMessaging(); }, 1500);
+  }, []);
+
+  const todayObj = currentTime;
+  const todayStr = useMemo(() => utils.getLocalYYYYMMDD(currentTime), [currentTime]);
+  const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
+  const { start: weekStart, end: weekEnd } = useMemo(() => utils.getWeekRange(currentTime), [currentTime]);
+  const todayTime = useMemo(() => new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate()).getTime(), [currentTime]);
+  const PAQUETES_DIVERTY = useMemo(() => [...PAQUETES_BASE, ...paquetesPersonalizados], [paquetesPersonalizados]);
+
+  const updateSettings = useCallback((newSettings) => { setAppSettings(newSettings); utils.setSafeLocal('diverty_settings', JSON.stringify(newSettings)); }, []);
+  const showAlert = useCallback((message, success = false) => { setToastAlert({ isOpen: true, message: String(message), success }); setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); }, []);
+  const showConfirm = useCallback((message, onConfirm) => { setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); }, []);
+
+  // ESCUCHADOR DE NOTIFICACIONES EN PRIMER PLANO
+  useEffect(() => {
+    if (!messaging) return;
+    try {
+      const unsubscribe = onMessage(messaging, (payload) => {
+        const title = payload.notification?.title || payload.data?.title || "Notificación Diverty";
+        const body = payload.notification?.body || payload.data?.body || "Tienes un nuevo mensaje";
+
+        showAlert(`🔔 ${title}: ${body}`, true);
+        utils.triggerHaptic('success');
+
+        if (typeof Notification !== 'undefined' && Notification.permission === "granted" && navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistration().then(reg => {
+            if (reg) { reg.showNotification(title, { body: body, icon: "/icon-192.png" }); } 
+            else { new Notification(title, { body: body, icon: "/icon-192.png" }); }
+          }).catch(() => new Notification(title, { body: body, icon: "/icon-192.png" }));
         }
-        setTimeout(() => { window.scrollTo({ top: 0, behavior: 'instant' }); }, 50);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("FCM foreground error", e);
+    }
+  }, [messaging, showAlert]);
 
-        document.body.addEventListener('click', handleGlobalClick);
-        document.body.addEventListener('click', (e) => {
-            const navLink = e.target.closest('.nav-action');
-            if (navLink && navLink.hash) {
-                e.preventDefault();
-                const modal = e.target.closest('.modal-backdrop');
-                if (modal) modal.classList.remove('show');
-                setActiveSection(navLink.hash.substring(1));
+  // TEMPORIZADOR DE RESCATE (NUNCA MÁS SE CONGELARÁ EN INICIANDO)
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 3000);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => { 
+        clearTimeout(fallbackTimer);
+        if (user) {
+            setFirebaseUser(user); 
+            setIsAuthenticated(true);
+        } else {
+            setFirebaseUser(null);
+            setIsAuthenticated(false);
+        }
+        setIsAuthLoading(false);
+    }, (error) => {
+        clearTimeout(fallbackTimer);
+        setIsAuthLoading(false);
+    }); 
+    
+    const resetTimer = () => { lastActivityRef.current = Date.now(); };
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, resetTimer));
+    const interval = setInterval(() => { if (Date.now() - lastActivityRef.current > 15 * 60 * 1000) signOut(auth); }, 60000);
+    
+    return () => { 
+        clearTimeout(fallbackTimer);
+        events.forEach(e => window.removeEventListener(e, resetTimer)); 
+        clearInterval(interval); 
+        unsubscribe(); 
+    };
+  }, []);
+
+  const eventosActivos = useMemo(() => eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora))), [eventos]);
+
+  const stats = useMemo(() => {
+     let gananciaHoy = 0, gananciaSemana = 0, deudaTotal = 0, ingresosEsteMes = 0;
+     const eventosHoy = [], eventosManana = [], alertasOperativas = [];
+     const currYear = todayObj.getFullYear(), currMonth = todayObj.getMonth() + 1;
+
+     eventosActivos.forEach(ev => {
+        const est = utils.normalizeText(ev.estado), isHoy = ev.fecha === todayStr, isManana = ev.fecha === tomorrowStr;
+        if(est !== 'cancelado' && !est.includes('cotizaci') && !est.includes('cot.')) {
+            const t = utils.safeNum(ev.total), a = utils.safeNum(ev.abono), g = utils.safeNum(ev.gastos), p = t - g; 
+            let evYear = 0, evMonth = 0, evDay = 0;
+            if(ev.fecha) { const parts = String(ev.fecha).trim().split('-'); if(parts.length >= 2) { evYear = parseInt(parts[0], 10); evMonth = parseInt(parts[1], 10); evDay = parseInt(parts[2] || 0, 10); } }
+            const isEsteMes = (evYear === currYear && evMonth === currMonth);
+            const isPastOrCurrentMonth = evYear < currYear || (evYear === currYear && evMonth <= currMonth);
+            if (est !== 'completado' && (t - a) > 0 && isPastOrCurrentMonth) deudaTotal += (t - a);
+            if(isHoy) gananciaHoy += p;
+            if(isEsteMes) ingresosEsteMes += p;
+            if(evYear && evMonth && evDay) { const eD = new Date(evYear, evMonth - 1, evDay); if (eD >= weekStart && eD <= weekEnd) gananciaSemana += p; }
+            if(isHoy) eventosHoy.push(ev); 
+            if(isManana) eventosManana.push(ev);
+            if (est !== 'completado' && (isHoy || isManana)) {
+                const priority = isHoy ? 1 : 2, sp = isHoy ? { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20', tagBg: 'bg-rose-500', tagText: 'HOY URGENTE' } : { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', tagBg: 'bg-amber-500', tagText: 'MAÑANA' };
+                if (utils.safeNum(ev.abono) <= 0) alertasOperativas.push({ id: `abo-${ev.id}`, priority, ev, icon: DollarSign, ...sp, text: `Sin abono registrado: ${String(ev.cliente)}` });
+                if (!ev.direccion || String(ev.direccion).trim() === '') alertasOperativas.push({ id: `dir-${ev.id}`, priority, ev, icon: MapPin, ...sp, text: `Falta dirección: ${String(ev.cliente)}` });
+                if (!ev.hora || String(ev.hora).trim() === '') alertasOperativas.push({ id: `hor-${ev.id}`, priority, ev, icon: Clock, ...sp, text: `Falta hora: ${String(ev.cliente)}` });
             }
-        });
+        }
+     });
+     eventosHoy.sort((a,b) => String(a.hora).localeCompare(String(b.hora))); eventosManana.sort((a,b) => String(a.hora).localeCompare(String(b.hora))); alertasOperativas.sort((a, b) => a.priority - b.priority);
+     return { gananciaHoy, gananciaSemana, deudaTotal, ingresosEsteMes, eventosHoy, eventosManana, alertasOperativas };
+  }, [eventosActivos, todayStr, tomorrowStr, weekStart, weekEnd, todayObj]);
 
-        const mobileToggle = $('#mobileToggle');
-        if(mobileToggle) mobileToggle.onclick = () => toggleMobileMenu(true);
-        
-        const closeMobile = $('#closeMobile');
-        if(closeMobile) closeMobile.onclick = () => toggleMobileMenu(false);
-        
-        const mobileMenuOverlay = $('#mobileMenuOverlay');
-        if(mobileMenuOverlay) mobileMenuOverlay.onclick = () => toggleMobileMenu(false);
-        
-        const closeModal = $('#closeModal');
-        if(closeModal) closeModal.onclick = () => hideModal('infoModal');
-        
-        const viewCart = $('#viewCart');
-        if(viewCart) viewCart.onclick = () => showModal('cartModal');
-        
-        const closeCart = $('#closeCart');
-        if(closeCart) closeCart.onclick = () => hideModal('cartModal');
-        
-        window.addEventListener('scroll', () => { 
-            const mainHeader = $('#mainHeader');
-            if(mainHeader) window.scrollY > 50 ? mainHeader.classList.add('scrolled') : mainHeader.classList.remove('scrolled'); 
-        });
-        
-        const openCalculatorBtn = $('#openCalculator');
-        if(openCalculatorBtn) openCalculatorBtn.onclick = openCalculator;
-        
-        const closeCalculatorBtn = $('#closeCalculator');
-        if(closeCalculatorBtn) closeCalculatorBtn.onclick = () => hideModal('calculatorModal');
-        
-        const addCalculatedBtn = $('#addCalculatedToCart');
-        if(addCalculatedBtn) addCalculatedBtn.onclick = addCalculatedToCart;
-        
-        const continueBookingBtn = $('#continueToBookingBtn');
-        if(continueBookingBtn) continueBookingBtn.onclick = () => { hideModal('bookingConfirmModal'); setActiveSection('booking'); };
+  const clientsList = useMemo(() => {
+     const clientsMap = {};
+     eventosActivos.forEach(ev => {
+        const est = utils.normalizeText(ev.estado);
+        if(est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return; 
+        const key = String(ev.cliente || '').trim().toLowerCase(); if(!key) return;
+        if(!clientsMap[key]) clientsMap[key] = { nombre: ev.cliente, telefono: ev.telefono, totalGastado: 0, eventos: 0, ultimoEventoFecha: ev.fecha, ultimoEstado: ev.estado };
+        clientsMap[key].totalGastado += utils.safeNum(ev.total); clientsMap[key].eventos += 1;
+        if (ev.fecha && (!clientsMap[key].ultimoEventoFecha || ev.fecha > clientsMap[key].ultimoEventoFecha)) { clientsMap[key].ultimoEventoFecha = ev.fecha; clientsMap[key].ultimoEstado = ev.estado; }
+     });
+     return Object.values(clientsMap).filter(c => !hiddenClients.includes(c.nombre));
+  }, [eventosActivos, hiddenClients]);
 
-        document.addEventListener('change', e => {
-            if (e.target.matches('#cartLocation, #calculatorLocation')) {
-                app.location = e.target.value;
-                updateCartUI();
-                const calcModal = $('#calculatorModal');
-                if (calcModal && calcModal.classList.contains('show')) updateCalculatorTotal();
-            }
-        });
+  const enrichedClients = useMemo(() => {
+     return clientsList.map(c => {
+         let daysSince = 0;
+         if (c.ultimoEventoFecha) {
+             const [y, m, d] = c.ultimoEventoFecha.split('-');
+             if (y && m && d) { const lastDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime(); daysSince = Math.floor((todayTime - lastDate) / (1000 * 60 * 60 * 24)); }
+         }
+         return { ...c, daysSince, isVIP: c.eventos >= 3 || c.totalGastado >= 300, isFrecuente: c.eventos === 2, isNuevo: c.eventos === 1 && daysSince <= 180, isInactivo: daysSince > 180, needsContact: daysSince > 60 && daysSince <= 365 };
+     });
+  }, [clientsList, todayTime]);
+
+  const animatedGananciaHoy = useCountUp(stats.gananciaHoy);
+
+  const agendaFiltrados = useMemo(() => {
+    return eventosActivos.filter(e => {
+        const est = utils.normalizeText(e.estado);
+        if (est.includes('cotizaci') || est.includes('cot.')) return false; 
+        if (globalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(globalSearch.toLowerCase())) return false;
+        if (filterDate && e.fecha !== filterDate) return false;
+        
+        if (!filterDate && !globalSearch) {
+            if (viewMode === 'hoy') return e.fecha === todayStr; 
+            let dt; if (e.fecha) { const parts = String(e.fecha).split('-'); if (parts.length === 3) dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); }
+            if (viewMode === 'semana') return dt ? (dt >= weekStart && dt <= weekEnd) : false; 
+            if (viewMode === 'mes') return dt ? (dt.getFullYear() === todayObj.getFullYear() && dt.getMonth() === todayObj.getMonth()) : false; 
+            if (viewMode === 'findesemana') return dt ? (dt.getDay() === 0 || dt.getDay() === 6) : false; 
+            if (viewMode === 'pendientes') return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && est !== 'completado'; 
+            if (viewMode === 'todas') return true;
+        }
+        return true; 
+    });
+  }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
+
+  const filteredClients = useMemo(() => enrichedClients.filter(c => { if(!searchTerm) return true; const s = searchTerm.toLowerCase(); return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s); }), [enrichedClients, searchTerm]);
+  const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => { if (clientSort === 'gasto') return b.totalGastado - a.totalGastado; if (clientSort === 'recientes') return new Date(b.ultimoEventoFecha || 0) - new Date(a.ultimoEventoFecha || 0); return 0; }), [filteredClients, clientSort]);
+  const contactCandidates = useMemo(() => enrichedClients.filter(c => c.needsContact).slice(0, 5), [enrichedClients]);
+
+  const cy = new Date(todayTime).getFullYear(), cm = new Date(todayTime).getMonth() + 1;
+  const evtCalculoBase = useMemo(() => eventosActivos.filter(ev => {
+      const est = utils.normalizeText(ev.estado);
+      if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return false;
+      if (financePeriod === 'todos') return true;
+      if (!ev.fecha) return false; 
+      const parts = String(ev.fecha).trim().split('-'); 
+      return parseInt(parts[0], 10) === cy && parseInt(parts[1], 10) === cm;
+  }), [eventosActivos, financePeriod, cy, cm]);
+
+  const finanzasData = useMemo(() => {
+      const tI = evtCalculoBase.reduce((a, e) => a + utils.safeNum(e.total), 0);
+      const tG = evtCalculoBase.reduce((a, e) => a + utils.safeNum(e.gastos), 0);
+      const bT = tI - tG;
+      const roi = tI > 0 ? ((bT / tI) * 100).toFixed(0) : 0;
+      const deudaTotalGlobal = evtCalculoBase.reduce((acc, ev) => {
+          const pendiente = utils.safeNum(ev.total) - utils.safeNum(ev.abono);
+          return (pendiente > 0 && utils.normalizeText(ev.estado) !== 'completado') ? acc + pendiente : acc;
+      }, 0);
+      return { tI, tG, bT, roi, deudaTotalGlobal };
+  }, [evtCalculoBase]);
+
+  const finanzasMes = useMemo(() => {
+      const ingresosEsteMesGlobal = eventosActivos.filter(ev => {
+          const est = utils.normalizeText(ev.estado);
+          if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return false;
+          if (!ev.fecha) return false; const parts = String(ev.fecha).trim().split('-'); return parseInt(parts[0], 10) === cy && parseInt(parts[1], 10) === cm;
+      }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
+      const diasTranscurridos = new Date(todayTime).getDate(), diasTotales = new Date(cy, cm, 0).getDate();
+      const promedioDiario = diasTranscurridos > 0 ? ingresosEsteMesGlobal / diasTranscurridos : 0;
+      const proyeccion = promedioDiario * diasTotales;
+      const progresoMeta = Math.min((ingresosEsteMesGlobal / appSettings.metaMensual) * 100, 100);
+      return { ingresosEsteMesGlobal, diasTranscurridos, diasTotales, proyeccion, progresoMeta };
+  }, [eventosActivos, cy, cm, todayTime, appSettings.metaMensual]);
+
+  const chartData = useMemo(() => {
+      const td = new Date(todayTime);
+      const last7Days = Array.from({length: 7}, (_, i) => { const d = new Date(td); d.setDate(d.getDate() - (6 - i)); return utils.getLocalYYYYMMDD(d); });
+      return last7Days.map(date => {
+          const dayEarnings = eventosActivos.filter(ev => ev.fecha === date && utils.normalizeText(ev.estado) !== 'cancelado' && !utils.normalizeText(ev.estado).includes('cotizaci') && !utils.normalizeText(ev.estado).includes('cot.')).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - utils.safeNum(ev.gastos)), 0);
+          return { date, value: dayEarnings };
+      });
+  }, [eventosActivos, todayTime]);
+  const maxChartVal = useMemo(() => Math.max(...chartData.map(d => d.value), 100), [chartData]);
+
+  const cotizacionesActivas = useMemo(() => eventosActivos.filter(ev => utils.normalizeText(ev.estado).includes('cotizaci') || utils.normalizeText(ev.estado).includes('cot.')), [eventosActivos]);
+  const proximasReservas = useMemo(() => [...stats.eventosHoy, ...stats.eventosManana].filter(ev => utils.normalizeText(ev.estado) !== 'completado'), [stats.eventosHoy, stats.eventosManana]);
+
+  const handleAddCustomService = useCallback(async (nombre, precio) => {
+    if (!nombre?.trim()) { showAlert("Ingresa un nombre para el servicio.", false); return null; }
+    const newSrv = { id: 'c-'+Date.now(), nombre: nombre.trim(), precio: utils.safeNum(precio), short: nombre.substring(0,12)+'...', descripcion: 'Servicio personalizado.', isCustom: true };
+    const nuevosPaquetes = [...paquetesPersonalizados, newSrv];
+    setPaquetesPersonalizados(nuevosPaquetes);
+    if (firebaseUser) { await setDoc(getConfigRef('serviciosCustom'), { paquetes: nuevosPaquetes }, { merge: true }); }
+    return newSrv;
+  }, [paquetesPersonalizados, firebaseUser, showAlert]);
+
+  const openModal = useCallback((ev = null, isCot = false) => {
+    try {
+        utils.triggerHaptic('light'); 
+        let initial = { ...defaultFormData, fecha: filterDate || todayStr };
+        const isEventData = ev && typeof ev === 'object' && 'id' in ev && typeof ev.preventDefault !== 'function';
+        if (isEventData) { 
+           let srvs = Array.isArray(ev.serviciosSeleccionados) ? [...ev.serviciosSeleccionados] : [];
+           if (!srvs.length && ev.servicio) {
+              String(ev.servicio).split('+').forEach(s => {
+                  const nm = s.match(/^(.*?)(?:\s*\(x\d+\))?$/)?.[1].trim() || s.trim(); const q = parseInt(s.match(/\(x(\d+)\)/)?.[1] || 1); const p = utils.getServiceDetails(nm);
+                  if (p) srvs.push({ ...p, cantidad: q, precioOriginal: p.precio, precio: p.precio * q });
+                  else srvs.push({ nombre: s.trim(), precio: utils.safeNum(ev.total)/(String(ev.servicio).split('+').length||1), cantidad: q, precioOriginal: utils.safeNum(ev.total)/(String(ev.servicio).split('+').length||1) });
+              });
+           }
+           initial = { ...defaultFormData, ...ev, serviciosSeleccionados: srvs }; 
+        } else if (!isCot) {
+            const draftStr = utils.getSafeLocal('diverty_form_draft');
+            if (draftStr) { try { const draftObj = JSON.parse(draftStr); if (draftObj && (draftObj.cliente || draftObj.telefono || draftObj.serviciosSeleccionados?.length > 0)) { initial = draftObj; showAlert("Borrador recuperado", true); } } catch(e) {} }
+        }
+        setModalConfig({ isOpen: true, isCotizacion: isCot === true, initialData: initial });
+    } catch (e) { 
+        console.error(e); 
+        setModalConfig({ isOpen: true, isCotizacion: isCot === true, initialData: { ...defaultFormData, fecha: filterDate || todayStr } }); 
+    }
+  }, [filterDate, todayStr, showAlert]);
+  
+  const closeModal = useCallback(() => { utils.triggerHaptic('light'); setModalConfig({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); }, []);
+
+  const handleDuplicateEvento = useCallback((ev) => {
+    utils.triggerHaptic('light');
+    const { id, createdAt, deletedLocally, colisionAprobada, ...rest } = ev;
+    const isCotizacionOrig = utils.normalizeText(ev.estado).includes('cot');
+    const duplicatedData = { ...rest, abono: '', estado: isCotizacionOrig ? 'Cotización' : 'Pendiente', isDuplicated: true };
+    setModalConfig({ isOpen: true, isCotizacion: isCotizacionOrig, initialData: duplicatedData });
+    showAlert("Evento duplicado. Verifica los datos y guarda.", true);
+  }, [showAlert]);
+
+  const handleUpdateEstado = useCallback((id, nuevoEstado) => {
+      utils.triggerHaptic('light');
+      setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
+      setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true }).catch(e=>console.warn(e));
+      showAlert(`Estado actualizado a ${nuevoEstado}`, true);
+  }, [showAlert]);
+
+  const handleConvertirReserva = useCallback((ev) => {
+      utils.triggerHaptic('light');
+      setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...ev, estado: 'Pendiente' } });
+      showAlert("Confirma los datos para crear la reserva.", true);
+  }, [showAlert]);
+
+  const handleSaveFromModal = useCallback(async (formDataToSave, isCotizacionMode) => {
+    if (!formDataToSave.cliente?.trim()) return showAlert("Por favor, ingresa el nombre del cliente."); 
+    if (!formDataToSave.fecha) return showAlert("Por favor, selecciona la fecha.");
+    utils.triggerHaptic('light'); 
+    
+    const evtId = (formDataToSave.id && !formDataToSave.isDuplicated) ? formDataToSave.id : (isCotizacionMode ? `cot-${Date.now()}` : `man-${Date.now()}`); 
+    const { isDuplicated, ...cleanFormData } = formDataToSave;
+
+    // Asegurar estado según modo en creación nueva
+    if (!formDataToSave.id || isDuplicated) {
+        if (isCotizacionMode && !cleanFormData.estado.includes('Cot')) cleanFormData.estado = 'Cotización';
+        if (!isCotizacionMode && cleanFormData.estado.includes('Cot')) cleanFormData.estado = 'Pendiente';
     }
 
-    // Ejecutar inicio
-    setupEventListeners();
-    populateLocationSelects();
-    initFirebaseAndData();
+    const safeData = JSON.parse(JSON.stringify({ ...cleanFormData, id: evtId, createdAt: cleanFormData.createdAt || new Date().toISOString(), deletedLocally: false }));
+    if (modalConfig.initialData?.fecha !== safeData.fecha || modalConfig.initialData?.hora !== safeData.hora) safeData.colisionAprobada = false;
+
+    const estNormal = utils.normalizeText(safeData.estado);
+    const isCotiz = estNormal.includes('cotizaci') || estNormal.includes('cot.');
+
+    const hasCollision = !isCotiz && eventosActivos.some(ev => {
+        if (ev.id === evtId || utils.normalizeText(ev.estado) === 'cancelado' || utils.normalizeText(ev.estado).includes('cotizaci') || utils.normalizeText(ev.estado).includes('cot.') || ev.fecha !== safeData.fecha) return false;
+        if (!ev.hora || !safeData.hora) return false; 
+        const [h1, m1] = ev.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number);
+        return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
+    });
+
+    const guardarReservaFinal = (id, dataToSave) => {
+        closeModal();
+        utils.setSafeLocal('diverty_form_draft', ''); 
+        
+        setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
+        setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); 
+        showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
+
+        // Disparar PDF automáticamente sólo si es una NUEVA cotización
+        if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) {
+             setPrintData({ ...dataToSave });
+             setPrintType('cotizacion');
+             setIsPrinting(true);
+        }
+    };
+
+    if (hasCollision && !safeData.colisionAprobada) { 
+        showConfirm("Hay otro evento con menos de 3 horas de diferencia. ¿Guardar de todos modos?", () => { safeData.colisionAprobada = true; guardarReservaFinal(evtId, safeData); });
+    } else {
+        guardarReservaFinal(evtId, safeData);
+    }
+  }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm]);
+
+  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(e=>console.warn(e)); closeModal(); }), [closeModal, showConfirm]);
+  
+  const handleDeleteClient = useCallback((clientName, eventCount) => {
+    const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`;
+    showConfirm(mensaje, async () => {
+        utils.triggerHaptic('light');
+        const newHidden = [...hiddenClients, clientName];
+        setHiddenClients(newHidden);
+        if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true });
+        showAlert("Cliente eliminado exitosamente.", true);
+    });
+  }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
+
+  const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => { utils.triggerHaptic('light'); setEventos([]); Promise.all(eventosActivos.map(ev => setDoc(getDocRef(ev.id), { deletedLocally: true }, { merge: true }))).catch(e=>console.warn(e)); utils.triggerHaptic('success'); showAlert("Base de datos limpiada.", true); }), [eventosActivos, showConfirm, showAlert]);
+  const handleViewDoc = useCallback((ev, type) => { try { utils.triggerHaptic('light'); setPrintData(ev); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert]);
+  
+  const sendWhatsAppCall = useCallback((ev, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(ev, type, empresaSettings || appSettings.empresa); const phoneClean = String(ev.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
+  const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
+  const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
+
+  const downloadPDF = useCallback(async () => {
+    utils.triggerHaptic('success');
+    if (!window.html2pdf) { 
+        showAlert("Cargando generador, intenta en un segundo.", false); 
+        return; 
+    }
+
+    const element = document.getElementById('pdf-content');
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
     
-    const schemaEventPlanner = $('#schema-event-planner');
-    if(schemaEventPlanner) schemaEventPlanner.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "EventPlanner", "name": "Diverty Eventos", "url": "https://divertyeventos.online/", "telephone": "+50766677965", "priceRange": "$40-$220", "address": { "@type": "PostalAddress", "addressLocality": "Panamá Centro", "addressRegion": "Panamá", "addressCountry": "PA" }, "areaServed": ["Panamá Centro", "Arraiján", "La Chorrera", "Panamá Este", "Panamá Norte", "Ancón"] });
+    if (!element) {
+        showAlert("Error al localizar el documento.", false);
+        return;
+    }
+
+    showAlert("Generando PDF...", true);
+
+    let oldTransform = '';
+    if (wrapper) {
+        oldTransform = wrapper.style.transform;
+        wrapper.style.transform = 'scale(1)';
+    }
     
-    const schemaFaq = $('#schema-faq');
-    if(schemaFaq) schemaFaq.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [ { "@type": "Question", "name": "¿En qué zonas de Panamá ofrecen sus servicios?", "acceptedAnswer": { "@type": "Answer", "text": "Ofrecemos nuestros servicios en Panamá Centro (+$5), Arraiján (+$15), La Chorrera (+$20), Panamá Este (+$10), Panamá Norte (+$10) y Ancón (+$10)." } }, { "@type": "Question", "name": "¿Cuánto cuesta una fiesta infantil en Panamá?", "acceptedAnswer": { "@type": "Answer", "text": "Nuestros precios van desde $40 para servicios individuales como globoflexia, hasta $220 para paquetes completos y corporativos." } } ] });
+    const oldScrollY = window.scrollY;
+    window.scrollTo(0, 0);
+
+    try {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        
+        const opt = { 
+            margin: 0, 
+            filename: fileName, 
+            image: { type: 'jpeg', quality: 1.0 }, 
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                backgroundColor: "#ffffff",
+                width: 794,
+                windowWidth: 794
+            }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+        };
+
+        await window.html2pdf().set(opt).from(element).save();
+        showAlert("¡PDF descargado con éxito!", true); 
+    } 
+    catch (error) { 
+        console.error("Error PDF:", error);
+        showAlert("Error en descarga. Imprimiendo como respaldo...", false); 
+        printNativePDF();
+    } 
+    finally { 
+        if (wrapper) wrapper.style.transform = oldTransform;
+        window.scrollTo(0, oldScrollY);
+    }
+  }, [printData, printType, showAlert, printNativePDF]);
+
+  const handleSharePDF = useCallback(async () => {
+    utils.triggerHaptic('success');
+    if (!window.html2pdf) { 
+        showAlert("Cargando generador...", false); 
+        return; 
+    }
+
+    const element = document.getElementById('pdf-content');
+    const wrapper = document.getElementById('pdf-wrapper-scaler');
+    if (!element) return;
+
+    showAlert("Preparando PDF para compartir...", true);
+
+    let oldTransform = '';
+    if (wrapper) {
+        oldTransform = wrapper.style.transform;
+        wrapper.style.transform = 'scale(1)';
+    }
+
+    const oldScrollY = window.scrollY;
+    window.scrollTo(0, 0);
+
+    try {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento';
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        
+        const opt = { 
+            margin: 0, 
+            filename: fileName, 
+            image: { type: 'jpeg', quality: 1.0 }, 
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                backgroundColor: "#ffffff",
+                width: 794,
+                windowWidth: 794
+            }, 
+            jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+        };
+
+        const pdfBlob = await window.html2pdf().set(opt).from(element).output('blob');
+        if (!pdfBlob) throw new Error("Blob vacío");
+
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        const msg = getWhatsAppMessage(printData, printType === 'cotizacion' ? 'cotizacion' : 'recibo', appSettings.empresa);
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { 
+            await navigator.share({ files: [file], title: fileName, text: msg }); 
+        } 
+        else { 
+            showAlert("No se pudo compartir directamente. Descargando...", false); 
+            await window.html2pdf().set(opt).from(element).save(); 
+            const phoneClean = String(printData?.telefono || '').replace(/\D/g,''); 
+            utils.openWhatsAppBusiness(phoneClean, msg); 
+        }
+    } catch (error) { 
+        console.error("Share error:", error);
+        if (error?.name !== 'AbortError') { 
+            showAlert("Error al compartir. Usa el botón Guardar.", false); 
+        } 
+    } 
+    finally { 
+        if (wrapper) wrapper.style.transform = oldTransform;
+        window.scrollTo(0, oldScrollY);
+    }
+  }, [printData, printType, appSettings, showAlert]);
+
+  const downloadExcel = useCallback(() => {
+    utils.triggerHaptic('success');
+    const filteredForExport = eventosActivos.filter(ev => { 
+        const est = utils.normalizeText(ev.estado);
+        if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(ev.total) <= 0) return false; 
+        if (financePeriod === 'todos') return true; 
+        const fStr = String(ev.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); return parseInt(ey) === cy && parseInt(em) === cm; } return false; 
+    });
+    let csv = 'Fecha,Cliente,Tipo Evento,Ubicacion,Ingreso Bruto,Gastos,Ganancia Neta,Estado\n'; filteredForExport.forEach(ev => { const t = utils.safeNum(ev.total); const g = utils.safeNum(ev.gastos); csv += `"${ev.fecha||''}","${String(ev.cliente||'').replace(/,/g,'')}","${String(ev.tipoEvento||'').replace(/,/g,'')}","${String(ev.ubicacion||'').replace(/,/g,'')}",${t},${g},${t-g},"${ev.estado||''}"\n`; });
+    const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Reporte_Finanzas_Diverty_${financePeriod}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  }, [eventosActivos, financePeriod, cy, cm]);
+
+  const handleLogin = useCallback(async (e) => { 
+    e.preventDefault(); 
+    try {
+        await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+        utils.triggerHaptic('success'); 
+        setEmailInput('');
+        setPasswordInput('');
+    } catch (error) {
+        utils.triggerHaptic('warning'); 
+        showAlert("Credenciales incorrectas", false); 
+    }
+  }, [emailInput, passwordInput, showAlert]);
+
+  const handleLogout = useCallback(async () => { 
+      try {
+          await signOut(auth);
+      } catch (error) {
+          showAlert("Error al cerrar sesión");
+      }
+  }, [showAlert]);
+
+  const handleCopiarCobros = useCallback(() => {
+      utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n";
+      eventosActivos.filter(ev => { const est = utils.normalizeText(ev.estado); return (utils.safeNum(ev.total) - utils.safeNum(ev.abono)) > 0 && est !== 'cancelado' && est !== 'completado' && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(ev => { text += `👤 *${ev.cliente}*\n📅 Fecha: ${ev.fecha}\n💰 Debe: $${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}\n📞 WA: ${ev.telefono}\n\n`; });
+      navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true);
+  }, [eventosActivos, showAlert]);
+
+  const activarNotificaciones = useCallback(async () => {
+    if (!messaging) {
+        showAlert("Las notificaciones no están disponibles. (Posible bloqueo de navegador)", false);
+        return;
+    }
     
-    renderHome(); 
-    setActiveSection(window.location.hash.substring(1) || 'home'); 
-    updateCartUI();
-    lucide.createIcons();
+    try {
+      if (!('Notification' in window)) {
+        showAlert("Este navegador no soporta notificaciones.", false);
+        return;
+      }
+
+      const permiso = await Notification.requestPermission();
+      if (permiso !== "granted") {
+        showAlert("Debes permitir notificaciones", false);
+        return;
+      }
+      
+      showAlert("Generando token, espera un momento...", true);
+
+      const token = await getToken(messaging, {
+        vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ"
+      });
+      
+      if (token) {
+        await setDoc(doc(db, "tokens", token), {
+          token: token,
+          createdAt: new Date()
+        });
+        console.log("Token guardado:", token);
+        showAlert("✅ ¡Token generado y guardado con éxito!", true);
+      } else {
+        console.error("No se generó token");
+        showAlert("No se generó ningún token.", false);
+      }
+    } catch (error) { 
+      console.error("Error obteniendo token:", error); 
+      showAlert("Error al obtener token: " + (error.message || "revisa consola"), false); 
+    }
+  }, [messaging, showAlert]);
+
+  // 🚨 DETECTAR RESERVAS NUEVAS Y LANZAR ALERTA VISUAL 🚨
+  useEffect(() => {
+    if (!db || !appId || !firebaseUser) return;
+    const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500);
+    const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+    const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => {
+      clearTimeout(timeoutId); const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const data = change.doc.data();
+          if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) {
+             // 🚨 Mostramos la alerta verde dentro de la app para confirmar que se detectó
+             utils.triggerHaptic('success');
+             showAlert(`🔥 ¡Alerta de Sistema! Entró nueva reserva: ${data.cliente}`, true);
+          }
+        }
+      });
+
+      setEventos(prev => {
+          let hasChanges = false;
+          const map = new Map(prev.map(e => [e.id, e]));
+          fbData.forEach(e => { 
+             if (map.has(e.id)) { 
+                 const exist = map.get(e.id); 
+                 if (exist.estado !== e.estado || exist.abono !== e.abono || exist.total !== e.total || exist.deletedLocally !== e.deletedLocally) {
+                     map.set(e.id, { ...exist, estado: e.estado, abono: e.abono, total: e.total, deletedLocally: e.deletedLocally }); 
+                     hasChanges = true;
+                 }
+             } else { map.set(e.id, e); hasChanges = true; } 
+          });
+          if (!hasChanges && prev.length > 0) return prev;
+          return Array.from(map.values()).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
+      }); setIsDBReady(true);
+    }, (error) => { console.warn("Firestore offline:", error); clearTimeout(timeoutId); setIsDBReady(true); });
     
-    // === REVELAR EL CONTENIDO SUAVEMENTE CUANDO TODO ESTÉ LISTO (FOUC FIX) ===
-    document.body.classList.add('js-loaded');
-    </script>
-</body>
-</html>
+    getDoc(getConfigRef('serviciosCustom')).then((docSnap) => { if (docSnap.exists()) { setPaquetesPersonalizados(docSnap.data().paquetes || []); } });
+    getDoc(getConfigRef('clientesOcultos')).then((docSnap) => { if (docSnap.exists()) { setHiddenClients(docSnap.data().clients || []); } });
+
+    return () => { unsubscribeEventos(); clearTimeout(timeoutId); };
+  }, [db, appId, firebaseUser]);
+
+  useEffect(() => {
+      let isSubscribed = true;
+      const syncSheets = async () => {
+        if (!sheetUrl || !isAuthenticated || !firebaseUser || !isSubscribed) return;
+        setIsSyncing(true); utils.triggerHaptic('light');
+        try {
+          const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/); if (!match) throw new Error('URL inválida.');
+          const res = await fetch(`https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv&_nocache=${Date.now()}`); 
+          if (!res.ok) throw new Error('HTTP '+res.status);
+          const rows = utils.parseCSV(await res.text());
+          if (rows.length > 1) {
+            const h = rows[0].map(x=>String(x||'').trim().toLowerCase());
+            const getIdx = (keys) => keys.map(k => h.findIndex(x=>x.includes(k))).find(i => i !== -1) ?? -1;
+            const [iNom, iEm, iTip, iTel, iNin, iFec, iHor, iUbi, iDir, iCom, iSer, iTra, iPre, iAbo, iEst] = [ getIdx(['nombre','cliente']), getIdx(['email','correo']), getIdx(['tipo','evento']), getIdx(['tel']), getIdx(['niñ','nin','cant']), getIdx(['fecha']), getIdx(['hora']), getIdx(['ubicacion','lugar','zona']), getIdx(['direc','detal']), getIdx(['coment','nota']), getIdx(['servic','paquet','plan']), getIdx(['transp','viatic']), getIdx(['preci','total','monto']), getIdx(['abono','deposi']), getIdx(['estado','status']) ];
+            if (iNom === -1) { setIsSyncing(false); return; }
+            const nuevasReservasDeSheets = []; const seen = new Set();
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i]; if (!r[iNom] || String(r[iNom]).trim() === '') continue;
+              const s = (idx) => idx !== -1 ? String(r[idx]).trim() : '';
+              let fechaLimpia = s(iFec);
+              if (/^\d+$/.test(fechaLimpia)) { const serial = parseInt(fechaLimpia, 10); if (serial > 40000) { const dt = new Date(Math.round((serial - 25569) * 86400 * 1000)); const localDt = new Date(dt.getTime() + dt.getTimezoneOffset() * 60000); fechaLimpia = utils.getLocalYYYYMMDD(localDt); } } else if (fechaLimpia.includes('/')) { const p = fechaLimpia.split('/'); if (p.length === 3 && p[2].length === 4) { fechaLimpia = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`; } }
+              let horaLimpia = s(iHor);
+              if (/^0?\.\d+$/.test(horaLimpia)) { const tMins = Math.round(parseFloat(horaLimpia) * 24 * 60); const hh = Math.floor(tMins / 60); const mm = tMins % 60; horaLimpia = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`; }
+              const id = `gs-${(r[iNom]+fechaLimpia+horaLimpia).replace(/[^a-z0-9]/gi,'').toLowerCase() || i}`;
+              if(seen.has(id)) continue; seen.add(id);
+              nuevasReservasDeSheets.push({ id, cliente: r[iNom] || 'Sin Nombre', email: s(iEm), telefono: s(iTel), tipoEvento: s(iTip) || 'Evento', ninos: s(iNin), fecha: fechaLimpia, hora: horaLimpia, ubicacion: s(iUbi) || 'Panamá Centro', direccion: s(iDir), comentarios: s(iCom), servicio: s(iSer), transporte: s(iTra).replace(/[^0-9.-]/g,"")||"0", total: s(iPre).replace(/[^0-9.-]/g,"")||"0", abono: s(iAbo).replace(/[^0-9.-]/g,"")||"0", estado: s(iEst) || 'Pendiente' });
+            }
+            if (!isSubscribed) return;
+            setEventos(prev => {
+                let hasChanges = false;
+                const map = new Map(prev.map(e => [e.id, e])); const updatesParaFirebase = [];
+                nuevasReservasDeSheets.forEach(sheetEvt => {
+                    if (!map.has(sheetEvt.id)) { map.set(sheetEvt.id, sheetEvt); updatesParaFirebase.push(sheetEvt); hasChanges = true; } else {
+                        const exist = map.get(sheetEvt.id);
+                        if (!exist.deletedLocally && Object.keys(sheetEvt).some(k => sheetEvt[k] !== exist[k] && !['total','abono','transporte','estado'].includes(k))) {
+                            const actualizado = { ...sheetEvt, total: exist.total!=='0'?exist.total:sheetEvt.total, abono: exist.abono!=='0'?exist.abono:sheetEvt.abono, transporte: exist.transporte!=='0'?exist.transporte:sheetEvt.transporte, estado: exist.estado!=='Pendiente'?exist.estado:sheetEvt.estado, serviciosSeleccionados: exist.serviciosSeleccionados||[], gastos: exist.gastos||'', detalleGastos: exist.detalleGastos||'', colisionAprobada: exist.colisionAprobada||false };
+                            map.set(sheetEvt.id, actualizado); updatesParaFirebase.push(actualizado); hasChanges = true;
+                        }
+                    }
+                });
+                if (updatesParaFirebase.length > 0 && firebaseUser) { Promise.all(updatesParaFirebase.map(ev => setDoc(getDocRef(ev.id), ev))).catch(err => console.warn(err)); }
+                setIsDBReady(true);
+                if (!hasChanges) return prev;
+                return Array.from(map.values()).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
+            });
+            utils.triggerHaptic('success');
+          }
+        } catch (err) { console.warn("Sync error"); }
+        if (isSubscribed) setIsSyncing(false);
+      };
+
+      if (isAuthenticated && firebaseUser && !hasSyncedRef.current) { hasSyncedRef.current = true; syncSheets(); }
+      const intervalId = setInterval(() => { if (isAuthenticated) syncSheets(); }, 30000);
+      
+      return () => { isSubscribed = false; clearInterval(intervalId); };
+  }, [isAuthenticated, firebaseUser]);
+
+  const handleToggleClient = useCallback((nombre) => { setExpandedClientId(prev => prev === nombre ? null : nombre); }, []);
+  const handleToggleFinance = useCallback((id) => { setExpandedFinanceId(prev => prev === id ? null : id); }, []);
+
+  const renderInicio = () => {
+     if (isModoOperativo) {
+        const faltanAbono = stats.eventosHoy.filter(ev => utils.safeNum(ev.abono) <= 0 && utils.normalizeText(ev.estado) !== 'completado');
+        const faltanDireccion = stats.eventosHoy.filter(ev => (!ev.direccion || String(ev.direccion).trim() === '') && utils.normalizeText(ev.estado) !== 'completado');
+        const faltanHora = stats.eventosHoy.filter(ev => (!ev.hora || String(ev.hora).trim() === '') && utils.normalizeText(ev.estado) !== 'completado');
+
+        return (
+          <div className="animate-fadeIn p-4 md:p-10 max-w-2xl mx-auto space-y-6 pb-32 relative z-50">
+             <div className="fixed inset-0 bg-[#060B14] -z-10 animate-fadeIn"></div>
+             <div className="flex justify-between items-center bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-[24px] shadow-[0_10px_40px_rgba(37,99,235,0.3)] transition-all duration-300 border border-white/10">
+                 <div><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-blue-100 mb-1">Modo En Terreno</p><h2 className="text-2xl sm:text-3xl font-extrabold flex items-center gap-2 tracking-tight"><Zap size={28} className="fill-white"/> Operativa de Hoy</h2></div>
+                 <button type="button" onClick={() => setIsModoOperativo(false)} className="bg-white/10 hover:bg-white/20 p-3.5 rounded-xl active:scale-[0.98] hover:-translate-y-0.5 transition-all duration-200 shadow-sm border border-white/10"><X size={24} /></button>
+             </div>
+             {(faltanAbono.length > 0 || faltanDireccion.length > 0 || faltanHora.length > 0) && (
+                 <div className="bg-white/5 border border-white/5 p-6 rounded-[24px] shadow-lg">
+                     <h3 className="text-white font-bold text-sm uppercase tracking-[0.1em] mb-4 flex items-center gap-2"><AlertTriangle size={18} className="text-rose-400"/> Checklist de Alertas</h3>
+                     <div className="space-y-4">
+                         {faltanAbono.length > 0 && (<div className="flex items-center gap-4 bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl"><div className="bg-rose-500/20 p-2.5 rounded-xl"><DollarSign size={18} className="text-rose-400"/></div><div><p className="text-white font-bold text-[15px] leading-tight">Falta abono ({faltanAbono.length})</p><p className="text-rose-400 text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanAbono.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                         {faltanDireccion.length > 0 && (<div className="flex items-center gap-4 bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl"><div className="bg-amber-500/20 p-2.5 rounded-xl"><MapPin size={18} className="text-amber-400"/></div><div><p className="text-white font-bold text-[15px] leading-tight">Falta dirección ({faltanDireccion.length})</p><p className="text-amber-400 text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanDireccion.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                         {faltanHora.length > 0 && (<div className="flex items-center gap-4 bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl"><div className="bg-blue-500/20 p-2.5 rounded-xl"><Clock size={18} className="text-blue-400"/></div><div><p className="text-white font-bold text-[15px] leading-tight">Falta hora ({faltanHora.length})</p><p className="text-blue-400 text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanHora.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                     </div>
+                 </div>
+             )}
+             <div className="space-y-6">
+                 {stats.eventosHoy.length === 0 ? (
+                     <div className="text-center py-16 bg-white/5 rounded-[24px] border border-white/5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.3)]"><Sun size={56} className="mx-auto text-white/30 mb-5" strokeWidth={1.5}/><p className="text-white font-extrabold text-xl mb-2 tracking-tight">¡Todo Despejado!</p><p className="text-white/50 font-medium text-sm">No hay eventos operativos para hoy.</p></div>
+                 ) : (
+                     stats.eventosHoy.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)
+                 )}
+             </div>
+          </div>
+        );
+     }
+
+     return (
+       <div className="animate-fadeIn p-4 md:p-6 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32 md:pb-10">
+          <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 rounded-[32px] p-8 sm:p-12 shadow-[0_15px_40px_rgba(37,99,235,0.4)] border border-white/10 relative overflow-hidden group animate-fadeInUp">
+             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay pointer-events-none"></div>
+             <div className="absolute top-0 right-0 w-96 h-96 bg-[radial-gradient(circle,rgba(255,255,255,0.1)_0%,transparent_60%)] pointer-events-none"></div>
+             <div className="relative z-10 text-center sm:text-left w-full sm:w-auto">
+                 <h1 className="text-3xl sm:text-5xl font-extrabold mb-3 flex items-center justify-center sm:justify-start gap-3 tracking-tight">Hola Diverty 👋</h1>
+                 <p className="text-blue-100 font-medium text-sm sm:text-base tracking-wide">Gestiona tus reservas, contratos y finanzas al instante.</p>
+             </div>
+             <div className="w-full sm:w-auto relative z-10 mt-6 sm:mt-0">
+                 <button onClick={() => openModal()} className="w-full sm:w-auto py-4 px-8 text-[15px] bg-white text-blue-900 hover:bg-slate-50 font-bold rounded-xl transition-all duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] shadow-lg flex items-center justify-center gap-2.5">
+                    <Plus size={20} strokeWidth={2.5}/> Nueva Reserva
+                 </button>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+              <AppCard title="Eventos Hoy" icon={Calendar} iconColor="primary"><p className="text-4xl font-extrabold text-white drop-shadow-sm tracking-tight">{stats.eventosHoy.length}</p></AppCard>
+              <AppCard title="Ingresos Mes" icon={DollarSign} iconColor="success"><p className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-teal-400 drop-shadow-sm tracking-tighter">${stats.ingresosEsteMes.toFixed(0)}</p></AppCard>
+              <AppCard title="Clientes Activos" icon={Users} iconColor="warning"><p className="text-4xl font-extrabold text-white drop-shadow-sm tracking-tighter">{clientsList.length}</p></AppCard>
+              <AppCard title="Por Cobrar" icon={TrendingUp} iconColor="danger"><p className="text-4xl font-extrabold text-rose-400 drop-shadow-sm tracking-tighter">${stats.deudaTotal.toFixed(0)}</p></AppCard>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4">
+             <button type="button" onClick={() => openModal(null, true)} className="flex-1 bg-white/5 border border-white/5 text-white/90 rounded-xl py-4 font-bold flex items-center justify-center gap-2.5 active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/10 transition-all duration-200 shadow-sm"><FileText size={20} className="text-amber-400"/> <span className="hidden sm:inline">Crear Cotización</span></button>
+             <button type="button" onClick={() => {utils.triggerHaptic('light'); setIsModoOperativo(true); window.scrollTo(0,0);}} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2.5 active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-200 shadow-[0_8px_20px_rgba(37,99,235,0.3)] border border-transparent"><Zap size={20} className="text-amber-300 fill-amber-300"/> <span className="hidden sm:inline">Modo Operativo</span></button>
+             <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/5 border border-white/5 text-blue-400 rounded-xl py-4 px-6 flex items-center justify-center active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/10 transition-all duration-200 shadow-sm"><RefreshCw size={22} className={isSyncing ? "animate-spin" : ""} /></button>
+          </div>
+
+          {stats.alertasOperativas.length > 0 && (
+            <div className="animate-slideDown mt-10">
+               <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-white/50 flex items-center gap-2 mb-5"><AlertTriangle size={16} className="text-rose-400 animate-pulse"/> Urgencias ({stats.alertasOperativas.length})</h3>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                   {stats.alertasOperativas.map((al, i) => {
+                      const AlIcon = al.icon;
+                      return (
+                      <div key={al.id} onClick={() => openModal(al.ev)} className={`p-5 sm:p-6 rounded-[24px] border flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-200 ease-out bg-white/5 hover:border-rose-400/50 border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.2)] hover:shadow-lg animate-fadeInUp hover:bg-white/10`} style={{animationDelay: `${i*100}ms`}}>
+                         <div className="flex items-center gap-4"><div className={`p-3.5 rounded-xl ${al.bg} border`}><AlIcon size={24} strokeWidth={2.5}/></div><div className="flex flex-col items-start"><p className={`text-[15px] font-bold text-white/90 leading-tight capitalize`}>{al.text}</p><p className="text-[10px] font-bold uppercase tracking-wider text-rose-400 mt-1.5">{al.tagText}</p></div></div><ChevronRight size={20} className="text-white/30" />
+                      </div>
+                   )})}
+               </div>
+            </div>
+          )}
+
+          {cotizacionesActivas.length > 0 && (
+             <div className="mt-14 pt-10 border-t border-white/5 relative">
+                 <h3 className="font-extrabold text-2xl text-white/90 flex items-center gap-3 mb-6 tracking-tight"><FileText className="text-amber-400" size={24} /> Cotizaciones Activas</h3>
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                     {cotizacionesActivas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={(e) => openModal(e, true)} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}
+                 </div>
+             </div>
+          )}
+
+          <div className="mt-14 pt-10 border-t border-white/5 relative">
+             <div className="flex justify-between items-center mb-6">
+                 <h3 className="font-extrabold text-2xl text-white/90 flex items-center gap-3 tracking-tight"><CalendarDays className="text-blue-400" size={24} /> Próximas Reservas</h3>
+                 <button type="button" onClick={() => {utils.triggerHaptic('light'); setActiveTab('eventos')}} className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/50 hover:text-white/90 transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
+             </div>
+             {proximasReservas.length > 0 ? (
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{proximasReservas.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>
+             ) : (
+                 <EmptyState icon={CalendarDays} title="Agenda Despejada" message="No tienes reservas programadas para hoy ni mañana. ¡Aprovecha para crear nuevas cotizaciones!" actionBtn={<AppButton onClick={()=>openModal()} variant="primary" icon={Plus} className="mt-4 px-8 py-4">Crear Reserva</AppButton>} />
+             )}
+          </div>
+       </div>
+     );
+  };
+
+  const renderEventos = () => {
+    const renderCalendarGrid = () => {
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+        const firstDayIndex = new Date(calYear, calMonth, 1).getDay();
+        const days = Array.from({length: daysInMonth}, (_, i) => i + 1);
+        const blanks = Array.from({length: firstDayIndex}, (_, i) => i);
+        const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        return (
+            <div className={`bg-[#0B1221] rounded-[32px] border border-white/5 p-5 sm:p-8 mb-8 animate-fadeIn transition-all duration-300 shadow-[0_8px_30px_rgba(0,0,0,0.4)]`}>
+               <div className="flex flex-col sm:flex-row justify-between items-center gap-5 mb-8 border-b border-white/5 pb-6">
+                   <h3 className="text-2xl font-extrabold text-white/90 capitalize flex items-center gap-3 tracking-tight">
+                       <div className="bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20"><CalendarDays size={20} className="text-blue-400"/></div>
+                       {monthNames[calMonth]} {calYear}
+                   </h3>
+                   <div className="flex gap-2 bg-[#060B14] p-1.5 rounded-[16px] border border-white/5 w-full sm:w-auto justify-between sm:justify-start shadow-inner">
+                       <button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(calMonth === 0 ? 11 : calMonth - 1); setCalYear(calMonth === 0 ? calYear - 1 : calYear); }} className="p-3 hover:bg-white/5 rounded-xl transition-all duration-200 active:scale-[0.95] shadow-sm text-white/50 hover:text-white"><ChevronLeft size={18}/></button>
+                       <button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(todayObj.getMonth()); setCalYear(todayObj.getFullYear()); setFilterDate(todayStr); }} className="px-6 py-2 hover:bg-white/5 text-blue-400 font-bold text-xs uppercase tracking-[0.1em] rounded-xl transition-all duration-200 active:scale-[0.95] shadow-sm">HOY</button>
+                       <button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(calMonth === 11 ? 0 : calMonth + 1); setCalYear(calMonth === 11 ? calYear + 1 : calYear); }} className="p-3 hover:bg-white/5 rounded-xl transition-all duration-200 active:scale-[0.95] shadow-sm text-white/50 hover:text-white"><ChevronRight size={18}/></button>
+                   </div>
+               </div>
+               <div className="grid grid-cols-7 gap-2 sm:gap-4 text-center mb-4">
+                   {weekDays.map(d => <div key={d} className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.1em] text-white/40">{d.substring(0,3)}</div>)}
+               </div>
+               <div className="grid grid-cols-7 gap-2 sm:gap-4">
+                  {blanks.map(b => <div key={`b-${b}`} className="min-h-[70px] sm:min-h-[130px] bg-transparent"></div>)}
+                  {days.map(d => {
+                     const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; 
+                     const dayEvents = eventosActivos.filter(e => e.fecha === dateStr && !utils.normalizeText(e.estado).includes('cotizaci') && !utils.normalizeText(e.estado).includes('cot.') && utils.normalizeText(e.estado) !== 'cancelado'); 
+                     const isToday = dateStr === todayStr; const isSelected = filterDate === dateStr; const hasEvents = dayEvents.length > 0;
+                     
+                     return (
+                         <div key={d} onClick={() => { utils.triggerHaptic('light'); setFilterDate(dateStr); setViewMode(''); }} className={`min-h-[70px] sm:min-h-[130px] p-2 sm:p-3 rounded-[16px] border transition-all duration-200 ease-out cursor-pointer flex flex-col justify-start items-center sm:items-start hover:-translate-y-0.5 active:scale-[0.98] ${isSelected ? 'border-blue-500 bg-blue-500/10 shadow-md' : isToday ? 'bg-rose-500/5 border-rose-500/20' : 'bg-[#060B14]/50 border-white/5 hover:border-white/10'}`}>
+                            <p className={`text-xs sm:text-sm font-bold sm:self-end w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg sm:rounded-xl transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : isToday ? 'bg-rose-600 text-white shadow-md' : 'text-white/50 bg-white/5 border border-white/5 shadow-sm'}`}>{d}</p>
+                            <div className="mt-2 sm:mt-3 flex flex-wrap sm:flex-col gap-1 sm:gap-1.5 w-full justify-center sm:justify-start flex-1 overflow-hidden">
+                                {hasEvents && <div className="hidden sm:flex flex-col gap-1.5 w-full">
+                                    {dayEvents.slice(0, 2).map((ev, i) => (<div key={i} className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-[8px] truncate bg-white/10 border border-white/5 text-white/90 w-full shadow-sm" title={ev.cliente}>{String(ev.cliente).split(' ')[0]}</div>))}
+                                    {dayEvents.length > 2 && <div className="text-[9px] text-blue-400 font-bold uppercase tracking-wider mt-0.5 text-center w-full">+{dayEvents.length - 2}</div>}
+                                </div>}
+                                {hasEvents && <div className="sm:hidden flex gap-1.5 mt-1 justify-center flex-wrap">
+                                    {dayEvents.slice(0, 3).map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-blue-400' : 'bg-white/60'}`}></div>)}
+                                    {dayEvents.length > 3 && <div className="w-1.5 h-1.5 rounded-full bg-white/30"></div>}
+                                </div>}
+                            </div>
+                         </div>
+                     );
+                  })}
+               </div>
+            </div>
+        );
+    };
+
+    const renderListView = () => {
+        const grouped = agendaFiltrados.reduce((acc, ev) => { if(!acc[ev.fecha]) acc[ev.fecha] = []; acc[ev.fecha].push(ev); return acc; }, {});
+        return (
+            <div className="mt-8 space-y-10 animate-fadeIn">
+                {Object.keys(grouped).sort().map(fecha => (
+                    <div key={fecha} className="flex flex-col">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="bg-white/5 text-white/90 px-6 py-3.5 rounded-xl font-bold text-sm flex items-center gap-3 shadow-sm border border-white/5"><CalendarDays size={18} className="text-blue-400" strokeWidth={2.5}/> {fecha ? String(fecha).split('-').reverse().join('/') : 'Sin Fecha'}</div>
+                            <div className="flex-1 h-px bg-white/10"></div>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{grouped[fecha].map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
+
+    const btnClass = (mode) => `px-5 py-3.5 rounded-[14px] text-[10px] uppercase tracking-[0.1em] font-bold transition-all duration-200 ease-out whitespace-nowrap shadow-sm border active:scale-[0.98] ${viewMode===mode&&!filterDate?'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-[0_4px_15px_rgba(37,99,235,0.3)]':'bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 border-white/5'}`;
+
+    return (
+      <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative">
+        <div className="mb-10 flex flex-col gap-4">
+            <div className="flex justify-between items-center"><div><h2 className="text-4xl sm:text-5xl font-extrabold text-white/90 tracking-tight drop-shadow-sm">Agenda</h2><p className="text-base font-medium text-white/50 mt-2">Organiza tus eventos con precisión</p></div></div>
+            <div className="flex flex-col lg:flex-row gap-5 mt-6">
+                 <div className="relative flex-1 group">
+                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none"><Search size={20} className="text-white/40 group-focus-within:text-blue-400 transition-colors" /></div>
+                     <input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-[#060B14] border border-white/10 rounded-[16px] pl-12 pr-12 text-[15px] font-medium text-white/90 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] placeholder:text-white/30" />
+                     {globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-white/40 hover:text-rose-400 transition-colors"><X size={18}/></button>}
+                 </div>
+                 <div className="flex gap-3 overflow-x-auto scrollbar-hide py-1 items-center">
+                     <button type="button" onClick={()=>{setFilterDate(''); setViewMode('hoy')}} className={btnClass('hoy')}>Hoy</button><button type="button" onClick={()=>{setFilterDate(''); setViewMode('semana')}} className={btnClass('semana')}>Semana</button>
+                     <button type="button" onClick={()=>{setFilterDate(''); setViewMode('mes')}} className={btnClass('mes')}>Mes</button><button type="button" onClick={()=>{setFilterDate(''); setViewMode('pendientes')}} className={btnClass('pendientes')}>Pendientes</button>
+                     <button type="button" onClick={()=>{setFilterDate(''); setViewMode('todas')}} className={btnClass('todas')}>Todas</button>
+                     <div className={`flex items-center justify-between px-5 py-3 rounded-[14px] transition-all duration-200 ease-out cursor-text focus-within:border-blue-500/50 bg-white/5 border ${filterDate ? 'border-blue-500/50 text-blue-400 shadow-sm' : 'border-white/5 shadow-sm hover:shadow-md text-white/60'} shrink-0`}>
+                         <div className="flex items-center flex-1 relative">
+                             <CalendarDays size={18} className={`mr-2.5 transition-colors duration-200`} />
+                             <input type="date" value={filterDate} onChange={(e) => { utils.triggerHaptic('light'); setFilterDate(e.target.value); }} className={`bg-transparent text-[11px] uppercase tracking-[0.1em] font-bold outline-none w-full flex-1 cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 absolute inset-0 opacity-0 z-20`} />
+                             <span className={`text-[11px] uppercase tracking-[0.1em] font-bold pointer-events-none relative z-10`}>{filterDate ? String(filterDate).split('-').reverse().join('/') : 'Fecha'}</span>
+                         </div>
+                         {filterDate && <button type="button" onClick={() => {utils.triggerHaptic('light'); setFilterDate('');}} className="text-white/40 hover:text-rose-400 ml-3 z-30 transition-all active:scale-[0.98]"><X size={16}/></button>}
+                     </div>
+                 </div>
+            </div>
+        </div>
+
+        <>
+            {viewMode === 'mes' && renderCalendarGrid()}
+            {(!isDBReady && !globalSearch && !filterDate && eventosActivos.length === 0) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8"><SkeletonCard /><SkeletonCard /></div>) : agendaFiltrados.length === 0 ? (<EmptyState icon={Search} title="Sin resultados" message="No se encontraron reservas." actionBtn={!!globalSearch || !!filterDate ? <button onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="mt-4 text-blue-400 font-bold px-8 py-3.5 rounded-[16px] border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 ease-out shadow-sm uppercase tracking-wider text-xs">Limpiar filtros</button> : null} />) : (!!globalSearch || !!filterDate) ? (<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((ev, i) => <EventCardItem key={ev.id} ev={ev} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>) : ( renderListView() )}
+        </>
+      </div>
+    );
+  };
+
+  const renderClientes = () => {
+     return (
+       <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4">
+              <div><h2 className="text-4xl font-extrabold text-white/90 flex items-center gap-3 tracking-tight drop-shadow-sm"><Users size={36} className="text-blue-500" /> CRM Ventas</h2><p className="text-white/50 text-sm mt-2 font-medium">Fideliza y administra a tus clientes.</p></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 md:gap-6 mb-10 animate-fadeInUp">
+              <div className="bg-[#0B1221] rounded-[24px] p-5 sm:p-8 border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] flex flex-col justify-center transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_15px_40px_rgba(59,130,246,0.15)]"><div className="flex items-center gap-2.5 mb-3"><div className="bg-blue-500/10 p-2.5 rounded-xl text-blue-400 border border-blue-500/20"><Users size={18}/></div><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.1em] text-white/50">Total</span></div><p className="text-3xl sm:text-4xl font-extrabold text-white/90">{clientsList.length}</p></div>
+              <div className="bg-[#0B1221] rounded-[24px] p-5 sm:p-8 border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] flex flex-col justify-center transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_15px_40px_rgba(245,158,11,0.15)]"><div className="flex items-center gap-2.5 mb-3"><div className="bg-amber-500/10 p-2.5 rounded-xl text-amber-400 border border-amber-500/20"><Award size={18}/></div><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.1em] text-white/50">VIPs</span></div><p className="text-3xl sm:text-4xl font-extrabold text-white/90">{clientsList.filter(c => c.isVIP).length}</p></div>
+              <div className="bg-[#0B1221] rounded-[24px] p-5 sm:p-8 border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] flex flex-col justify-center transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_15px_40px_rgba(244,63,94,0.15)]"><div className="flex items-center gap-2.5 mb-3"><div className="bg-rose-500/10 p-2.5 rounded-xl text-rose-400 border border-rose-500/20"><BellRing size={18}/></div><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.1em] text-white/50">Retomar</span></div><p className="text-3xl sm:text-4xl font-extrabold text-rose-400">{clientsList.filter(c => c.needsContact).length}</p></div>
+          </div>
+          {contactCandidates.length > 0 && !searchTerm && (
+             <div className="mb-12 animate-slideDown">
+                 <h3 className="text-xs font-bold text-white/50 uppercase tracking-[0.1em] mb-5 flex items-center gap-2"><Zap size={18} className="text-amber-400 fill-amber-400"/> Oportunidades de Venta</h3>
+                 <div className="flex gap-5 overflow-x-auto pb-6 scrollbar-hide snap-x">
+                    {contactCandidates.map((c, idx) => {
+                        const phoneClean = String(c.telefono).replace(/\D/g,''); const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`;
+                        return (
+                           <div key={`contact-${c.nombre}`} className="snap-center shrink-0 w-80 bg-[#0B1221] p-6 rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.4)] flex flex-col gap-5 animate-fadeInUp" style={{ animationDelay: `${idx * 100}ms` }}>
+                              <div><p className="font-extrabold text-white/90 truncate text-xl tracking-tight capitalize">{c.nombre}</p><p className="text-[11px] font-bold text-rose-400 mt-2 uppercase tracking-wider bg-rose-500/10 px-3 py-1.5 rounded-lg w-max border border-rose-500/20 flex items-center gap-1.5"><Clock size={12}/> Sin compras hace {c.daysSince} días</p></div>
+                              <button onClick={() => { utils.openWhatsAppBusiness(phoneClean, msg); }} className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white py-3.5 rounded-[16px] transition-all duration-200 active:scale-[0.97] hover:-translate-y-0.5 font-bold text-xs uppercase tracking-[0.1em] flex justify-center items-center gap-2 shadow-[0_8px_20px_rgba(16,185,129,0.3)]"><MessageCircle size={18} strokeWidth={2.5}/> Enviar Promo</button>
+                           </div>
+                        )
+                    })}
+                 </div>
+             </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-4">
+              <div className={`${GLASS_CARD} p-2 flex-1 flex transition-all duration-200 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-blue-400 transition-colors duration-200 ease-out" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-white/30 text-white/90" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-rose-400 p-1.5 rounded-full hover:bg-white/10 transition-all active:scale-[0.98]"><X size={16}/></button>)}</div></div>
+              <button onClick={() => setClientSort(clientSort === 'gasto' ? 'recientes' : 'gasto')} className={`${GLASS_CARD} px-8 py-3.5 flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-wider transition-all duration-200 active:scale-[0.98] text-white/70 hover:text-blue-400 hover:bg-white/5`}><ArrowDownWideNarrow size={18}/> <span className="hidden sm:inline">Ordenar: </span><span className="text-blue-400">{clientSort === 'gasto' ? 'Mayor Gasto' : 'Recientes'}</span></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+             {sortedFilteredClients.length === 0 ? (<div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>) : (
+                 sortedFilteredClients.map((c, i) => (
+                    <ClientCardItem 
+                        key={c.nombre}
+                        c={c}
+                        idx={i}
+                        isExpanded={expandedClientId === c.nombre}
+                        onToggleExpand={handleToggleClient}
+                        utils={utils}
+                        openModal={openModal}
+                        onDeleteClient={handleDeleteClient}
+                    />
+                 ))
+             )}
+          </div>
+       </div>
+     );
+  };
+
+  const renderFinanzas = () => {
+      const cy = new Date(todayTime).getFullYear(), cm = new Date(todayTime).getMonth() + 1;
+      
+      return (
+          <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                 <div><h2 className="text-4xl font-extrabold text-white/90 flex items-center gap-3 tracking-tight drop-shadow-sm">Finanzas</h2><p className="text-white/50 text-sm mt-2 font-medium">Control total de tu flujo de efectivo.</p></div>
+                 <div className="flex gap-2 items-center bg-white/5 p-1.5 rounded-[16px] border border-white/5 shadow-inner w-full sm:w-auto">
+                    <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('mes');}} className={`flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all duration-200 ease-out active:scale-[0.98] ${financePeriod === 'mes' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.4)]' : 'text-white/50 hover:text-white/90'}`}>Este Mes</button>
+                    <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('todos');}} className={`flex-1 sm:flex-none px-6 py-3 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all duration-200 ease-out active:scale-[0.98] ${financePeriod === 'todos' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.4)]' : 'text-white/50 hover:text-white/90'}`}>Histórico</button>
+                    <div className="w-px h-6 bg-white/10 mx-1"></div>
+                    <button type="button" onClick={downloadExcel} className="p-2 sm:px-5 sm:py-3 hover:bg-emerald-500/10 text-emerald-400 rounded-xl transition-all duration-200 ease-out active:scale-[0.98] flex items-center gap-2" title="Exportar a Excel"><Download size={20} strokeWidth={2.5}/> <span className="hidden sm:inline text-[11px] font-bold uppercase tracking-wider">Excel</span></button>
+                 </div>
+             </div>
+
+             <div className="bg-gradient-to-br from-blue-900/40 to-indigo-900/40 rounded-[32px] p-8 sm:p-12 shadow-[0_15px_40px_rgba(0,0,0,0.4)] relative overflow-hidden border border-white/10 animate-slideDown">
+                 <div className="absolute -top-32 -left-32 w-64 h-64 bg-[radial-gradient(circle,rgba(59,130,246,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+                 <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-[radial-gradient(circle,rgba(168,85,247,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+                 <div className="text-center relative z-10">
+                     <p className="text-white/50 font-bold uppercase tracking-[0.1em] text-[11px] mb-4 flex justify-center items-center gap-2"><Star size={16} className="text-amber-400"/> BALANCE NETO {financePeriod === 'mes' ? 'DEL MES' : 'HISTÓRICO'}</p>
+                     <h1 className={`text-6xl sm:text-7xl md:text-8xl font-black mb-12 tracking-tighter drop-shadow-md ${finanzasData.bT >= 0 ? 'text-white/90' : 'text-rose-400'}`}>${finanzasData.bT.toFixed(0)}<span className="text-3xl sm:text-4xl text-white/40 opacity-60">.{(finanzasData.bT % 1).toFixed(2).substring(2)}</span></h1>
+                     <div className="flex flex-col sm:flex-row justify-center items-center gap-8 sm:gap-16 border-t border-white/10 pt-10 mt-2">
+                         <div className="flex items-center gap-4"><div className="bg-emerald-500/10 text-emerald-400 p-3.5 rounded-xl border border-emerald-500/20 shadow-sm"><ArrowUpRight size={24}/></div><div className="text-left"><p className="text-white/50 font-bold text-[10px] uppercase tracking-wider mb-1.5">Ingresos Brutos</p><p className="text-emerald-400 font-extrabold text-2xl leading-none tracking-tight">${finanzasData.tI.toFixed(2)}</p></div></div><div className="hidden sm:block w-px h-12 bg-white/10"></div>
+                         <div className="flex items-center gap-4"><div className="bg-rose-500/10 text-rose-400 p-3.5 rounded-xl border border-rose-500/20 shadow-sm"><ArrowDownRight size={24}/></div><div className="text-left"><p className="text-white/50 font-bold text-[10px] uppercase tracking-wider mb-1.5">Gastos Operativos</p><p className="text-rose-400 font-extrabold text-2xl leading-none tracking-tight">-${finanzasData.tG.toFixed(2)}</p></div></div><div className="hidden sm:block w-px h-12 bg-white/10"></div>
+                         <div className="flex items-center gap-4"><div className="bg-blue-500/10 text-blue-400 p-3.5 rounded-xl border border-blue-500/20 shadow-sm"><BarChart3 size={24}/></div><div className="text-left"><p className="text-white/50 font-bold text-[10px] uppercase tracking-wider mb-1.5">Margen (ROI)</p><p className="text-blue-400 font-extrabold text-2xl leading-none tracking-tight">{finanzasData.roi}%</p></div></div>
+                     </div>
+                 </div>
+             </div>
+
+             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 animate-fadeInUp" style={{animationDelay: '100ms'}}>
+                 <div className="bg-[#0B1221] p-6 sm:p-8 rounded-[24px] border border-white/5 shadow-lg flex flex-col justify-center"><p className="text-white/50 font-bold text-[10px] uppercase tracking-wider mb-2.5">Ganancia Hoy</p><p className="text-3xl font-extrabold text-emerald-400 drop-shadow-sm tracking-tight">${animatedGananciaHoy.toFixed(0)}</p></div>
+                 <div className="bg-[#0B1221] p-6 sm:p-8 rounded-[24px] border border-white/5 shadow-lg flex flex-col justify-center"><p className="text-white/50 font-bold text-[10px] uppercase tracking-wider mb-2.5">Por Cobrar Total</p><p className="text-3xl font-extrabold text-rose-400 drop-shadow-sm tracking-tight">${finanzasData.deudaTotalGlobal.toFixed(0)}</p></div>
+                 <div className="col-span-2 bg-[#0B1221] p-6 sm:p-8 rounded-[24px] border border-white/5 shadow-lg flex items-end justify-between gap-4 h-[120px]">
+                     <div className="flex-1 flex justify-between items-end h-full gap-2 sm:gap-3">
+                         {chartData.map((d, i) => {
+                             const hPercent = (d.value / maxChartVal) * 100;
+                             return (
+                                <div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative">
+                                    <div className="absolute -top-8 bg-black/80 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10 whitespace-nowrap">${d.value.toFixed(0)}</div>
+                                    <div className="w-full bg-blue-500/10 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-blue-400/30 h-[70px]"><div className="absolute bottom-0 w-full bg-blue-50 transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{height: `${hPercent}%`}}></div></div>
+                                    <span className="text-[9px] font-bold uppercase text-white/40 tracking-widest">{String(d.date).split('-')[2]}</span>
+                                </div>
+                             )
+                         })}
+                     </div>
+                     <div className="pl-6 border-l border-white/10 flex flex-col justify-center h-full"><p className="text-white/50 font-bold text-[10px] uppercase tracking-[0.1em] mb-2 leading-none">Últimos 7 Días</p><p className="text-2xl font-extrabold text-white/90 tracking-tight leading-none">${chartData.reduce((s,d)=>s+d.value,0).toFixed(0)}</p></div>
+                 </div>
+             </div>
+
+             <div className="bg-[#0B1221] p-6 sm:p-8 rounded-[24px] border border-white/5 shadow-lg animate-fadeInUp" style={{animationDelay: '200ms'}}>
+                 <div className="flex justify-between items-end mb-6"><div><h4 className="font-extrabold text-2xl text-white/90 tracking-tight flex items-center gap-3"><Award size={28} className="text-amber-400"/> Meta del Mes Actual</h4><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/50 mt-2">Día {finanzasMes.diasTranscurridos} de {finanzasMes.diasTotales}</p></div><div className="text-right"><span className="text-4xl font-black text-emerald-400 tracking-tight">${finanzasMes.ingresosEsteMesGlobal.toFixed(0)} <span className="text-xl font-bold text-white/30">/ ${appSettings.metaMensual}</span></span></div></div>
+                 <div className="w-full bg-[#060B14] rounded-full h-3 mb-5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.3)] overflow-hidden"><AnimatedProgress value={finanzasMes.progresoMeta} /></div>
+                 <div className="flex justify-between items-center"><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/70 bg-white/10 px-3.5 py-1.5 rounded-[10px] border border-white/5">{finanzasMes.progresoMeta.toFixed(1)}% Alcanzado</p><p className={`text-[11px] font-bold uppercase tracking-[0.1em] px-3.5 py-1.5 rounded-[10px] border shadow-sm ${finanzasMes.proyeccion >= appSettings.metaMensual ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>Proyectado: ${finanzasMes.proyeccion.toFixed(0)}</p></div>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
+                <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '300ms'}}>
+                   <div className="flex justify-between items-center px-2">
+                       <h4 className="font-extrabold text-xl text-white/90 flex items-center gap-3 tracking-tight"><Clock size={22} className="text-rose-400"/> Cuentas por Cobrar <span className="text-sm font-bold text-white/40 uppercase tracking-widest">{financePeriod === 'mes' ? '(Mes)' : '(Histórico)'}</span></h4>
+                       {evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').length > 0 && (<button onClick={handleCopiarCobros} className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 py-2.5 px-5 rounded-[12px] transition-all duration-200 ease-out active:scale-[0.98] border border-blue-500/20 flex items-center gap-2 shadow-sm"><Copy size={16}/> Copiar Lista</button>)}
+                   </div>
+                   <div className="bg-[#0B1221] rounded-[24px] border border-white/5 shadow-lg overflow-hidden flex flex-col h-[400px]">
+                      {evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').length === 0 ? (<div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><CheckCircle2 size={48} className="text-emerald-400 mb-4"/><p className="text-[11px] font-bold uppercase tracking-wider text-white/60">Excelente. Sin deudas pendientes.</p></div>) : (
+                          <div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">
+                              {evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').map((ev, i) => (
+                                   <div key={ev.id} className="w-full flex justify-between items-center p-5 rounded-[20px] bg-transparent hover:bg-white/5 transition-colors duration-200 border border-transparent hover:border-white/5">
+                                        <div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-extrabold capitalize text-[16px] text-white/90 truncate tracking-tight">{String(ev.cliente || '')}</p><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-white/40 mt-1.5">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''}</p></div>
+                                        <div className="text-right shrink-0"><span className="text-rose-400 font-extrabold text-2xl block leading-none mb-2.5 tracking-tight">${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}</span><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-emerald-400 transition-colors flex items-center justify-end gap-1.5 ml-auto">Cobrar <MessageCircle size={14}/></button></div>
+                                   </div>
+                              ))}
+                          </div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '400ms'}}>
+                   <div className="flex justify-between items-center px-2"><h4 className="font-extrabold text-xl text-white/90 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-400"/> Transacciones <span className="text-sm font-bold text-white/40 uppercase tracking-widest">{financePeriod === 'mes' ? '(Mes)' : '(Histórico)'}</span></h4></div>
+                   <div className="bg-[#0B1221] rounded-[24px] border border-white/5 shadow-lg overflow-hidden flex flex-col h-[400px]">
+                      {evtCalculoBase.length === 0 ? (<div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><Info size={48} className="text-white/40 mb-4"/><p className="text-[11px] font-bold uppercase tracking-wider text-white/60">No hay movimientos en este periodo.</p></div>) : (
+                          <div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">
+                              {evtCalculoBase.map((ev, i) => (
+                                 <TransactionItem key={ev.id} ev={ev} isExpanded={expandedFinanceId === ev.id} onToggleExpand={handleToggleFinance} utils={utils} />
+                              ))}
+                          </div>
+                      )}
+                   </div>
+                </div>
+             </div>
+          </div>
+      );
+  };
+
+  const renderConfig = () => {
+    return (
+      <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6 pb-32">
+          
+          <div className="mb-8">
+              <h2 className="text-4xl sm:text-5xl font-black text-white/90 tracking-tight drop-shadow-sm">Ajustes</h2>
+              <p className="text-base font-medium text-white/50 mt-2">Centro de Mando Diverty</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+              
+              <div className="col-span-1 lg:col-span-2 bg-[#0B1121] rounded-[32px] p-8 sm:p-10 shadow-[0_10px_40px_rgba(0,0,0,0.3)] relative overflow-hidden flex flex-col justify-between border border-white/5 animate-fadeInUp">
+                  <div className="absolute -top-32 -right-32 w-64 h-64 bg-[radial-gradient(circle,rgba(59,130,246,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+                  <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-[radial-gradient(circle,rgba(99,102,241,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+                  
+                  <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                       <div className="w-24 h-24 rounded-[24px] bg-gradient-to-tr from-blue-500 to-indigo-500 p-[3px] shadow-xl shrink-0">
+                          <img src={LOGO_URL} className="w-full h-full object-contain rounded-[21px] bg-[#060B14] p-3" alt="Diverty Profile" crossOrigin="anonymous"/>
+                       </div>
+                       <div>
+                           <h3 className="text-3xl font-extrabold text-white/90 tracking-tight">Administrador Global</h3>
+                           <p className="text-blue-400 text-sm font-bold tracking-[0.1em] uppercase mt-2 flex items-center gap-2.5"><Cloud size={16} className="text-emerald-400"/> Sincronizado</p>
+                       </div>
+                  </div>
+
+                  <div className="relative z-10 mt-10 flex flex-col sm:flex-row gap-5 border-t border-white/5 pt-8">
+                       <button type="button" onClick={activarNotificaciones} className="flex-1 flex items-center justify-center gap-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 py-4 rounded-[16px] transition-all duration-200 border border-blue-500/20 font-bold text-sm active:scale-[0.98] shadow-sm">
+                           <BellRing size={20}/> Obtener Token Push
+                       </button>
+                       <button onClick={handleLogout} className="flex-1 flex items-center justify-center gap-2.5 bg-white/5 hover:bg-rose-500/10 text-white/70 hover:text-rose-400 py-4 rounded-[16px] transition-all duration-200 border border-white/5 hover:border-rose-500/20 font-bold text-sm active:scale-[0.98]">
+                           <Lock size={20}/> Cerrar Sesión
+                       </button>
+                  </div>
+              </div>
+
+              <div className={`${GLASS_CARD} p-8 sm:p-10 flex flex-col relative overflow-hidden animate-fadeInUp`} style={{animationDelay:'100ms'}}>
+                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-[radial-gradient(circle,rgba(251,191,36,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+                  <h4 className="font-extrabold text-white/90 flex items-center gap-3 mb-6 text-xl tracking-tight relative z-10"><Award size={26} className="text-amber-400"/> Meta Mensual</h4>
+                  
+                  <div className="relative z-10 flex-1 flex flex-col">
+                      <label className="text-[11px] font-bold text-white/50 uppercase tracking-[0.1em] mb-2.5 block">Objetivo de ventas ($)</label>
+                      <div className="relative mb-5">
+                          <span className="absolute left-5 top-1/2 -translate-y-1/2 text-white/40 font-extrabold text-xl">$</span>
+                          <input type="number" value={appSettings.metaMensual} onChange={e => updateSettings({...appSettings, metaMensual: utils.safeNum(e.target.value)})} className="w-full bg-[#060B14] border border-white/5 rounded-[16px] py-4 pl-10 pr-5 text-2xl font-extrabold text-white/90 outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)]" />
+                      </div>
+                      <p className="text-xs text-white/50 font-medium mt-auto bg-white/5 p-4 rounded-[16px] border border-white/5 leading-relaxed">Al actualizar este valor, las gráficas de rentabilidad se recalcularán automáticamente.</p>
+                  </div>
+              </div>
+
+              <div className={`col-span-1 lg:col-span-3 ${GLASS_CARD} p-8 sm:p-10 animate-fadeInUp`} style={{animationDelay:'200ms'}}>
+                  <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-6">
+                      <h4 className="font-extrabold text-2xl text-white/90 flex items-center gap-3 tracking-tight"><Briefcase size={28} className="text-blue-400"/> Facturación y Banco</h4>
+                      <div className="bg-blue-500/10 text-blue-400 px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-[0.1em] border border-blue-500/20 flex items-center gap-2"><Save size={14}/> Autoguardado</div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                      {[
+                          { key: 'nombreTitular', label: 'Nombre del Titular o Empresa' },
+                          { key: 'ruc', label: 'RUC / Identificación' },
+                          { key: 'banco', label: 'Entidad Bancaria' },
+                          { key: 'tipoCuenta', label: 'Tipo de Cuenta' },
+                          { key: 'numeroCuenta', label: 'Número de Cuenta' },
+                          { key: 'telefono', label: 'Teléfono (Yappy / Contacto)' },
+                      ].map((field) => (
+                          <div key={field.key}>
+                              <label className="block text-[11px] uppercase text-white/50 font-bold tracking-[0.1em] mb-2.5">{field.label}</label>
+                              <input type="text" value={appSettings.empresa[field.key]} onChange={e => updateSettings({...appSettings, empresa: {...appSettings.empresa, [field.key]: e.target.value}})} className={inputClass} />
+                          </div>
+                      ))}
+                  </div>
+                  <div className="mt-8 bg-white/5 p-5 rounded-[16px] border border-white/5 flex items-start gap-4">
+                      <Info size={20} className="text-white/40 shrink-0 mt-0.5"/>
+                      <p className="text-xs font-medium text-white/60 leading-relaxed">Estos datos se insertarán automáticamente en todos los PDFs de contratos, facturas y en los mensajes de WhatsApp que envíes a tus clientes.</p>
+                  </div>
+              </div>
+
+              <div className="col-span-1 lg:col-span-3 bg-rose-500/5 border border-dashed border-rose-500/30 rounded-[32px] p-8 sm:p-10 mt-4 animate-fadeInUp flex flex-col sm:flex-row items-center justify-between gap-6 transition-all duration-300 hover:bg-rose-500/10" style={{animationDelay:'300ms'}}>
+                  <div>
+                      <h4 className="font-extrabold text-rose-400 text-2xl flex items-center gap-3 tracking-tight"><AlertTriangle size={28}/> Zona de Peligro</h4>
+                      <p className="text-[15px] font-medium text-rose-300/70 mt-3 max-w-xl leading-relaxed">Esta acción purgará toda la base de datos local y en la nube. Se eliminarán todas las reservas, el historial de clientes y los registros financieros de forma permanente.</p>
+                  </div>
+                  <button onClick={handleWipeAll} className="w-full sm:w-auto bg-rose-600 hover:bg-rose-500 text-white font-bold py-5 px-8 rounded-[16px] shadow-[0_8px_20px_rgba(225,29,72,0.3)] transition-all duration-200 active:scale-[0.97] whitespace-nowrap uppercase tracking-[0.1em] text-[13px] flex items-center justify-center gap-3 border border-transparent">
+                      <Trash2 size={20}/> Purgar Sistema
+                  </button>
+              </div>
+          </div>
+      </div>
+    );
+  };
+
+  if (isPrinting && printData) {
+    const isC = printType === 'cotizacion';
+    const isFact = printType === 'factura';
+    const tot = utils.safeNum(printData.total);
+    const trn = utils.safeNum(printData.transporte);
+    const abo = utils.safeNum(printData.abono);
+    const sub = (tot - trn).toFixed(2);
+    const cli = String(printData.cliente||'');
+    const tel = String(printData.telefono||'');
+    const emailStr = String(printData.email||'');
+    const rucStr = String(printData.ruc||'');
+    const ubi = String(printData.ubicacion||'');
+    const dir = String(printData.direccion||'');
+    const fechaDoc = String(printData.fecha||'').split('-').reverse().join('/');
+    const horaStr = utils.formatTime12h(printData.hora);
+    const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio||'Servicio'), precio: sub, cantidad: 1, descripcion: String(printData.comentarios||'') }];
+    const idx = [...eventosActivos].sort((a,b)=>new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime()).findIndex(ev=>ev.id===printData.id);
+    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`;
+    const servicioLimpioContrato = sA.map(s => { const cant = Number(s.cantidad) || 1; return cant > 1 ? `${cant}x ${String(s.nombre)}` : String(s.nombre); }).join(' + ');
+    const docTitle = isC ? 'COTIZACIÓN' : (isFact ? 'FACTURA' : 'CONTRATO DE SERVICIOS');
+
+    return (
+      <div className="bg-slate-50 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative">
+        <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:auto;margin:0mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}.avoid-break{page-break-inside:avoid;break-inside:avoid;}`}</style>
+        <div className="sticky top-0 bg-slate-900/90 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4">
+          <button type="button" onClick={() => setIsPrinting(false)} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button>
+          <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
+             <button type="button" onClick={printNativePDF} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm mr-2 transition-all active:scale-95"><Printer size={16} className="mr-2"/> Imprimir PDF</button>
+             <button type="button" onClick={handleSharePDF} className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm"><Share2 size={16} className="mr-2"/> Compartir</button>
+             <button type="button" onClick={downloadPDF} className="bg-violet-500 hover:bg-violet-600 text-white px-3 py-2 rounded-xl font-bold flex items-center shadow-lg text-sm ml-2"><Download size={16} className="mr-2"/> Guardar</button>
+          </div>
+        </div>
+        <div className="w-full flex-1 flex justify-center pb-12 pt-8 bg-slate-50 overflow-visible">
+          <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top center', width: '794px' }}>
+              <div id="pdf-content" className="bg-[#F9FAFB] w-[794px] min-h-[1123px] h-auto relative overflow-hidden font-sans text-[#111827] p-12 flex flex-col shadow-2xl">
+                 {/* REEMPLAZO SEGURO DE SVGs ABSOLUTOS: Usamos CSS sólido para evitar desbordes en html2canvas */}
+                 <div className="absolute top-[-150px] left-[-100px] w-[400px] h-[400px] rounded-full bg-[#6366F1]/10 z-0"></div>
+                 <div className="absolute top-[-100px] left-[-50px] w-[300px] h-[300px] rounded-full bg-[#4F46E5]/80 z-0"></div>
+                 <div className="absolute bottom-[-150px] right-[-100px] w-[400px] h-[400px] rounded-full bg-[#A855F7]/10 z-0"></div>
+                 <div className="absolute bottom-[-100px] right-[-50px] w-[300px] h-[300px] rounded-full bg-[#9333EA]/80 z-0"></div>
+                 
+                 <div className="flex flex-col mb-10 relative z-10">
+                     <div className="flex justify-between items-start w-full">
+                         <div><img src={LOGO_URL} alt="Diverty Eventos" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
+                         <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef}  |  Fecha: {fechaDoc}</p></div>
+                     </div>
+                     <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{docTitle}</h1>
+                     <div className="w-full h-[1px] bg-[#4F46E5]/20 mt-6"></div>
+                 </div>
+                 
+                 <div className="flex justify-between gap-8 mb-12 relative z-10">
+                    <div className="w-1/2 bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                        <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><Users size={16}/> Datos del Cliente</h3>
+                        <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
+                            <div className="flex justify-between"><span>Nombre:</span> <span className="text-[#111827] font-bold capitalize text-right">{cli}</span></div>
+                            <div className="flex justify-between"><span>Teléfono:</span> <span className="text-[#111827] text-right">{tel}</span></div>
+                            {emailStr && <div className="flex justify-between"><span>Email:</span> <span className="text-[#111827] text-right truncate w-40">{emailStr}</span></div>}
+                            {rucStr && <div className="flex justify-between"><span>RUC:</span> <span className="text-[#111827] text-right">{rucStr}</span></div>}
+                        </div>
+                    </div>
+                    <div className="w-1/2 bg-white p-6 rounded-xl border border-[#4F46E5]/10 shadow-sm">
+                        <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-4 border-b border-gray-100 pb-3 flex items-center gap-2"><MapPin size={16}/> Detalles del Evento</h3>
+                        <div className="space-y-3 text-[13px] font-medium text-[#6B7280]">
+                            <div className="flex justify-between"><span>Fecha:</span> <span className="text-[#111827] font-bold text-right">{fechaDoc}</span></div>
+                            <div className="flex justify-between"><span>Horario:</span> <span className="text-[#111827] text-right">{horaStr}</span></div>
+                            <div className="flex justify-between"><span>Lugar:</span> <span className="text-[#111827] capitalize text-right truncate w-40">{ubi}</span></div>
+                            {dir && <div className="text-xs italic text-right mt-1 line-clamp-2">{dir}</div>}
+                        </div>
+                    </div>
+                 </div>
+                 
+                 {isFact || isC ? (
+                    <>
+                         <div className="mb-6 flex-1 relative z-10">
+                            <div className="border border-[#4F46E5]/20 rounded-xl overflow-hidden shadow-sm bg-white">
+                                 <table className="w-full text-left text-[13px]">
+                                     <thead className="bg-[#F9FAFB] border-b border-[#4F46E5]/10 text-[#4F46E5]">
+                                         <tr>
+                                             <th className="py-4 px-6 font-bold uppercase text-center tracking-widest w-1/3 text-[11px]">Artículo</th>
+                                             <th className="py-4 px-6 font-bold uppercase tracking-widest text-center border-l border-gray-100 w-1/2 text-[11px]">Descripción</th>
+                                             <th className="py-4 px-6 font-bold uppercase text-center tracking-widest border-l border-gray-100 w-1/6 text-[11px]">Total</th>
+                                         </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-gray-100">
+                                         {sA.map((s, i) => {
+                                             const cant = Number(s.cantidad) || 1;
+                                             const precioUnitario = utils.safeNum(s.precio) / cant;
+                                             const descLines = String(s.descripcion || 'Servicio de animación para eventos').split('\n');
+                                             return (
+                                             <tr key={i} className="avoid-break">
+                                                 <td className="py-6 px-6 text-center border-r border-gray-100 align-top">
+                                                     <div className="flex justify-center mb-3 text-[#4F46E5]"><Star size={28} strokeWidth={1.5}/></div>
+                                                     <p className="font-bold text-[#111827] text-[14px] leading-tight">{String(s.nombre)}</p>
+                                                     {cant > 1 && <p className="font-semibold text-[#7C3AED] text-[12px] mt-1.5 bg-[#7C3AED]/10 py-1 rounded-md inline-block px-3">- {cant} Horas -</p>}
+                                                     <p className="text-[10px] text-[#6B7280] font-medium mt-2 tracking-wide uppercase">Animación Infantil</p>
+                                                 </td>
+                                                 <td className="py-6 px-8 border-r border-gray-100 align-top">
+                                                     <div className="text-[#6B7280] text-[12px] leading-relaxed space-y-2">
+                                                         {descLines.map((line, j) => {
+                                                             const tLine = String(line).trim();
+                                                             if(tLine.startsWith('•') || tLine.startsWith('-')) return <div key={j} className="flex items-start gap-2.5 font-medium"><CheckCircle2 size={14} className="text-[#4F46E5] shrink-0 mt-[2px]"/> <span className="text-[#374151]">{tLine.replace(/^[•-]\s*/, '')}</span></div>;
+                                                             return <div key={j} className="mb-2">{tLine}</div>;
+                                                         })}
+                                                     </div>
+                                                 </td>
+                                                 <td className="py-6 px-6 text-center align-middle">
+                                                     <p className="font-black text-[#111827] text-[18px]">B/. {utils.safeNum(s.precio).toFixed(2)}</p>
+                                                     <p className="text-[10px] text-[#6B7280] mt-1.5 font-medium">{cant.toFixed(2)} x B/. {precioUnitario.toFixed(2)}</p>
+                                                 </td>
+                                             </tr>
+                                         )})}
+                                         {trn > 0 && (
+                                             <tr className="avoid-break">
+                                                 <td className="py-6 px-6 text-center border-r border-gray-100 align-middle">
+                                                     <div className="flex justify-center mb-3 text-[#4F46E5]"><MapIcon size={28} strokeWidth={1.5}/></div>
+                                                     <p className="font-bold text-[#111827] text-[14px]">Transporte</p>
+                                                     <p className="text-[10px] text-[#6B7280] font-medium mt-2 tracking-wide uppercase">Logística</p>
+                                                 </td>
+                                                 <td className="py-6 px-8 border-r border-gray-100 align-middle text-[12px] text-[#374151] leading-relaxed font-medium">
+                                                     <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className="text-[#4F46E5] shrink-0 mt-[2px]"/> <span>Cargo por viáticos a zona: {ubi}</span></div>
+                                                 </td>
+                                                 <td className="py-6 px-6 text-center align-middle">
+                                                     <p className="font-black text-[#111827] text-[18px]">B/. {trn.toFixed(2)}</p>
+                                                 </td>
+                                             </tr>
+                                         )}
+                                     </tbody>
+                                 </table>
+                            </div>
+                         </div>
+
+                         <div className="px-0 mt-4 flex justify-between gap-8 avoid-break relative z-10">
+                             <div className="w-1/2">
+                                 <div className="bg-white p-5 rounded-xl border border-[#4F46E5]/10 shadow-sm h-full">
+                                     <div className="flex items-center gap-2 mb-3 text-[#4F46E5] border-b border-gray-100 pb-3">
+                                         <FileText size={18}/>
+                                         <h3 className="font-bold uppercase tracking-widest text-[11px]">Notas Importantes</h3>
+                                     </div>
+                                     <div className="text-[11px] font-medium text-[#6B7280] leading-relaxed space-y-2">
+                                         <p>Gracias por confiar en Diverty Eventos Panamá.</p>
+                                         <p>El saldo pendiente debe ser cancelado antes o al finalizar el evento.</p>
+                                         <p>Para pagos aceptamos: Yappy, Transferencia Bancaria o Efectivo.</p>
+                                     </div>
+                                 </div>
+                             </div>
+                             <div className="w-[45%] flex flex-col items-end">
+                                 <div className="w-full border border-[#4F46E5]/10 rounded-xl overflow-hidden bg-white shadow-sm flex flex-col">
+                                     <div className="flex justify-between items-center py-3.5 px-6 border-b border-gray-100 text-[13px]">
+                                         <span className="font-semibold text-[#6B7280]">Subtotal:</span>
+                                         <span className="font-bold text-[#111827]">B/. {tot.toFixed(2)}</span>
+                                     </div>
+                                     {!isC && abo > 0 && (
+                                     <div className="flex justify-between items-center py-3.5 px-6 border-b border-gray-100 text-[13px] bg-emerald-50/50">
+                                         <span className="font-semibold text-[#6B7280]">Abono:</span>
+                                         <span className="font-bold text-emerald-600">- B/. {abo.toFixed(2)}</span>
+                                     </div>
+                                     )}
+                                     <div className="bg-[#4F46E5] text-white py-6 px-6 text-center">
+                                         <span className="block text-[11px] uppercase tracking-widest font-semibold mb-1 opacity-90">{isC ? 'Total Estimado:' : 'Total Pendiente:'}</span>
+                                         <span className="block text-[36px] font-black leading-none pb-1">B/. {isC ? tot.toFixed(2) : (tot - abo).toFixed(2)}</span>
+                                     </div>
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div className="mt-8 pb-4 avoid-break relative z-10">
+                             <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex justify-between items-stretch text-[11px] shadow-sm">
+                                 <div className="flex gap-4 w-[35%] border-r border-gray-100 pr-4">
+                                     <div className="text-[#4F46E5] shrink-0 mt-1"><Briefcase size={20}/></div>
+                                     <div className="leading-snug space-y-1.5">
+                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Métodos de Pago</h4>
+                                         <p className="font-semibold text-[#111827]">Yappy: <span className="font-medium text-[#6B7280]">{appSettings.empresa.telefono}</span></p>
+                                         <p className="font-medium text-[#6B7280]">{appSettings.empresa.banco} - {appSettings.empresa.tipoCuenta}</p>
+                                         <p className="font-semibold text-[#111827]">Nº: <span className="font-medium text-[#6B7280]">{appSettings.empresa.numeroCuenta}</span></p>
+                                         <p className="font-semibold text-[#111827]">Titular: <span className="font-medium text-[#6B7280] uppercase">{appSettings.empresa.nombreTitular}</span></p>
+                                     </div>
+                                 </div>
+                                 <div className="flex gap-4 w-[35%] border-r border-gray-100 px-6">
+                                     <div className="text-[#4F46E5] shrink-0 mt-1"><CheckCircle2 size={20}/></div>
+                                     <div className="leading-snug">
+                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Garantía de Servicio</h4>
+                                         <p className="font-medium text-[#6B7280] leading-relaxed text-[11px]">Nuestro compromiso es brindarte la mejor experiencia. Si tienes alguna duda o cambio, contáctanos con tiempo.</p>
+                                     </div>
+                                 </div>
+                                 <div className="flex flex-col items-center justify-center w-[30%] pl-6">
+                                     <div className="text-[#4F46E5] flex items-center gap-2 mb-2 font-bold text-[12px] uppercase tracking-widest"><Award size={18}/> ¡Gracias!</div>
+                                     <h3 className="text-2xl text-[#111827]" style={{fontFamily: "'Brush Script MT', 'Dancing Script', cursive, serif", fontStyle: "italic"}}>Diverty Eventos</h3>
+                                     <p className="text-[#6B7280] font-medium text-[10px] mt-1.5 text-center tracking-wide uppercase">Diversión que crea recuerdos</p>
+                                 </div>
+                             </div>
+                         </div>
+                    </>
+                 ) : (
+                    <>
+                         <div className="mb-10 relative z-10">
+                             <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-5 flex items-center gap-2 justify-center"><Sparkles size={16}/> Servicios Contratados</h3>
+                             <div className="bg-[#F3F4F6] px-8 py-5 rounded-full border border-gray-200 shadow-sm text-center">
+                                 <p className="text-[14px] text-[#111827] font-semibold leading-relaxed capitalize">{servicioLimpioContrato}</p>
+                             </div>
+                         </div>
+                         
+                         <div className="mb-10 flex-1 relative z-10">
+                             <h3 className="text-[11px] font-bold text-[#4F46E5] uppercase tracking-widest mb-6 border-b border-gray-200 pb-3 flex items-center gap-2"><FileSignature size={16}/> Términos y Condiciones</h3>
+                             <div className="text-[13px] text-[#6B7280] space-y-8 leading-loose text-justify">
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">1. OBLIGACIONES DEL SERVICIO:</span><p className="mt-1 text-[#6B7280]">Diverty Eventos se compromete a cumplir con puntualidad y profesionalismo el servicio detallado. El Cliente deberá proporcionar un espacio adecuado y seguro para la realización de las actividades. Finalizado el contrato si el cliente desea adicionar tiempo tendrá un costo adicional.</p></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">2. CONDICIONES DE PAGO:</span><div className="mt-1 text-[#6B7280]">{abo > 0 ? (<p>El Cliente acuerda pagar un valor total de B/. <span className="font-bold text-[#111827]">{tot.toFixed(2)}</span>, del cual ha entregado un anticipo de B/. <span className="font-bold text-[#111827]">{abo.toFixed(2)}</span>. El saldo pendiente de B/. <span className="font-bold text-[#111827] underline">{(tot - abo).toFixed(2)}</span> deberá ser cancelado antes o al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO. El anticipo no es reembolsable en caso de cancelación.</p>) : (<p>El Cliente acuerda pagar el valor total de B/. <span className="font-bold text-[#111827] underline">{tot.toFixed(2)}</span> al finalizar el evento mediante YAPPY, TRANSFERENCIA BANCARIA O EFECTIVO.</p>)}</div></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">3. CANCELACIONES Y POLÍTICAS:</span><p className="mt-1 text-[#6B7280]">Cualquier modificación debe ser comunicada con un mínimo de (3) días de anticipación. En caso de posponer el evento por fuerza mayor, el cliente podrá reprogramar según disponibilidad. Diverty Eventos no se responsabiliza por incidentes ajenos a su control durante el evento.</p></div>
+                                 <div><span className="font-bold text-[#4F46E5] block mb-1">4. DERECHOS DE IMAGEN:</span><p className="mt-1 text-[#6B7280]">Al firmar este contrato, el cliente autoriza el uso de imágenes o videos del evento con fines estrictamente promocionales para la empresa, salvo notificación previa en contrario.</p></div>
+                             </div>
+                         </div>
+                         
+                         <div className="mt-auto pt-16 flex justify-between items-end pb-8 px-12 avoid-break relative z-10">
+                             <div className="w-[40%] text-center">
+                                 <div className="border-t border-gray-300 pt-4">
+                                     <p className="font-semibold text-[13px] text-[#111827] uppercase truncate tracking-wide">{cli}</p>
+                                     <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-[0.2em] mt-1.5">Firma del Cliente</p>
+                                 </div>
+                             </div>
+                             <div className="w-[40%] text-center">
+                                 <div className="border-t border-gray-300 pt-4">
+                                     <p className="font-semibold text-[13px] text-[#111827] uppercase truncate tracking-wide">{appSettings.empresa.nombreTitular}</p>
+                                     <p className="text-[10px] font-medium text-[#6B7280] uppercase tracking-[0.2em] mt-1.5">Diverty Eventos Panamá</p>
+                                 </div>
+                             </div>
+                         </div>
+                    </>
+                 )}
+              </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthLoading) return (
+      <div className="font-outfit min-h-[100dvh] flex flex-col items-center justify-center bg-[#060B14]">
+          <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-white/50 text-sm font-bold uppercase tracking-widest animate-pulse">Iniciando</p>
+      </div>
+  );
+
+  if (!isAuthenticated) return (
+    <div className="font-outfit min-h-[100dvh] flex items-center justify-center p-4 relative overflow-hidden bg-[#060B14]">
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-[radial-gradient(circle,rgba(37,99,235,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+      <div className="absolute bottom-[-10%] right-[-5%] w-[400px] h-[400px] bg-[radial-gradient(circle,rgba(79,70,229,0.15)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+      
+      <div className="w-full max-w-sm bg-[#0B1221] rounded-[24px] p-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/5 relative z-10 animate-fadeInUp">
+        <div className="flex justify-center mb-8">
+          <div className="w-20 h-20 rounded-[20px] bg-gradient-to-tr from-blue-600 to-indigo-500 p-[2px] shadow-lg hover:scale-[1.02] transition-transform duration-200 ease-out">
+            <div className="w-full h-full bg-[#060B14] rounded-[18px] flex items-center justify-center">
+              <ShieldCheck size={32} className="text-white" strokeWidth={1.5} />
+            </div>
+          </div>
+        </div>
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-extrabold text-white/90 mb-2 tracking-tight">Acceso Seguro</h1>
+          <p className="text-white/50 font-medium text-sm">Autenticación por Firebase</p>
+        </div>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="relative group">
+            <input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className={`${inputClass} text-white/90 placeholder:text-white/30 font-medium`} placeholder="Correo Electrónico" />
+          </div>
+          <div className="relative group">
+            <input type="password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className={`${inputClass} text-white/90 placeholder:text-white/30 font-extrabold tracking-[0.2em] placeholder:tracking-normal placeholder:font-medium`} placeholder="Contraseña" />
+          </div>
+          <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_4px_15px_rgba(37,99,235,0.3)] transition-all duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] flex items-center justify-center gap-2 mt-4">Ingresar <ChevronRight size={20} strokeWidth={3} /></button>
+        </form>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-blue-500/30 transition-colors duration-200 relative bg-[#060B14] text-slate-100`}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.2s ease-out forwards;} .animate-slideUp{animation:slideUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}`}</style>
+      
+      <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[radial-gradient(circle,rgba(37,99,235,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
+      
+      {toastAlert.isOpen && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white ${toastAlert.success ? 'bg-emerald-500 border-emerald-400/50' : 'bg-rose-500 border-rose-400/50'}`}>{toastAlert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{toastAlert.message}</p></div></div>}
+      
+      {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[100000] bg-black/70 flex items-center justify-center p-4 animate-fadeIn overscroll-none">
+              <div className={`${modalSectionClass} max-w-md w-full text-center border-rose-500/30 p-8`}>
+                  <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
+                      <AlertTriangle size={32} className="text-rose-400" />
+                  </div>
+                  <h3 className="text-2xl font-extrabold text-white/90 mb-3 tracking-tight">¿Estás seguro?</h3>
+                  <p className="text-white/50 font-medium mb-8 leading-relaxed">{confirmModal.message}</p>
+                  <div className="flex gap-4">
+                      <button onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white/70 bg-white/5 hover:bg-white/10 active:scale-[0.98] transition-all duration-200">Cancelar</button>
+                      <button onClick={() => { if (confirmModal.onConfirm) confirmModal.onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-500 shadow-[0_4px_15px_rgba(225,29,72,0.3)] active:scale-[0.98] transition-all duration-200">Confirmar</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      <EventFormModal 
+        isOpen={modalConfig.isOpen}
+        initialData={modalConfig.initialData} 
+        isCotizacionMode={modalConfig.isCotizacion} 
+        onClose={closeModal} 
+        onSave={handleSaveFromModal} 
+        PAQUETES={PAQUETES_DIVERTY} 
+        onAddCustomService={handleAddCustomService}
+        showAlert={showAlert}
+      />
+
+      {isSidebarOpen && (<div className="fixed inset-0 bg-black/70 z-[9998] md:hidden animate-fadeIn overscroll-none" onClick={() => setIsSidebarOpen(false)} />)}
+
+      <aside className={`fixed md:relative top-0 left-0 h-[100dvh] w-[260px] shrink-0 bg-[#0B1221] border-r border-white/5 text-white flex flex-col z-[9999] transform transition-transform duration-300 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} shadow-2xl md:shadow-none overscroll-none`}>
+         <div className="p-8 flex items-center justify-between gap-4 border-b border-white/5"><div className="flex items-center gap-4"><div className="bg-[#060B14] p-2 rounded-xl border border-white/10 shadow-inner"><img src={LOGO_URL} alt="Logo" className="h-8 w-8 object-contain" /></div><div><h1 className="text-2xl font-extrabold tracking-tight text-white/90">Diverty</h1></div></div><button className="md:hidden text-white/40 hover:text-white transition-colors" onClick={() => setIsSidebarOpen(false)}><X size={24} /></button></div>
+         <nav className="flex-1 flex flex-col px-4 py-6 gap-3 overflow-y-auto">{NAV_ITEMS.map(t => { const Icon = t.icon; return (<button key={t.id} onClick={() => { setActiveTab(t.id); setIsSidebarOpen(false); }} className={`flex items-center gap-4 w-full px-5 py-4 rounded-xl font-bold transition-all duration-200 ${activeTab === t.id ? 'bg-blue-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.3)]' : 'text-white/50 hover:bg-white/5 hover:text-white/90'}`}><Icon size={20}/> <span className="tracking-wide">{t.text}</span></button>); })}</nav>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0 relative z-10 h-[100dvh] overflow-hidden">
+          <header className="md:hidden bg-[#0B1221] border-b border-white/5 p-4 flex justify-between items-center z-40 sticky top-0 shadow-sm"><div className="flex items-center gap-3"><div className="bg-[#060B14] p-1.5 rounded-xl border border-white/10 shadow-inner"><img src={LOGO_URL} alt="Logo" className="h-6 w-6 object-contain" /></div><h1 className="text-xl font-extrabold text-white/90 tracking-tight">Diverty CRM</h1></div><button onClick={() => setIsSidebarOpen(true)} className="p-2 text-white/50 hover:text-white transition-colors"><Menu size={24} /></button></header>
+          <main className="flex-1 overflow-y-auto scroll-smooth pb-10 overscroll-y-none">
+            {activeTab === 'inicio' && renderInicio()}
+            {activeTab === 'eventos' && renderEventos()}
+            {activeTab === 'clientes' && renderClientes()}
+            {activeTab === 'finanzas' && renderFinanzas()}
+            {activeTab === 'config' && renderConfig()}
+          </main>
+      </div>
+    </div>
+  );
+}
