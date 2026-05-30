@@ -357,13 +357,13 @@ function PdfItem({ label, value, className = '' }) {
 
 // --- GENERADOR PDF REUTILIZABLE ---
 function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, eventosActivos }) {
-    const isC = printType === 'cotizacion', isFact = printType === 'factura';
+    const isC = printType === 'cotizacion', isFact = printType === 'factura', isContrato = printType === 'contrato';
     const tot = utils.safeNum(printData.total), trn = utils.safeNum(printData.transporte), abo = utils.safeNum(printData.abono), sub = (tot - trn).toFixed(2);
     const cli = String(printData.cliente||''), tel = String(printData.telefono||''), emailStr = String(printData.email||''), rucStr = String(printData.ruc||''), ubi = String(printData.ubicacion||''), dir = String(printData.direccion||'');
     const fechaDoc = String(printData.fecha||'').split('-').reverse().join('/'), horaStr = utils.formatTime12h(printData.hora);
     const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio||'Servicio'), precio: sub, cantidad: 1, descripcion: String(printData.comentarios||'') }];
     const idx = [...eventosActivos].sort((a,b)=>new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime()).findIndex(ev=>ev.id===printData.id);
-    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`;
+    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : (isContrato ? `CON-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`);
     
     return (
       <div className="bg-slate-200 min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
@@ -392,7 +392,7 @@ function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare
                              <div><img src={LOGO_URL} alt="Diverty" className="h-16 object-contain drop-shadow-md" crossOrigin="anonymous" /></div>
                              <div className="text-right"><p className="text-sm text-[#6B7280] mt-1 font-medium tracking-wide">Ref: {numRef} &nbsp;|&nbsp; Fecha: {fechaDoc}</p></div>
                          </div>
-                         <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{isC ? 'COTIZACIÓN' : (isFact ? 'FACTURA' : 'CONTRATO DE SERVICIOS')}</h1>
+                         <h1 className="text-[28px] font-black text-[#4F46E5] tracking-widest uppercase text-center mt-6">{isC ? 'COTIZACIÓN' : (isContrato ? 'CONTRATO DE SERVICIOS' : 'FACTURA')}</h1>
                          <div className="w-full h-[1px] bg-[#4F46E5]/20 mt-6"></div>
                      </div>
                      
@@ -511,22 +511,47 @@ function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare
                      
                      {!isC && (
                          <div className="mt-8 pb-4 avoid-break relative z-10">
-                             <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex justify-between items-center text-[11px] shadow-sm">
-                                 <div className="flex gap-4 border-r border-gray-100 pr-6">
-                                     <div className="text-[#4F46E5] shrink-0 mt-1"><Briefcase size={20}/></div>
-                                     <div className="leading-snug space-y-1.5">
-                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Métodos de Pago</h4>
-                                         <p className="font-semibold text-[#111827]">Yappy: <span className="font-medium text-[#6B7280]">{appSettings.empresa.telefono}</span></p>
-                                         <p className="font-medium text-[#6B7280]">{appSettings.empresa.banco} - {appSettings.empresa.tipoCuenta}</p>
-                                         <p className="font-semibold text-[#111827]">Nº: <span className="font-medium text-[#6B7280]">{appSettings.empresa.numeroCuenta}</span></p>
-                                         <p className="font-semibold text-[#111827]">Titular: <span className="font-medium text-[#6B7280] uppercase">{appSettings.empresa.nombreTitular}</span></p>
+                             {isContrato ? (
+                                 <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex flex-col gap-6 shadow-sm">
+                                     <div className="text-[11px] text-[#6B7280] leading-relaxed border-b border-gray-100 pb-4">
+                                         <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px] flex items-center gap-2"><FileSignature size={14}/> Cláusulas del Contrato</h4>
+                                         <ul className="list-disc pl-4 space-y-1">
+                                             <li>El cliente se compromete a cancelar el saldo pendiente el día del evento.</li>
+                                             <li>El abono realizado no es reembolsable en caso de cancelación por parte del cliente.</li>
+                                             <li>Cualquier servicio adicional o tiempo extra no estipulado en este documento tendrá un costo adicional.</li>
+                                         </ul>
+                                     </div>
+                                     <div className="flex justify-around items-end pt-2 pb-2">
+                                         <div className="w-[40%] text-center">
+                                             <div className="border-b border-[#111827] w-full mb-2 h-8"></div>
+                                             <p className="font-bold text-[#111827] text-[11px] uppercase truncate">{appSettings.empresa.nombreTitular}</p>
+                                             <p className="text-[#6B7280] text-[10px]">Diverty Eventos</p>
+                                         </div>
+                                         <div className="w-[40%] text-center">
+                                             <div className="border-b border-[#111827] w-full mb-2 h-8"></div>
+                                             <p className="font-bold text-[#111827] text-[11px] uppercase truncate">{cli}</p>
+                                             <p className="text-[#6B7280] text-[10px]">Firma del Cliente</p>
+                                         </div>
                                      </div>
                                  </div>
-                                 <div className="flex flex-col items-center justify-center pl-6">
-                                     <div className="text-[#4F46E5] flex items-center gap-2 mb-2 font-bold text-[12px] uppercase tracking-widest"><Award size={18}/> ¡Gracias!</div>
-                                     <h3 className="text-2xl text-[#111827]" style={{fontFamily: "'Brush Script MT', 'Dancing Script', cursive, serif", fontStyle: "italic"}}>Diverty Eventos</h3>
+                             ) : (
+                                 <div className="bg-white rounded-xl border border-[#4F46E5]/10 p-6 flex justify-between items-center text-[11px] shadow-sm">
+                                     <div className="flex gap-4 border-r border-gray-100 pr-6">
+                                         <div className="text-[#4F46E5] shrink-0 mt-1"><Briefcase size={20}/></div>
+                                         <div className="leading-snug space-y-1.5">
+                                             <h4 className="font-bold text-[#111827] uppercase tracking-widest mb-2 text-[10px]">Métodos de Pago</h4>
+                                             <p className="font-semibold text-[#111827]">Yappy: <span className="font-medium text-[#6B7280]">{appSettings.empresa.telefono}</span></p>
+                                             <p className="font-medium text-[#6B7280]">{appSettings.empresa.banco} - {appSettings.empresa.tipoCuenta}</p>
+                                             <p className="font-semibold text-[#111827]">Nº: <span className="font-medium text-[#6B7280]">{appSettings.empresa.numeroCuenta}</span></p>
+                                             <p className="font-semibold text-[#111827]">Titular: <span className="font-medium text-[#6B7280] uppercase">{appSettings.empresa.nombreTitular}</span></p>
+                                         </div>
+                                     </div>
+                                     <div className="flex flex-col items-center justify-center pl-6">
+                                         <div className="text-[#4F46E5] flex items-center gap-2 mb-2 font-bold text-[12px] uppercase tracking-widest"><Award size={18}/> ¡Gracias!</div>
+                                         <h3 className="text-2xl text-[#111827]" style={{fontFamily: "'Brush Script MT', 'Dancing Script', cursive, serif", fontStyle: "italic"}}>Diverty Eventos</h3>
+                                     </div>
                                  </div>
-                             </div>
+                             )}
                          </div>
                      )}
                   </div>
@@ -1403,7 +1428,7 @@ export default function App() {
         await new Promise(resolve => setTimeout(resolve, 300));
         
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento'; 
-        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : 'Factura')}_Diverty_${docName}.pdf`;
         
         const opt = { 
             margin: 0, 
@@ -1453,7 +1478,7 @@ export default function App() {
         await new Promise(resolve => setTimeout(resolve, 300));
         
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : 'Documento'; 
-        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : 'Factura'}_Diverty_${docName}.pdf`;
+        const fileName = `${printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : 'Factura')}_Diverty_${docName}.pdf`;
         
         const opt = { 
             margin: 0, 
