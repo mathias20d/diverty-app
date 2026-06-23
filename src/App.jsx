@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
@@ -26,7 +26,8 @@ const UI = {
   title: "text-4xl sm:text-5xl font-black text-slate-900 tracking-tight drop-shadow-sm",
   btnBase: "font-black rounded-[16px] transition-all duration-300 ease-out active:scale-[0.96] flex items-center justify-center gap-2.5 px-5 py-3.5 relative overflow-hidden group",
   btnPrimary: "bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-[length:200%_auto] hover:bg-[100%_center] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] hover:shadow-[0_15px_35px_rgba(124,58,237,0.5)] border border-white/20",
-  btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300"
+  btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300",
+  flexBetween: "flex justify-between items-center"
 };
 const COLORS = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
 
@@ -56,16 +57,21 @@ function getWhatsAppMessage(ev, type, empresa) {
     }
 }
 
-// --- 4. COMPONENTES VISUALES ---
-const Bg = () => (<div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-[#F8FAFC]"><div className="absolute inset-0 bg-[linear-gradient(to_right,#00000005_1px,transparent_1px),linear-gradient(to_bottom,#00000005_1px,transparent_1px)] bg-[size:32px_32px] opacity-40"></div><div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[#2563FF] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_10s_ease-in-out_infinite]"></div><div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-[#7C3AED] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_12s_ease-in-out_infinite]"></div></div>);
-const Toast = ({ alert }) => { if (!alert.isOpen) return null; return (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white backdrop-blur-md ${alert.success ? 'bg-emerald-500/95 border-emerald-400' : 'bg-rose-500/95 border-rose-400'}`}>{alert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{alert.message}</p></div></div>); };
-const Confirm = ({ modal, setModal }) => { if (!modal.isOpen) return null; return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn overscroll-none"><div className={`${UI.modal} max-w-md w-full text-center border-rose-200/50 p-8`}><div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100"><AlertTriangle size={32} className="text-rose-500" /></div><h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">¿Estás seguro?</h3><p className="text-slate-500 font-medium mb-8 leading-relaxed">{modal.message}</p><div className="flex gap-4"><button type="button" onClick={() => setModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-slate-600 bg-slate-100/80 hover:bg-slate-200 transition-all border border-slate-200/50">Cancelar</button><button type="button" onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 shadow-lg transition-all">Confirmar</button></div></div></div>); };
-function EmptyState({ icon: Icon, title, message, actionBtn }) { return (<div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}><div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm"><Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#2563FF]/60" /></div><h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3><p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>{actionBtn}</div>); }
-function IconBox({ icon: Icon, color = 'blue', className = '' }) { const cMap = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }; return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; }
-function Badge({ children, color = 'blue', className = '' }) { const bgColors = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', gray: 'bg-slate-100 text-slate-600 border-slate-200/60' }; return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; }
-function Field({ label, as = 'input', className = '', innerRef, children, ...props }) { return (<div className={className}>{label && <label className={UI.label}>{label}</label>}{as === 'input' && <input ref={innerRef} className={UI.input} {...props} />}{as === 'textarea' && <textarea ref={innerRef} className={`${UI.input} min-h-[80px] resize-none leading-relaxed`} {...props} />}{as === 'select' && <select ref={innerRef} className={`${UI.input} appearance-none cursor-pointer [&>option]:bg-white [&>option]:text-slate-900`} {...props}>{children}</select>}</div>); }
+// --- 4. COMPONENTES VISUALES Y MEMOIZACIÓN PARA OPTIMIZACIÓN ULTRA-RÁPIDA ---
+const Bg = memo(() => (<div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-[#F8FAFC]"><div className="absolute inset-0 bg-[linear-gradient(to_right,#00000005_1px,transparent_1px),linear-gradient(to_bottom,#00000005_1px,transparent_1px)] bg-[size:32px_32px] opacity-40"></div><div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[#2563FF] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_10s_ease-in-out_infinite]"></div><div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-[#7C3AED] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_12s_ease-in-out_infinite]"></div></div>));
+const Toast = memo(({ alert }) => { if (!alert.isOpen) return null; return (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white backdrop-blur-md ${alert.success ? 'bg-emerald-500/95 border-emerald-400' : 'bg-rose-500/95 border-rose-400'}`}>{alert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{alert.message}</p></div></div>); });
+const Confirm = memo(({ modal, setModal }) => { if (!modal.isOpen) return null; return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn overscroll-none"><div className={`${UI.modal} max-w-md w-full text-center border-rose-200/50 p-8`}><div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100"><AlertTriangle size={32} className="text-rose-500" /></div><h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">¿Estás seguro?</h3><p className="text-slate-500 font-medium mb-8 leading-relaxed">{modal.message}</p><div className="flex gap-4"><button type="button" onClick={() => setModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-slate-600 bg-slate-100/80 hover:bg-slate-200 transition-all border border-slate-200/50">Cancelar</button><button type="button" onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 shadow-lg transition-all">Confirmar</button></div></div></div>); });
+const EmptyState = memo(function EmptyState({ icon: Icon, title, message, actionBtn }) { return (<div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}><div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm"><Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#2563FF]/60" /></div><h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3><p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>{actionBtn}</div>); });
+const IconBox = memo(function IconBox({ icon: Icon, color = 'blue', className = '' }) { const cMap = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }; return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; });
+const Badge = memo(function Badge({ children, color = 'blue', className = '' }) { const bgColors = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', gray: 'bg-slate-100 text-slate-600 border-slate-200/60' }; return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; });
 
-function ActionBtn({ icon: Icon, label, color = 'white', onClick }) { 
+const Field = memo(function Field({ label, as = 'input', className = '', innerRef, children, ...props }) { 
+    return (<div className={className}>{label && <label className={UI.label}>{label}</label>}{as === 'input' && <input ref={innerRef} className={UI.input} {...props} />}{as === 'textarea' && <textarea ref={innerRef} className={`${UI.input} min-h-[80px] resize-none leading-relaxed`} {...props} />}{as === 'select' && <select ref={innerRef} className={`${UI.input} appearance-none cursor-pointer [&>option]:bg-white [&>option]:text-slate-900`} {...props}>{children}</select>}</div>); 
+}, (prev, next) => {
+    return prev.value === next.value && prev.label === next.label && prev.as === next.as && prev.className === next.className && prev.type === next.type && prev.placeholder === next.placeholder && prev.required === next.required && prev.disabled === next.disabled && prev.children === next.children;
+});
+
+const ActionBtn = memo(function ActionBtn({ icon: Icon, label, color = 'white', onClick }) { 
     const btnClasses = { 
         white: 'text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-50 border border-slate-200/80 hover:shadow-md hover:border-slate-300', 
         blue: 'text-[#2563FF] bg-[#2563FF]/10 hover:bg-[#2563FF]/20 border border-[#2563FF]/20 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)]', 
@@ -79,9 +85,9 @@ function ActionBtn({ icon: Icon, label, color = 'white', onClick }) {
             <span className="relative z-10">{label}</span>
         </button>
     ); 
-}
+});
 
-function AppButton({ children, variant = 'primary', icon: Icon, onClick, className = '', ...props }) { 
+const AppButton = memo(function AppButton({ children, variant = 'primary', icon: Icon, onClick, className = '', ...props }) { 
     let vClass = ""; 
     if (variant === 'primary') vClass = UI.btnPrimary; 
     else if (variant === 'success') vClass = "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)] hover:shadow-[0_15px_30px_rgba(16,185,129,0.5)] border border-white/20 bg-[length:200%_auto] hover:bg-[100%_center]"; 
@@ -93,9 +99,9 @@ function AppButton({ children, variant = 'primary', icon: Icon, onClick, classNa
             <span className="truncate tracking-wide relative z-10">{children}</span>
         </button>
     ); 
-}
+});
 
-function AppCard({ children, title, icon: Icon, iconColor = 'primary', className = '' }) { 
+const AppCard = memo(function AppCard({ children, title, icon: Icon, iconColor = 'primary', className = '' }) { 
     const bgHover = { primary: "group-hover:bg-[#2563FF]/5", success: "group-hover:bg-emerald-500/5", danger: "group-hover:bg-rose-500/5", warning: "group-hover:bg-amber-500/5" }; 
     const iconColors = { primary: "text-[#2563FF]", success: "text-emerald-500", danger: "text-rose-500", warning: "text-amber-500" }; 
     const iconBg = { primary: "bg-[#2563FF]/10", success: "bg-emerald-500/10", danger: "bg-rose-500/10", warning: "bg-amber-500/10" }; 
@@ -111,7 +117,7 @@ function AppCard({ children, title, icon: Icon, iconColor = 'primary', className
             <div className="relative z-10 text-slate-900">{children}</div>
         </div>
     ); 
-}
+});
 
 function useCountUp(end, duration = 1000) { 
     const [count, setCount] = useState(0); 
@@ -124,7 +130,7 @@ function useCountUp(end, duration = 1000) {
     return count; 
 }
 
-function AnimatedProgress({ value }) { 
+const AnimatedProgress = memo(function AnimatedProgress({ value }) { 
     const [width, setWidth] = useState(0); const barRef = useRef(null); 
     useEffect(() => { 
         const o = new IntersectionObserver((e) => { if (e[0].isIntersecting) { setTimeout(() => setWidth(value), 200); o.disconnect(); } }, { threshold: 0.1 }); 
@@ -137,9 +143,9 @@ function AnimatedProgress({ value }) {
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent w-[200%] animate-[shimmer_2s_infinite]"></div>
         </div>
     ); 
-}
+});
 
-function SkeletonCard() { 
+const SkeletonCard = memo(function SkeletonCard() { 
     return (
         <div className={`${UI.card} p-6 animate-pulse flex flex-col gap-4 h-[280px]`}>
             <div className="flex justify-between w-full"><div className="h-5 bg-slate-200 rounded-full w-1/3"></div><div className="h-6 bg-slate-200 rounded-xl w-16"></div></div>
@@ -148,10 +154,9 @@ function SkeletonCard() {
             <div className="mt-auto h-14 bg-slate-100/50 rounded-[16px] w-full border border-slate-200/50"></div>
         </div>
     ); 
-}
+});
 
-// --- MODAL DE NOTIFICACIONES ---
-function NotifModal({ isOpen, onClose, eventosActivos, openModal }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, openModal }) {
     if (!isOpen) return null;
     const reqs = eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente').sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
     return (
@@ -184,10 +189,9 @@ function NotifModal({ isOpen, onClose, eventosActivos, openModal }) {
             </div>
         </div>
     );
-}
+});
 
-// --- PLANTILLA DE GENERACIÓN DE PDF ---
-function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, eventosActivos }) {
+const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, eventosActivos }) {
     const isC = printType === 'cotizacion', isContrato = printType === 'contrato', isContratoProv = printType === 'contrato_proveedor';
     const cli = String(printData.cliente || printData.nombre || ''), tel = String(printData.telefono || ''), emailStr = String(printData.email || ''), rucStr = String(printData.ruc || ''), ubi = String(printData.ubicacion || 'Por definir'), dir = String(printData.direccion || '');
     const fechaDoc = printData.fecha ? String(printData.fecha).split('-').reverse().join('/') : utils.getLocalYYYYMMDD(new Date()).split('-').reverse().join('/'), horaStr = utils.formatTime12h(printData.hora);
@@ -412,45 +416,44 @@ function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare
         </div>
       </div>
     );
-}
+});
 
-// --- MODALES (COMPRIMIDOS) ---
-function ClientEditModal({ isOpen, oldName, onClose, onSave }) {
+const ClientEditModal = memo(function ClientEditModal({ isOpen, oldName, onClose, onSave }) {
     const [newName, setNewName] = useState(''); useEffect(() => { if(isOpen) setNewName(oldName); }, [isOpen, oldName]); if (!isOpen) return null;
-    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-sm w-full p-8`}><div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><UserPen size={24} className="text-[#2563FF]" /><h3 className="text-xl font-black text-slate-900">Editar Cliente</h3></div><p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">Al cambiar este nombre, todos los eventos asociados se actualizarán y se unificarán si el nuevo nombre ya existe en el sistema.</p><div className="space-y-4 mb-8"><div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre Actual</label><input type="text" value={oldName} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-500 font-semibold text-sm cursor-not-allowed" /></div><div><label className="block text-[10px] font-bold text-[#2563FF] uppercase tracking-widest mb-1.5">Nuevo Nombre</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} autoFocus className="w-full bg-white border border-[#2563FF]/50 rounded-xl p-3 text-slate-900 font-bold text-base outline-none focus:ring-4 ring-[#2563FF]/10 shadow-sm" /></div></div><div className="flex gap-3"><button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest transition-colors">Cancelar</button><button type="button" onClick={() => onSave(oldName, newName)} className="flex-1 py-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white font-bold rounded-xl text-xs uppercase tracking-widest shadow-md transition-transform active:scale-95">Guardar</button></div></div></div>);
-}
+    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-sm w-full p-8`}><div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><Edit size={24} className="text-[#2563FF]" /><h3 className="text-xl font-black text-slate-900">Editar Cliente</h3></div><p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">Al cambiar este nombre, todos los eventos asociados se actualizarán y se unificarán si el nuevo nombre ya existe en el sistema.</p><div className="space-y-4 mb-8"><div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre Actual</label><input type="text" value={oldName} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-500 font-semibold text-sm cursor-not-allowed" /></div><div><label className="block text-[10px] font-bold text-[#2563FF] uppercase tracking-widest mb-1.5">Nuevo Nombre</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} autoFocus className="w-full bg-white border border-[#2563FF]/50 rounded-xl p-3 text-slate-900 font-bold text-base outline-none focus:ring-4 ring-[#2563FF]/10 shadow-sm" /></div></div><div className="flex gap-3"><button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest transition-colors">Cancelar</button><button type="button" onClick={() => onSave(oldName, newName)} className="flex-1 py-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white font-bold rounded-xl text-xs uppercase tracking-widest shadow-md transition-transform active:scale-95">Guardar</button></div></div></div>);
+});
 
-function ProveedorModal({ isOpen, data, onClose, onSave }) {
+const ProveedorModal = memo(function ProveedorModal({ isOpen, data, onClose, onSave }) {
     const [form, setForm] = useState({ nombre: '', telefono: '', especialidad: '', costoBase: '' }); useEffect(() => { if (isOpen) setForm(data || { nombre: '', telefono: '', especialidad: '', costoBase: '' }); }, [isOpen, data]); if (!isOpen) return null; const handleSubmit = (e) => { e.preventDefault(); onSave(form); };
     return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-md w-full p-8`}><div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4"><div className="flex items-center gap-3">{data ? <Edit size={24} className="text-[#2563FF]" /> : <Plus size={24} className="text-[#2563FF]" />}<h3 className="text-xl font-black text-slate-900">{data ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h3></div><button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-100 rounded-lg"><X size={18}/></button></div><form onSubmit={handleSubmit} className="space-y-4"><Field label="Nombre Comercial / Payasito *" required value={form.nombre} onChange={e=>setForm({...form, nombre: e.target.value})} placeholder="Ej. Sonrisas Party" /><Field label="Número de WhatsApp *" required value={form.telefono} onChange={e=>setForm({...form, telefono: e.target.value})} placeholder="Ej. 6000-0000" /><Field label="Especialidad / Servicio" required value={form.especialidad} onChange={e=>setForm({...form, especialidad: e.target.value})} placeholder="Ej. Pinta Caritas, Transporte" /><Field label="Costo del Servicio ($)" type="number" value={form.costoBase} onChange={e=>setForm({...form, costoBase: e.target.value})} placeholder="0.00" /><div className="pt-4"><AppButton type="submit" className="w-full text-xs uppercase tracking-widest">{data ? 'Guardar Cambios' : 'Registrar Proveedor'}</AppButton></div></form></div></div>);
-}
+});
 
-function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete, onEdit, onWhatsApp, onContrato, eventosActivos }) {
+const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete, onEdit, onWhatsApp, onContrato, eventosActivos }) {
     const misEventos = useMemo(() => { return eventosActivos.filter(ev => ev.subcontratos && ev.subcontratos.some(sc => sc.proveedorId === p.id)).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))); }, [eventosActivos, p.id]); const pendientes = misEventos.filter(ev => utils.normalizeText(ev.estado) !== 'completado' && utils.normalizeText(ev.estado) !== 'cancelado'); const realizados = misEventos.filter(ev => utils.normalizeText(ev.estado) === 'completado'); const phoneClean = String(p.telefono).replace(/\D/g, '');
     return (<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e) => { if(e){e.preventDefault();e.stopPropagation();} utils.triggerHaptic('light'); onToggleExpand(p.id); }} className="p-6 cursor-pointer flex flex-col gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex justify-between items-start"><div className="flex gap-3"><div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#2563FF] shadow-sm shrink-0"><Briefcase size={20}/></div><div className="flex-1 min-w-0"><h4 className="font-extrabold text-lg text-slate-900 tracking-tight capitalize leading-tight truncate">{p.nombre}</h4><span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 truncate block mt-0.5">{p.especialidad}</span></div></div><button type="button" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 size={18}/></button></div><div className="flex justify-between items-center bg-slate-50/80 rounded-xl p-4 border border-slate-100"><div className="flex items-center gap-3"><Smartphone size={16} className="text-emerald-500"/><span className="font-bold text-slate-700 text-sm">{p.telefono || 'Sin teléfono'}</span></div>{p.costoBase && <span className="text-xs font-black text-slate-900 bg-emerald-100/50 px-2.5 py-1 rounded-lg border border-emerald-200/50">${p.costoBase}</span>}</div><div className="flex gap-2.5 mt-2"><ActionBtn icon={MessageCircle} label="WhatsApp" color="emerald" onClick={(e) => { e.stopPropagation(); onWhatsApp(phoneClean, `¡Hola ${p.nombre}!`); }} /><ActionBtn icon={Handshake} label="Contrato" color="blue" onClick={(e) => { e.stopPropagation(); onContrato(p); }} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e) => { e.stopPropagation(); onEdit(p); }} /></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-5 bg-slate-50/50 rounded-b-[24px]"><h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2563FF] mb-4 flex items-center gap-2"><CalendarDays size={14}/> Eventos Asignados</h5><div className="space-y-5"><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pendientes ({pendientes.length})</p>{pendientes.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos pendientes.</p>) : (<div className="space-y-2">{pendientes.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-white p-3.5 rounded-xl border border-slate-200/60 shadow-sm flex flex-col gap-1.5 transition-all hover:border-blue-200"><div className="flex justify-between items-start"><span className="font-extrabold text-slate-900 text-[13px] capitalize truncate max-w-[160px]">{ev.cliente}</span>{subC?.costo && <span className="text-rose-500 font-bold text-[11px] bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">${subC.costo}</span>}</div><div className="flex gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider"><span className="flex items-center gap-1"><Calendar size={11} className="text-[#2563FF]"/> {ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span className="flex items-center gap-1"><Clock size={11} className="text-[#2563FF]"/> {utils.formatTime12h(ev.hora)}</span></div><div className="text-[10px] font-semibold text-slate-400 truncate flex items-center gap-1 mt-0.5"><MapPin size={10}/> {ev.ubicacion}</div></div>); })}</div>)}</div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Realizados ({realizados.length})</p>{realizados.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos completados.</p>) : (<div className="space-y-2 opacity-75">{realizados.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-slate-100/50 p-3 rounded-xl border border-slate-200/50 flex flex-col gap-1.5"><div className="flex justify-between items-start"><span className="font-bold text-slate-700 text-[12px] capitalize truncate">{ev.cliente}</span>{subC?.costo && <span className="text-slate-500 font-bold text-[10px]">${subC.costo}</span>}</div><div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider"><span>{ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span>{utils.formatTime12h(ev.hora)}</span></div></div>); })}</div>)}</div></div></div>)}</div>);
-}
+});
 
-function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient }) {
+const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient }) {
     const phoneClean=String(c.telefono).replace(/\D/g,''); const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`; const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#2563FF] to-[#7C3AED]';
     return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.nombre);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-md bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><h4 className="font-bold text-[17px] text-slate-900 capitalize truncate tracking-tight mb-1">{String(c.nombre)}</h4><p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Smartphone size={14} className="text-slate-400"/> {String(c.telefono)||'Sin número'}</p></div></div><div className="text-right shrink-0"><p className="text-xl font-bold text-emerald-500 leading-none tracking-tight">${c.totalGastado.toFixed(0)}</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400" title="Contactar"></span>}</div></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-4 bg-slate-50/50 rounded-b-[24px]"><div className="flex justify-between items-center bg-white/80 p-4 rounded-[16px] mb-5 border border-slate-200/50 shadow-sm"><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Eventos</p><p className="font-bold text-base text-slate-800">{c.eventos}</p></div><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Último</p><p className="font-bold text-base text-slate-800">{c.ultimoEventoFecha?String(c.ultimoEventoFecha).split('-').reverse().join('/'):'N/A'}</p></div><div className="text-center flex-1"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Estado</p><p className="font-bold text-base text-slate-800 capitalize flex justify-center items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${String(c.ultimoEstado).toLowerCase()==='completado'?'bg-emerald-400':'bg-amber-400'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div></div><div className="grid grid-cols-2 gap-3 mb-4"><ActionBtn icon={MessageCircle} label="Contactar" color="emerald" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean, `¡Hola ${c.nombre}!`);}} /><ActionBtn icon={Sparkles} label="Promo" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgPromo);}} /><ActionBtn icon={BellRing} label="Recordar" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgRecordatorio);}} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e)=>{e.stopPropagation(); onEditClient(c.nombre);}} /></div><div className="flex gap-3"><AppButton variant="primary" icon={Plus} onClick={(e)=>{e.stopPropagation();openModal()}} className="flex-1 text-[13px] uppercase tracking-wider py-3.5 shadow-md">Reservar</AppButton><button type="button" onClick={(e)=>{e.stopPropagation();onDeleteClient(c.nombre,c.eventos)}} className="px-5 bg-rose-50 text-rose-500 rounded-[16px] hover:bg-rose-100 transition-colors border border-rose-100"><Trash2 size={20} /></button></div></div>)}</div>);
-}
+});
 
-function TransactionItem({ ev, isExpanded, onToggleExpand, utils }) {
+const TransactionItem = memo(function TransactionItem({ ev, isExpanded, onToggleExpand, utils }) {
     const tot=utils.safeNum(ev.total),gas=utils.safeNum(ev.gastos),neta=tot-gas;
     return(<div className="group bg-white/80 backdrop-blur-sm rounded-[20px] mb-2 border border-slate-200/80 shadow-sm hover:border-slate-300 overflow-hidden transition-all"><button type="button" onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}onToggleExpand(ev.id);}} className="w-full flex justify-between items-center p-5 bg-transparent hover:bg-slate-50/80 transition-colors duration-200 text-left active:scale-[0.99] text-slate-900"><div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-bold capitalize text-[16px] text-slate-900 truncate tracking-tight">{String(ev.cliente||'')}</p><p className="text-xs font-medium text-slate-500 mt-1.5">{ev.fecha?String(ev.fecha).split('-').reverse().join('/'):''} • {String(ev.tipoEvento||'').substring(0,15)}</p></div><div className="text-right shrink-0 flex items-center gap-4"><div className="flex flex-col items-end"><span className="font-bold text-emerald-500 text-lg leading-none block mb-2 tracking-tight">+${neta.toFixed(2)}</span>{gas>0&&<span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 leading-none px-2 py-1 bg-rose-50 rounded-lg border border-rose-100">Gastos: -${gas}</span>}</div><ChevronDown size={18} className={`text-slate-400 transition-transform duration-300 ${isExpanded?'rotate-180':''}`}/></div></button>{isExpanded&&(<div className="p-5 bg-slate-50/50 border-t border-slate-100/80 animate-fadeIn"><div className="flex justify-between items-center mb-3"><span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Ingreso Bruto</span><span className="font-bold text-[15px] text-slate-900">${tot.toFixed(2)}</span></div><div className="flex justify-between items-center mb-3"><span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Gastos Operativos</span><span className="font-bold text-[15px] text-rose-500">-${gas.toFixed(2)}</span></div>{ev.detalleGastos&&(<div className="mt-4 pt-4 border-t border-slate-200/60"><span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-2">Desglose:</span><p className="text-[13px] font-medium text-slate-600 italic leading-relaxed whitespace-pre-wrap">{String(ev.detalleGastos)}</p></div>)}</div>)}</div>);
-}
+});
 
-function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir }) {
+const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir }) {
     const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false); const startX = useRef(0);
     const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []); const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]); const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
     const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo);
     let sideColor="bg-slate-200",dotColor="bg-slate-300",waType='agradecimiento'; if(estNormalized==='completado'){sideColor='bg-emerald-500';dotColor='bg-emerald-400';}else if(estNormalized.includes('aprobada')){sideColor='bg-teal-500';dotColor='bg-teal-400';}else if(estNormalized.includes('rechazada')){sideColor='bg-slate-400';dotColor='bg-slate-300';}else if(isCotizacion){sideColor='bg-amber-400';dotColor='bg-amber-400';waType='cotizacion';}else if(estNormalized==='confirmado'){sideColor='bg-[#2563FF]';dotColor='bg-[#2563FF]';waType='recordatorio';}else if(estNormalized==='pendiente'){sideColor='bg-amber-500';dotColor='bg-amber-500';waType='cobro';}else if(estNormalized==='cancelado'){sideColor='bg-rose-500';dotColor='bg-rose-500';}
     let diff=null,dateBadgeContent=null; if(ev.fecha){const[y,m,d]=String(ev.fecha).split('-');if(y&&m&&d){diff=Math.ceil((new Date(parseInt(y,10),parseInt(m,10)-1,parseInt(d,10)).getTime()-todayTime)/(1000*60*60*24));}}
     if(diff===0&&!isCotizacion)dateBadgeContent=<Badge color="rose"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-sm"></div> HOY</Badge>;else if(diff===1&&!isCotizacion)dateBadgeContent=<Badge color="amber">MAÑANA</Badge>;else if(isCotizacion){ if(estNormalized.includes('aprobada'))dateBadgeContent=<Badge color="teal">COT. Aprobada</Badge>; else if(estNormalized.includes('rechazada'))dateBadgeContent=<Badge color="gray">COT. Rechazada</Badge>; else dateBadgeContent=<Badge color="amberSolid"><FileText size={12}/> Cotización</Badge>; }
-    return (<div className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap"><div className="flex items-center gap-2 min-w-0"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`}></div><h3 className="text-lg font-bold text-slate-900 truncate tracking-tight">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 shrink-0 mt-1 sm:mt-0">{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center gap-4 shrink-0"><span className="text-slate-900 font-bold text-lg tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div><div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-6' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-4 mb-6 pt-2 text-slate-600"><div className="flex items-center gap-4"><Sparkles size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-4"><Calendar size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }} className="flex justify-between items-center gap-4 cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-4 min-w-0"><MapPin size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#2563FF]" /></div></div><div className="flex items-center gap-4"><Smartphone size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-5 sm:p-6 border border-slate-200/50 mb-6 relative overflow-hidden"><div className="flex justify-between items-end mb-5"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-2xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-2xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-2 mb-3 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div></div><div className="flex flex-col sm:flex-row gap-3"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="w-full sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white" icon={MessageCircle}>Contactar</AppButton>{isCotizacion ? ( <div className="flex gap-3 w-full sm:flex-1"><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="w-full" icon={FileText}>Ver PDF</AppButton></div> ) : ( <div className="flex gap-3 w-full sm:flex-1"><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="flex-1" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="flex-1" icon={FileSignature}>Contrato</AppButton></div> )}</div>{isCotizacion && (<div className="flex gap-3 mt-4 pt-4 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-500 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-3 mt-4 pt-4 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
-}
+    return (<div className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap"><div className="flex items-center gap-2 min-w-0"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`}></div><h3 className="text-lg font-bold text-slate-900 truncate tracking-tight">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 shrink-0 mt-1 sm:mt-0">{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center gap-4 shrink-0"><span className="text-slate-900 font-bold text-lg tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div><div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-6' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-4 mb-6 pt-2 text-slate-600"><div className="flex items-center gap-4"><Sparkles size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-4"><Calendar size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }} className="flex justify-between items-center gap-4 cursor-pointer hover:bg-slate-50 p-2 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-4 min-w-0"><MapPin size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#2563FF]" /></div></div><div className="flex items-center gap-4"><Smartphone size={18} className="text-[#2563FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-5 sm:p-6 border border-slate-200/50 mb-6 relative overflow-hidden"><div className="flex justify-between items-end mb-5"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-2xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-2xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-2 mb-3 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div></div><div className="flex flex-col sm:flex-row gap-3"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="w-full sm:flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white" icon={MessageCircle}>Contactar</AppButton>{isCotizacion ? ( <div className="flex gap-3 w-full sm:flex-1"><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="w-full" icon={FileText}>Ver PDF</AppButton></div> ) : ( <div className="flex gap-3 w-full sm:flex-1"><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="flex-1" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="flex-1" icon={FileSignature}>Contrato</AppButton></div> )}</div>{isCotizacion && (<div className="flex gap-3 mt-4 pt-4 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-3 mt-4 pt-4 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
+});
 
-function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
+const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
     const [formData, setFormData] = useState(initialData || { ...defaultFormData, fecha: utils.getLocalYYYYMMDD(new Date()) });
     const [searchTermService, setSearchTermService] = useState(''); const [showDropdown, setShowDropdown] = useState(false); const [isCustomOpen, setIsCustomOpen] = useState(false); const [customData, setCustomData] = useState({ nombre: '', precio: '' });
     const [showClientDropdown, setShowClientDropdown] = useState(false); const nameInputRef = useRef(null); const [selectedProv, setSelectedProv] = useState(''); const [provCosto, setProvCosto] = useState('');
@@ -459,8 +462,11 @@ function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave
     useEffect(()=>{ if(isOpen && nameInputRef.current && (!initialData || !initialData.id) && window.innerWidth > 768){ const t=setTimeout(()=>nameInputRef.current.focus(), 400); return ()=>clearTimeout(t); } },[isOpen,initialData]);
     useEffect(()=>{ if(isOpen&&!isCotizacionMode&&(!initialData||!initialData.id)){const timer=setTimeout(()=>{utils.setSafeLocal('diverty_form_draft',JSON.stringify(formData));},800);return()=>clearTimeout(timer);} },[formData,isOpen,isCotizacionMode,initialData]);
 
-    const filteredClientes = useMemo(() => { if (!formData.cliente || typeof formData.cliente !== 'string') return []; const search = utils.normalizeText(formData.cliente); return (clientesRegistrados || []).filter(c => utils.normalizeText(c.nombre).includes(search) || (c.telefono && utils.normalizeText(c.telefono).includes(search)) ).slice(0, 5); }, [formData.cliente, clientesRegistrados]);
-    const filteredPaquetes = useMemo(() => { if(!searchTermService)return PAQUETES; const s=utils.normalizeText(searchTermService); return PAQUETES.filter(p=>utils.normalizeText(p.nombre).includes(s)||utils.normalizeText(p.short||'').includes(s)); }, [searchTermService, PAQUETES]);
+    const deferredCliente = useDeferredValue(formData.cliente);
+    const filteredClientes = useMemo(() => { if (!deferredCliente || typeof deferredCliente !== 'string') return []; const search = utils.normalizeText(deferredCliente); return (clientesRegistrados || []).filter(c => utils.normalizeText(c.nombre).includes(search) || (c.telefono && utils.normalizeText(c.telefono).includes(search)) ).slice(0, 5); }, [deferredCliente, clientesRegistrados]);
+    
+    const deferredSearchTermService = useDeferredValue(searchTermService);
+    const filteredPaquetes = useMemo(() => { if(!deferredSearchTermService)return PAQUETES; const s=utils.normalizeText(deferredSearchTermService); return PAQUETES.filter(p=>utils.normalizeText(p.nombre).includes(s)||utils.normalizeText(p.short||'').includes(s)); }, [deferredSearchTermService, PAQUETES]);
 
     const handleSelectClient = useCallback((client) => { utils.triggerHaptic('light'); setFormData(prev => ({ ...prev, cliente: client.nombre || '', telefono: client.telefono || '', email: client.email || prev.email || '' })); setShowClientDropdown(false); }, []);
     const procesarServicios = useCallback((prev, newSelected) => { const sumPrecios=newSelected.reduce((sum,s)=>sum+utils.safeNum(s.precio),0); const newTotal=sumPrecios+utils.safeNum(prev.transporte)+utils.safeNum(prev.gastos); const resumenServicios=newSelected.map(s=>s.cantidad>1?`${s.nombre} (x${s.cantidad})`:s.nombre).join(' + '); return{...prev,serviciosSeleccionados:newSelected,servicio:resumenServicios,total:newTotal>0?newTotal.toString():''}; }, []);
@@ -503,7 +509,7 @@ function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave
               </div>
         </div>
     );
-}
+});
 
 // --- APP COMPONENT ---
 export default function App() {
@@ -526,7 +532,11 @@ export default function App() {
   const [viewMode, setViewMode] = useState('semana'); 
   const [calMonth, setCalMonth] = useState(currentTime.getMonth()); 
   const [calYear, setCalYear] = useState(currentTime.getFullYear()); 
+  
+  // Utilización de "Deferred values" para no bloquear la pantalla principal al buscar.
   const [globalSearch, setGlobalSearch] = useState('');
+  const deferredGlobalSearch = useDeferredValue(globalSearch);
+
   const [proveedores, setProveedores] = useState([]); 
   const [proveedorModal, setProveedorModal] = useState({ isOpen: false, data: null }); 
   const [expandedProvId, setExpandedProvId] = useState(null);
@@ -541,7 +551,10 @@ export default function App() {
   const [printData, setPrintData] = useState(null); 
   const [printType, setPrintType] = useState(null); 
   const [pdfScale, setPdfScale] = useState(1); 
+  
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
   const [clientSort, setClientSort] = useState('gasto'); 
   const [financePeriod, setFinancePeriod] = useState('mes'); 
   const [selectedFinanceMonth, setSelectedFinanceMonth] = useState(currentTime.getMonth() + 1); 
@@ -760,10 +773,10 @@ export default function App() {
       return eventosActivos.filter(e => { 
           const es = utils.normalizeText(e.estado); 
           if (es.includes('cotizaci') || es.includes('cot.')) return false; 
-          if (globalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(globalSearch.toLowerCase())) return false; 
+          if (deferredGlobalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(deferredGlobalSearch.toLowerCase())) return false; 
           if (filterDate && e.fecha !== filterDate) return false; 
           
-          if (!filterDate && !globalSearch) { 
+          if (!filterDate && !deferredGlobalSearch) { 
               if (viewMode === 'hoy') return e.fecha === todayStr; 
               let dt; 
               if (e.fecha) { const parts = String(e.fecha).split('-'); if (parts.length === 3) dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); } 
@@ -775,15 +788,15 @@ export default function App() {
           } 
           return true; 
       }); 
-  }, [eventosActivos, globalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
+  }, [eventosActivos, deferredGlobalSearch, filterDate, viewMode, todayStr, todayObj, weekStart, weekEnd]);
 
   const filteredClients = useMemo(() => enrichedClients.filter(c => { 
       if (clientFilter === 'vip' && !c.isVIP) return false; 
       if (clientFilter === 'retomar' && !c.needsContact) return false; 
-      if (!searchTerm) return true; 
-      const s = searchTerm.toLowerCase(); 
+      if (!deferredSearchTerm) return true; 
+      const s = deferredSearchTerm.toLowerCase(); 
       return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s); 
-  }), [enrichedClients, searchTerm, clientFilter]);
+  }), [enrichedClients, deferredSearchTerm, clientFilter]);
 
   const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => { 
       if (clientSort === 'gasto') return b.totalGastado - a.totalGastado; 
@@ -1107,7 +1120,7 @@ export default function App() {
      }
      return (
        <div className="animate-fadeIn p-4 md:p-6 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32 md:pb-10 relative z-10">
-          <div className="bg-gradient-to-br from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] rounded-[40px] p-8 sm:p-12 shadow-[0_20px_50px_rgba(124,58,237,0.3)] relative overflow-hidden group animate-fadeInUp border border-white/20">
+          <div className="bg-gradient-to-br from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] rounded-[40px] p-8 sm:p-12 shadow-[0_20px_50px_rgba(124,58,237,0.3)] relative overflow-hidden group border border-white/20">
              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.1] mix-blend-overlay pointer-events-none"></div>
              <div className="absolute -top-24 -right-24 w-96 h-96 bg-[radial-gradient(circle,rgba(255,255,255,0.3)_0%,transparent_60%)] pointer-events-none blur-2xl group-hover:scale-110 transition-transform duration-1000"></div>
              <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.2)_0%,transparent_60%)] pointer-events-none blur-2xl"></div>
@@ -1161,7 +1174,7 @@ export default function App() {
                    {stats.alertasOperativas.map((al, i) => { 
                       const AlIcon = al.icon; 
                       return (
-                         <div key={al.id} onClick={() => openModal(al.e)} className={`p-5 sm:p-6 rounded-[24px] border border-slate-200/60 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-500 ease-out bg-white/90 backdrop-blur-md hover:border-rose-300 shadow-sm hover:shadow-lg animate-fadeInUp`} style={{animationDelay: `${i*100}ms`}}>
+                         <div key={al.id} onClick={() => openModal(al.e)} className={`p-5 sm:p-6 rounded-[24px] border border-slate-200/60 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-500 ease-out bg-white/90 backdrop-blur-md hover:border-rose-300 shadow-sm hover:shadow-lg`} style={{animationDelay: `${i*100}ms`}}>
                             <div className="flex items-center gap-4">
                                <div className={`p-3.5 rounded-xl ${al.b}`}><AlIcon size={24} strokeWidth={2.5}/></div>
                                <div className="flex flex-col items-start"><p className={`text-[15px] font-bold text-slate-900 leading-tight capitalize`}>{al.txt}</p><p className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mt-1.5">{al.t}</p></div>
@@ -1204,7 +1217,7 @@ export default function App() {
     const renderCalendarGrid = () => {
         const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate(), firstDayIndex = new Date(calYear, calMonth, 1).getDay(), days = Array.from({length: daysInMonth}, (_, i) => i + 1), blanks = Array.from({length: firstDayIndex}, (_, i) => i), weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
         return (
-            <div className={`bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[32px] p-5 sm:p-8 mb-8 animate-fadeIn transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.05)]`}>
+            <div className={`bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-[32px] p-5 sm:p-8 mb-8 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.05)]`}>
                <div className="flex flex-col sm:flex-row justify-between items-center gap-5 mb-8 border-b border-slate-100 pb-6"><h3 className="text-2xl font-black text-slate-900 capitalize flex items-center gap-3 tracking-tight"><IconBox icon={CalendarDays} color="blue" /> {NOMBRES_MESES[calMonth]} {calYear}</h3><div className="flex gap-2 bg-slate-50/80 p-1.5 rounded-[16px] border border-slate-200/50 w-full sm:w-auto justify-between sm:justify-start shadow-sm"><button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(calMonth === 0 ? 11 : calMonth - 1); setCalYear(calMonth === 0 ? calYear - 1 : calYear); }} className="p-3 hover:bg-white rounded-xl transition-all text-slate-500 hover:text-slate-900 shadow-sm"><ChevronLeft size={18}/></button><button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(todayObj.getMonth()); setCalYear(todayObj.getFullYear()); setFilterDate(todayStr); }} className="px-6 py-2 hover:bg-white shadow-sm text-[#2563FF] font-bold text-xs uppercase tracking-[0.1em] rounded-xl transition-all">HOY</button><button type="button" onClick={() => { utils.triggerHaptic('light'); setCalMonth(calMonth === 11 ? 0 : calMonth + 1); setCalYear(calMonth === 11 ? calYear + 1 : calYear); }} className="p-3 hover:bg-white rounded-xl transition-all text-slate-500 hover:text-slate-900 shadow-sm"><ChevronRight size={18}/></button></div></div>
                <div className="grid grid-cols-7 gap-2 sm:gap-4 text-center mb-4">{weekDays.map(d => <div key={d} className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{d.substring(0,3)}</div>)}</div>
                <div className="grid grid-cols-7 gap-2 sm:gap-4">
@@ -1228,7 +1241,7 @@ export default function App() {
     const renderListView = () => {
         const grouped = agendaFiltrados.reduce((acc, ev) => { if(!acc[ev.fecha]) acc[ev.fecha] = []; acc[ev.fecha].push(ev); return acc; }, {});
         return (
-            <div className="mt-8 space-y-10 animate-fadeIn relative z-10">
+            <div className="mt-8 space-y-10 relative z-10">
                 {Object.keys(grouped).sort().map(fecha => (
                     <div key={fecha} className="flex flex-col">
                         <div className="flex items-center gap-4 mb-6"><div className="bg-white/90 backdrop-blur-sm text-slate-900 px-6 py-3.5 rounded-xl font-bold text-sm flex items-center gap-3 shadow-sm border border-slate-200/80"><CalendarDays size={18} className="text-[#2563FF]" strokeWidth={2.5}/> {fecha ? String(fecha).split('-').reverse().join('/') : 'Sin Fecha'}</div><div className="flex-1 h-px bg-slate-200/80"></div></div>
@@ -1253,11 +1266,11 @@ export default function App() {
         </div>
         <div className="relative z-10">
             {viewMode === 'mes' && renderCalendarGrid()}
-            {(!isDBReady && !globalSearch && !filterDate && eventosActivos.length === 0) ? (
+            {(!isDBReady && !deferredGlobalSearch && !filterDate && eventosActivos.length === 0) ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8"><SkeletonCard /><SkeletonCard /></div>
             ) : agendaFiltrados.length === 0 ? (
-                <EmptyState icon={Search} title="Sin resultados" message="No se encontraron reservas." actionBtn={!!globalSearch || !!filterDate ? <button type="button" onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="mt-4 text-[#2563FF] font-bold px-8 py-3.5 rounded-[16px] border border-[#2563FF]/30 bg-[#2563FF]/10 hover:bg-[#2563FF]/20 transition-all duration-300 shadow-sm uppercase tracking-wider text-xs cursor-pointer">Limpiar filtros</button> : null} />
-            ) : (!!globalSearch || !!filterDate) ? (
+                <EmptyState icon={Search} title="Sin resultados" message="No se encontraron reservas." actionBtn={!!deferredGlobalSearch || !!filterDate ? <button type="button" onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="mt-4 text-[#2563FF] font-bold px-8 py-3.5 rounded-[16px] border border-[#2563FF]/30 bg-[#2563FF]/10 hover:bg-[#2563FF]/20 transition-all duration-300 shadow-sm uppercase tracking-wider text-xs cursor-pointer">Limpiar filtros</button> : null} />
+            ) : (!!deferredGlobalSearch || !!filterDate) ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} />)}</div>
             ) : ( renderListView() )}
         </div>
@@ -1266,6 +1279,10 @@ export default function App() {
   };
 
   const renderClientes = () => {
+     const totalClientes = enrichedClients.length;
+     const totalVip = enrichedClients.filter(c => c.isVIP).length;
+     const totalRetomar = enrichedClients.filter(c => c.needsContact).length;
+
      return (
        <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative z-10">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4"><div><h2 className={UI.title}><Users size={36} className="text-[#2563FF] inline mr-2 drop-shadow-sm" /> CRM Ventas</h2><p className="text-slate-500 text-sm mt-2 font-medium">Fideliza y administra a tus clientes.</p></div></div>
@@ -1273,28 +1290,29 @@ export default function App() {
           <div className="grid grid-cols-3 gap-4 md:gap-6 mb-10 animate-fadeInUp">
               <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('todos')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'todos' ? 'ring-2 ring-[#2563FF] border-transparent shadow-lg' : ''}`}>
                   <div className="flex items-center gap-2.5 mb-3"><IconBox icon={Users} color="blue" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Total</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{enrichedClients.length}</p>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{totalClientes}</p>
               </div>
               <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('vip')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'vip' ? 'ring-2 ring-amber-400 border-transparent shadow-lg' : ''}`}>
                   <div className="flex items-center gap-2.5 mb-3"><IconBox icon={Award} color="amber" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">VIPs</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{enrichedClients.filter(c => c.isVIP).length}</p>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{totalVip}</p>
               </div>
               <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('retomar')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'retomar' ? 'ring-2 ring-rose-400 border-transparent shadow-lg' : ''}`}>
                   <div className="flex items-center gap-2.5 mb-3"><IconBox icon={BellRing} color="rose" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Retomar</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-rose-500">{enrichedClients.filter(c => c.needsContact).length}</p>
+                  <p className="text-3xl sm:text-4xl font-extrabold text-rose-500">{totalRetomar}</p>
               </div>
           </div>
 
-          {contactCandidates.length > 0 && !searchTerm && clientFilter === 'todos' && (
+          {contactCandidates.length > 0 && !deferredSearchTerm && clientFilter === 'todos' && (
              <div className="mb-12 animate-slideDown">
                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2"><Zap size={18} className="text-amber-500 fill-amber-500"/> Oportunidades de Venta</h3>
                  <div className="flex gap-5 overflow-x-auto pb-6 scrollbar-hide snap-x">
                      {contactCandidates.map((c, idx) => { 
-                         const phoneClean = String(c.telefono).replace(/\D/g,''), msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`; 
+                         const phoneClean = String(c.telefono).replace(/\D/g,'');
+                         const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`; 
                          return (
-                             <div key={`contact-${c.nombre}`} className={`snap-center shrink-0 w-80 ${UI.card} p-6 flex flex-col gap-5 animate-fadeInUp`} style={{ animationDelay: `${idx * 100}ms` }}>
+                             <div key={`contact-${c.nombre}`} className={`snap-center shrink-0 w-80 ${UI.card} p-6 flex flex-col gap-5 animate-fadeInUp`} style={{ animationDelay: `${Math.min(idx * 50, 500)}ms` }}>
                                  <div><p className="font-extrabold text-slate-900 truncate text-xl tracking-tight capitalize">{c.nombre}</p><Badge color="rose" className="mt-2"><Clock size={12}/> Sin compras hace {c.daysSince} días</Badge></div>
-                                 <AppButton onClick={() => { utils.openWhatsAppBusiness(phoneClean, msg); }} variant="success" icon={MessageCircle} className="w-full text-[12px]">Enviar Promo</AppButton>
+                                 <AppButton onClick={() => utils.openWhatsAppBusiness(phoneClean, msg)} variant="success" icon={MessageCircle} className="w-full text-[12px]">Enviar Promo</AppButton>
                              </div>
                          );
                      })}
@@ -1302,13 +1320,22 @@ export default function App() {
              </div>
           )}
           <div className="flex flex-col sm:flex-row gap-4"><div className={`${UI.card} p-2 flex-1 flex transition-all duration-300 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#2563FF] transition-colors" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-slate-400 text-slate-900" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-1.5 rounded-full hover:bg-slate-100 transition-all"><X size={16}/></button>)}</div></div><button type="button" onClick={() => setClientSort(clientSort === 'gasto' ? 'recientes' : 'gasto')} className={`${UI.card} px-8 py-3.5 flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-widest transition-all text-slate-600 hover:text-[#2563FF] hover:bg-white`}> <ArrowDownWideNarrow size={18}/> <span className="hidden sm:inline">Ordenar: </span><span className="text-[#2563FF]">{clientSort === 'gasto' ? 'Mayor Gasto' : 'Recientes'}</span></button></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">{sortedFilteredClients.length === 0 ? (<div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>) : (sortedFilteredClients.map((c,i)=><ClientCardItem key={c.nombre} c={c} idx={i} isExpanded={expandedClientId === c.nombre} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(name) => setClientEditModal({ isOpen: true, oldName: name })}/>))}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+            {sortedFilteredClients.length === 0 ? (
+                <div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>
+            ) : (
+                sortedFilteredClients.map((c, i) => (
+                    <ClientCardItem key={c.nombre} c={c} idx={i} isExpanded={expandedClientId === c.nombre} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(name) => setClientEditModal({ isOpen: true, oldName: name })}/>
+                ))
+            )}
+          </div>
        </div>
      );
   };
 
   const renderProveedores = () => {
-      const provFiltered = proveedores.filter(p => !searchTerm || p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || p.especialidad.toLowerCase().includes(searchTerm.toLowerCase()));
+      const term = deferredSearchTerm?.toLowerCase() || '';
+      const provFiltered = term ? proveedores.filter(p => p.nombre.toLowerCase().includes(term) || p.especialidad.toLowerCase().includes(term)) : proveedores;
       
       return (
         <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative z-10">
@@ -1330,7 +1357,7 @@ export default function App() {
                             key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} 
                             onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} 
                             onEdit={(data) => setProveedorModal({isOpen: true, data})} 
-                            onWhatsApp={(phone, msg) => utils.openWhatsAppBusiness(phone, msg)} 
+                            onWhatsApp={utils.openWhatsAppBusiness} 
                             onContrato={(prov) => { setPrintData(prov); setPrintType('contrato_proveedor'); setIsPrinting(true); }} 
                             eventosActivos={eventosActivos} 
                         />
@@ -1342,6 +1369,10 @@ export default function App() {
   };
 
   const renderFinanzas = () => {
+      const deudasPendientes = evtCalculoBase.filter(e => (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && utils.normalizeText(e.estado) !== 'completado');
+      const tieneDeudas = deudasPendientes.length > 0;
+      const totalGanancia = chartData.reduce((s,d) => s + d.value, 0);
+
       return (
           <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32 relative z-10">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
@@ -1385,7 +1416,7 @@ export default function App() {
                  <div className="flex-1 flex justify-between items-end h-full gap-2 sm:gap-3">
                    {chartData.map((d, i) => { const hPercent = (d.value / maxChartVal) * 100; return (<div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative"><div className="absolute -top-8 bg-slate-900 text-white text-[9px] font-extrabold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap shadow-md">${d.value.toFixed(0)}</div><div className="w-full bg-slate-100/50 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-slate-200/80 h-[70px]"><div className="absolute bottom-0 w-full bg-gradient-to-t from-[#2563FF] to-[#7C3AED] transition-all duration-1000 ease-out" style={{height: `${hPercent}%`}}></div></div><span className="text-[9px] font-bold uppercase text-slate-400 tracking-[0.15em]">{d.date}</span></div>) })}
                  </div>
-                 <div className="pl-6 border-l border-slate-200/80 flex flex-col justify-center h-full"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-2 leading-none">Total Período</p><p className="text-2xl font-black text-slate-900 tracking-tight leading-none">${chartData.reduce((s,d)=>s+d.value,0).toFixed(0)}</p></div>
+                 <div className="pl-6 border-l border-slate-200/80 flex flex-col justify-center h-full"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-2 leading-none">Total Período</p><p className="text-2xl font-black text-slate-900 tracking-tight leading-none">${totalGanancia.toFixed(0)}</p></div>
                </div>
              </div>
 
@@ -1399,10 +1430,21 @@ export default function App() {
                 <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '300ms'}}>
                   <div className="flex justify-between items-center px-2">
                       <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><Clock size={22} className="text-rose-500"/> Cuentas por Cobrar <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Histórico' : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
-                      {evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').length > 0 && (<button type="button" onClick={handleCopiarCobros} className="text-[10px] font-bold uppercase tracking-widest text-[#2563FF] bg-[#2563FF]/10 hover:bg-[#2563FF]/20 py-2.5 px-5 rounded-[12px] transition-all border border-[#2563FF]/20 flex items-center gap-2"><Copy size={16}/> Copiar Lista</button>)}
+                      {tieneDeudas && (<button type="button" onClick={handleCopiarCobros} className="text-[10px] font-bold uppercase tracking-widest text-[#2563FF] bg-[#2563FF]/10 hover:bg-[#2563FF]/20 py-2.5 px-5 rounded-[12px] transition-all border border-[#2563FF]/20 flex items-center gap-2"><Copy size={16}/> Copiar Lista</button>)}
                   </div>
                   <div className={`${UI.card} overflow-hidden flex flex-col h-[400px] p-0`}>
-                    {evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').length === 0 ? (<div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><CheckCircle2 size={48} className="text-emerald-500 mb-4"/><p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Sin deudas en este período.</p></div>) : (<div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">{evtCalculoBase.filter(e => (utils.safeNum(e.total)-utils.safeNum(e.abono))>0 && utils.normalizeText(e.estado)!=='completado').map((ev) => (<div key={ev.id} className="w-full flex justify-between items-center p-5 rounded-[20px] bg-white/80 hover:bg-white transition-all duration-300 border border-slate-200/50"><div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-extrabold capitalize text-[16px] text-slate-900 truncate tracking-tight">{String(ev.cliente || '')}</p><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mt-1.5">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''}</p></div><div className="text-right shrink-0"><span className="text-rose-500 font-extrabold text-2xl block leading-none mb-2.5 tracking-tight">${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}</span><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-500 transition-colors flex items-center justify-end gap-1.5 ml-auto">Cobrar <MessageCircle size={14}/></button></div></div>))}</div>)}
+                    {!tieneDeudas ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><CheckCircle2 size={48} className="text-emerald-500 mb-4"/><p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Sin deudas en este período.</p></div>
+                    ) : (
+                        <div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">
+                            {deudasPendientes.map((ev) => (
+                                <div key={ev.id} className="w-full flex justify-between items-center p-5 rounded-[20px] bg-white/80 hover:bg-white transition-all duration-300 border border-slate-200/50">
+                                    <div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-extrabold capitalize text-[16px] text-slate-900 truncate tracking-tight">{String(ev.cliente || '')}</p><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mt-1.5">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''}</p></div>
+                                    <div className="text-right shrink-0"><span className="text-rose-500 font-extrabold text-2xl block leading-none mb-2.5 tracking-tight">${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}</span><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-500 transition-colors flex items-center justify-end gap-1.5 ml-auto">Cobrar <MessageCircle size={14}/></button></div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '400ms'}}>
@@ -1410,7 +1452,13 @@ export default function App() {
                       <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-500"/> Detalle de Eventos <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Todos' : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
                   </div>
                   <div className={`${UI.card} overflow-hidden flex flex-col h-[400px] p-0`}>
-                      {evtCalculoBase.length === 0 ? (<div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><Info size={48} className="text-slate-300 mb-4"/><p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">No hay transacciones registradas.</p></div>) : (<div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">{evtCalculoBase.map((e)=><TransactionItem key={e.id} ev={e} isExpanded={expandedFinanceId===e.id} onToggleExpand={handleToggleFinance} utils={utils}/>)}</div>)}
+                      {evtCalculoBase.length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><Info size={48} className="text-slate-300 mb-4"/><p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">No hay transacciones registradas.</p></div>
+                      ) : (
+                          <div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">
+                              {evtCalculoBase.map((e) => <TransactionItem key={e.id} ev={e} isExpanded={expandedFinanceId===e.id} onToggleExpand={handleToggleFinance} utils={utils}/>)}
+                          </div>
+                      )}
                   </div>
                 </div>
              </div>
