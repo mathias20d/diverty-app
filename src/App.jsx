@@ -1,39 +1,23 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, UserPen, Handshake, PenLine } from 'lucide-react';
+import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
-// --- CONFIGURACIÓN FIREBASE Y CONSTANTES ---
+// --- 1. CONFIGURACIÓN FIREBASE Y CONSTANTES ---
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
-const isNewApp = !getApps().length;
-const app = isNewApp ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app); 
-
-if (isNewApp) {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') console.warn("Offline: Múltiples pestañas.");
-    else if (err.code === 'unimplemented') console.warn("El navegador no soporta offline.");
-  });
-}
-
-const auth = getAuth(app);
-const appId = "diverty-oficial";
-const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
-
-const META_MENSUAL = 1500;
+const isNewApp = !getApps().length; const app = isNewApp ? initializeApp(firebaseConfig) : getApp(); const db = getFirestore(app); 
+if (isNewApp) { enableIndexedDbPersistence(db).catch(() => {}); }
+const auth = getAuth(app); const appId = "diverty-oficial"; const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; const META_MENSUAL = 1500;
 const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
 const ZONAS_TRANSPORTE = { "Panamá Centro": 0, "San Miguelito": 5, "Panamá Norte": 10, "Panamá Este": 10, "Arraiján / Chorrera": 15, "Colón": 25 };
 const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'config', icon:Settings, text:'Ajustes'} ];
 const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', subcontratos: [], total: '', abono: '', estado: 'Pendiente', colisionAprobada: false });
 const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id); const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id); const getProvRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'proveedores', id);
 
-const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id);
-const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id);
-const getProvRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'proveedores', id);
-
-// --- ESTILOS VISUALES (UI) ---
+// --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
 const UI = {
   card: "bg-white/85 backdrop-blur-xl border border-slate-200/60 rounded-[24px] shadow-sm relative overflow-hidden group hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)] hover:border-slate-300/80 transition-all duration-500",
   modal: "bg-white/95 backdrop-blur-2xl rounded-t-[32px] sm:rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200/50 transition-transform duration-300", 
@@ -44,26 +28,19 @@ const UI = {
   btnPrimary: "bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-[length:200%_auto] hover:bg-[100%_center] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] hover:shadow-[0_15px_35px_rgba(124,58,237,0.5)] border border-white/20",
   btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300"
 };
+const COLORS = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
 
+// --- 3. FUNCIONES UTILITARIAS ---
 export const utils = {
   normalizeText: (t) => String(t || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), 
-  norm: (t) => String(t || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), 
   getSafeLocal: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } }, 
-  getLoc: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } }, 
   setSafeLocal: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
-  setLoc: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
   triggerHaptic: (t = 'light') => { if (window?.navigator?.vibrate) try { window.navigator.vibrate(t === 'light' ? 30 : 50); } catch (e) {} }, 
-  vib: (t = 'light') => { if (window?.navigator?.vibrate) try { window.navigator.vibrate(t === 'light' ? 30 : 50); } catch (e) {} }, 
   safeNum: (v) => { if (typeof v === 'number') return isNaN(v) ? 0 : v; if (!v) return 0; const p = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(p) ? 0 : p; },
-  num: (v) => { if (typeof v === 'number') return isNaN(v) ? 0 : v; if (!v) return 0; const p = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(p) ? 0 : p; },
   formatTime12h: (t) => { if (!t) return 'Por definir'; const [h, m] = String(t).split(':'); if (!h || !m) return t; let hrs = parseInt(h, 10); const suf = hrs >= 12 ? 'PM' : 'AM'; return `${hrs % 12 || 12}:${m} ${suf}`; },
-  fmt12: (t) => { if (!t) return 'Por definir'; const [h, m] = String(t).split(':'); if (!h || !m) return t; let hrs = parseInt(h, 10); const suf = hrs >= 12 ? 'PM' : 'AM'; return `${hrs % 12 || 12}:${m} ${suf}`; },
   getLocalYYYYMMDD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-  getYMD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
   getWeekRange: (b = new Date()) => { const t = new Date(b), d = t.getDay() === 0 ? -6 : 1 - t.getDay(), s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
-  getWeek: (b = new Date()) => { const t = new Date(b), d = t.getDay() === 0 ? -6 : 1 - t.getDay(), s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
-  openWhatsAppBusiness: (phone, msg) => { const text = encodeURIComponent(msg); const url = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`; const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); },
-  wa: (phone, msg) => { const text = encodeURIComponent(msg); const url = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`; const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
+  openWhatsAppBusiness: (phone, msg) => { const text = encodeURIComponent(msg); const url = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`; const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 };
 
 function getWhatsAppMessage(ev, type, empresa) {
@@ -79,90 +56,14 @@ function getWhatsAppMessage(ev, type, empresa) {
     }
 }
 
-// --- MICRO COMPONENTES ---
-const Bg = () => (
-  <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-[#F8FAFC]">
-    <div className="absolute inset-0 bg-[linear-gradient(to_right,#00000005_1px,transparent_1px),linear-gradient(to_bottom,#00000005_1px,transparent_1px)] bg-[size:32px_32px] opacity-40"></div>
-    <div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[#2563FF] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_10s_ease-in-out_infinite]"></div>
-    <div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-[#7C3AED] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_12s_ease-in-out_infinite]"></div>
-  </div>
-);
-
-const Toast = ({ alert }) => { 
-  if (!alert.isOpen) return null; 
-  return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn">
-      <div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white backdrop-blur-md ${alert.success ? 'bg-emerald-500/95 border-emerald-400' : 'bg-rose-500/95 border-rose-400'}`}>
-        {alert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}
-        <p className="font-bold text-sm tracking-wide">{alert.message}</p>
-      </div>
-    </div>
-  ); 
-};
-
-const Confirm = ({ modal, setModal }) => { 
-  if (!modal.isOpen) return null; 
-  return (
-    <div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn overscroll-none">
-      <div className={`${UI.modal} max-w-md w-full text-center border-rose-200/50 p-8`}>
-        <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100">
-          <AlertTriangle size={32} className="text-rose-500" />
-        </div>
-        <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">¿Estás seguro?</h3>
-        <p className="text-slate-500 font-medium mb-8 leading-relaxed">{modal.message}</p>
-        <div className="flex gap-4">
-          <button type="button" onClick={() => setModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-slate-600 bg-slate-100/80 hover:bg-slate-200 transition-all border border-slate-200/50">Cancelar</button>
-          <button type="button" onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 shadow-lg transition-all">Confirmar</button>
-        </div>
-      </div>
-    </div>
-  ); 
-};
-
-function EmptyState({ icon: Icon, title, message, actionBtn }) { 
-  return (
-    <div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}>
-      <div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm">
-        <Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#2563FF]/60" />
-      </div>
-      <h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3>
-      <p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>
-      {actionBtn}
-    </div>
-  ); 
-}
-
-function IconBox({ icon: Icon, color = 'blue', className = '' }) { 
-  const cMap = { 
-    blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', 
-    rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', 
-    amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', 
-    emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
-  };
-  return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; 
-}
-
-function Badge({ children, color = 'blue', className = '' }) { 
-  const bgColors = { 
-    blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', 
-    rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', 
-    amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', 
-    emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', 
-    gray: 'bg-slate-100 text-slate-600 border-slate-200/60' 
-  }; 
-  return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; 
-}
-
-function Field({ label, as = 'input', className = '', innerRef, children, ...props }) { 
-  return (
-    <div className={className}>
-      {label && <label className={UI.label}>{label}</label>}
-      {as === 'input' && <input ref={innerRef} className={UI.input} {...props} />}
-      {as === 'textarea' && <textarea ref={innerRef} className={`${UI.input} min-h-[80px] resize-none leading-relaxed`} {...props} />}
-      {as === 'select' && <select ref={innerRef} className={`${UI.input} appearance-none cursor-pointer [&>option]:bg-white [&>option]:text-slate-900`} {...props}>{children}</select>}
-    </div>
-  ); 
-}
+// --- 4. COMPONENTES VISUALES ---
+const Bg = () => (<div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-[#F8FAFC]"><div className="absolute inset-0 bg-[linear-gradient(to_right,#00000005_1px,transparent_1px),linear-gradient(to_bottom,#00000005_1px,transparent_1px)] bg-[size:32px_32px] opacity-40"></div><div className="absolute top-[-20%] left-[-10%] w-[70vw] h-[70vw] bg-[#2563FF] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_10s_ease-in-out_infinite]"></div><div className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-[#7C3AED] opacity-[0.04] blur-[120px] rounded-full mix-blend-multiply animate-[pulse_12s_ease-in-out_infinite]"></div></div>);
+const Toast = ({ alert }) => { if (!alert.isOpen) return null; return (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white backdrop-blur-md ${alert.success ? 'bg-emerald-500/95 border-emerald-400' : 'bg-rose-500/95 border-rose-400'}`}>{alert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{alert.message}</p></div></div>); };
+const Confirm = ({ modal, setModal }) => { if (!modal.isOpen) return null; return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn overscroll-none"><div className={`${UI.modal} max-w-md w-full text-center border-rose-200/50 p-8`}><div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100"><AlertTriangle size={32} className="text-rose-500" /></div><h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">¿Estás seguro?</h3><p className="text-slate-500 font-medium mb-8 leading-relaxed">{modal.message}</p><div className="flex gap-4"><button type="button" onClick={() => setModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-slate-600 bg-slate-100/80 hover:bg-slate-200 transition-all border border-slate-200/50">Cancelar</button><button type="button" onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 shadow-lg transition-all">Confirmar</button></div></div></div>); };
+function EmptyState({ icon: Icon, title, message, actionBtn }) { return (<div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}><div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm"><Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#2563FF]/60" /></div><h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3><p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>{actionBtn}</div>); }
+function IconBox({ icon: Icon, color = 'blue', className = '' }) { const cMap = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }; return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; }
+function Badge({ children, color = 'blue', className = '' }) { const bgColors = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', gray: 'bg-slate-100 text-slate-600 border-slate-200/60' }; return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; }
+function Field({ label, as = 'input', className = '', innerRef, children, ...props }) { return (<div className={className}>{label && <label className={UI.label}>{label}</label>}{as === 'input' && <input ref={innerRef} className={UI.input} {...props} />}{as === 'textarea' && <textarea ref={innerRef} className={`${UI.input} min-h-[80px] resize-none leading-relaxed`} {...props} />}{as === 'select' && <select ref={innerRef} className={`${UI.input} appearance-none cursor-pointer [&>option]:bg-white [&>option]:text-slate-900`} {...props}>{children}</select>}</div>); }
 
 function ActionBtn({ icon: Icon, label, color = 'white', onClick }) { 
     const btnClasses = { 
@@ -476,7 +377,7 @@ function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare
                         {(!isC || isContratoProv) && (
                             <div className="mt-6 pb-2 avoid-break relative z-10">
                                 {(isContrato || isContratoProv) ? (
-                                    <div className="bg-slate-50/70 rounded-2xl border border-slate-100 p-5 flex flex-col gap-5 shadow-sm">
+                                    <div className="bg-slate-50/70 rounded-2xl border border-slate-100/50 p-5 flex flex-col gap-5 shadow-sm">
                                         {!isContratoProv && (<div className="text-[10px] text-slate-500 leading-relaxed border-b border-slate-200/60 pb-3"><h4 className="font-black text-slate-900 uppercase tracking-widest mb-1.5 text-[9px] flex items-center gap-1.5"><FileSignature size={13} className="text-[#7C3AED]"/> Compromiso y Mutuo Acuerdo</h4><p className="font-bold">Las partes aceptan y se comprometen a respetar todas las cláusulas, tiempos de montaje y logística establecidos en el presente acuerdo para dar inicio al evento programado.</p></div>)}
                                         <div className="flex justify-around items-end pt-4 pb-2">
                                             <div className="w-[42%] text-center"><div className="border-b border-slate-300 w-full mb-2 h-10 flex items-end justify-center"><span className="text-[13px] font-semibold text-slate-400 italic">DIVERTY EVENTOS</span></div><p className="font-black text-slate-800 text-[10px] uppercase truncate">{isContratoProv ? 'DIVERTY EVENTOS PANAMÁ' : appSettings.empresa.nombreTitular}</p><p className="text-slate-400 text-[9px] font-extrabold uppercase tracking-widest">{isContratoProv ? 'El Contratante' : 'Diverty Eventos'}</p></div>
@@ -513,7 +414,7 @@ function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare
     );
 }
 
-// --- MODALES Y TARJETAS ---
+// --- MODALES (COMPRIMIDOS) ---
 function ClientEditModal({ isOpen, oldName, onClose, onSave }) {
     const [newName, setNewName] = useState(''); useEffect(() => { if(isOpen) setNewName(oldName); }, [isOpen, oldName]); if (!isOpen) return null;
     return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-sm w-full p-8`}><div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><UserPen size={24} className="text-[#2563FF]" /><h3 className="text-xl font-black text-slate-900">Editar Cliente</h3></div><p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">Al cambiar este nombre, todos los eventos asociados se actualizarán y se unificarán si el nuevo nombre ya existe en el sistema.</p><div className="space-y-4 mb-8"><div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre Actual</label><input type="text" value={oldName} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-500 font-semibold text-sm cursor-not-allowed" /></div><div><label className="block text-[10px] font-bold text-[#2563FF] uppercase tracking-widest mb-1.5">Nuevo Nombre</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} autoFocus className="w-full bg-white border border-[#2563FF]/50 rounded-xl p-3 text-slate-900 font-bold text-base outline-none focus:ring-4 ring-[#2563FF]/10 shadow-sm" /></div></div><div className="flex gap-3"><button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest transition-colors">Cancelar</button><button type="button" onClick={() => onSave(oldName, newName)} className="flex-1 py-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white font-bold rounded-xl text-xs uppercase tracking-widest shadow-md transition-transform active:scale-95">Guardar</button></div></div></div>);
@@ -531,7 +432,7 @@ function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete
 
 function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient }) {
     const phoneClean=String(c.telefono).replace(/\D/g,''); const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`; const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#2563FF] to-[#7C3AED]';
-    return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.nombre);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-md bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><h4 className="font-bold text-[17px] text-slate-900 capitalize truncate tracking-tight mb-1">{String(c.nombre)}</h4><p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Smartphone size={14} className="text-slate-400"/> {String(c.telefono)||'Sin número'}</p></div></div><div className="text-right shrink-0"><p className="text-xl font-bold text-emerald-500 leading-none tracking-tight">${c.totalGastado.toFixed(0)}</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400" title="Contactar"></span>}</div></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-4 bg-slate-50/50 rounded-b-[24px]"><div className="flex justify-between items-center bg-white/80 p-4 rounded-[16px] mb-5 border border-slate-200/50 shadow-sm"><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Eventos</p><p className="font-bold text-base text-slate-800">{c.eventos}</p></div><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Último</p><p className="font-bold text-base text-slate-800">{c.ultimoEventoFecha?String(c.ultimoEventoFecha).split('-').reverse().join('/'):'N/A'}</p></div><div className="text-center flex-1"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Estado</p><p className="font-bold text-base text-slate-800 capitalize flex justify-center items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${String(c.ultimoEstado).toLowerCase()==='completado'?'bg-emerald-400':'bg-amber-400'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div></div><div className="grid grid-cols-2 gap-3 mb-4"><ActionBtn icon={MessageCircle} label="Contactar" color="emerald" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean, `¡Hola ${c.nombre}!`);}} /><ActionBtn icon={Sparkles} label="Promo" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgPromo);}} /><ActionBtn icon={BellRing} label="Recordar" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgRecordatorio);}} /><ActionBtn icon={UserPen} label="Editar" color="white" onClick={(e)=>{e.stopPropagation(); onEditClient(c.nombre);}} /></div><div className="flex gap-3"><AppButton variant="primary" icon={Plus} onClick={(e)=>{e.stopPropagation();openModal()}} className="flex-1 text-[13px] uppercase tracking-wider py-3.5 shadow-md">Reservar</AppButton><button type="button" onClick={(e)=>{e.stopPropagation();onDeleteClient(c.nombre,c.eventos)}} className="px-5 bg-rose-50 text-rose-500 rounded-[16px] hover:bg-rose-100 transition-colors border border-rose-100"><Trash2 size={20} /></button></div></div>)}</div>);
+    return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.nombre);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-md bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><h4 className="font-bold text-[17px] text-slate-900 capitalize truncate tracking-tight mb-1">{String(c.nombre)}</h4><p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Smartphone size={14} className="text-slate-400"/> {String(c.telefono)||'Sin número'}</p></div></div><div className="text-right shrink-0"><p className="text-xl font-bold text-emerald-500 leading-none tracking-tight">${c.totalGastado.toFixed(0)}</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400" title="Contactar"></span>}</div></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-4 bg-slate-50/50 rounded-b-[24px]"><div className="flex justify-between items-center bg-white/80 p-4 rounded-[16px] mb-5 border border-slate-200/50 shadow-sm"><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Eventos</p><p className="font-bold text-base text-slate-800">{c.eventos}</p></div><div className="text-center flex-1 border-r border-slate-100"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Último</p><p className="font-bold text-base text-slate-800">{c.ultimoEventoFecha?String(c.ultimoEventoFecha).split('-').reverse().join('/'):'N/A'}</p></div><div className="text-center flex-1"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Estado</p><p className="font-bold text-base text-slate-800 capitalize flex justify-center items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${String(c.ultimoEstado).toLowerCase()==='completado'?'bg-emerald-400':'bg-amber-400'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div></div><div className="grid grid-cols-2 gap-3 mb-4"><ActionBtn icon={MessageCircle} label="Contactar" color="emerald" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean, `¡Hola ${c.nombre}!`);}} /><ActionBtn icon={Sparkles} label="Promo" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgPromo);}} /><ActionBtn icon={BellRing} label="Recordar" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgRecordatorio);}} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e)=>{e.stopPropagation(); onEditClient(c.nombre);}} /></div><div className="flex gap-3"><AppButton variant="primary" icon={Plus} onClick={(e)=>{e.stopPropagation();openModal()}} className="flex-1 text-[13px] uppercase tracking-wider py-3.5 shadow-md">Reservar</AppButton><button type="button" onClick={(e)=>{e.stopPropagation();onDeleteClient(c.nombre,c.eventos)}} className="px-5 bg-rose-50 text-rose-500 rounded-[16px] hover:bg-rose-100 transition-colors border border-rose-100"><Trash2 size={20} /></button></div></div>)}</div>);
 }
 
 function TransactionItem({ ev, isExpanded, onToggleExpand, utils }) {
@@ -618,7 +519,7 @@ export default function App() {
   
   const [activeTab, setActiveTab] = useState('inicio'); 
   const [isDBReady, setIsDBReady] = useState(false); 
-  const [eventosActivos, setEventosActivos] = useState([]); 
+  const [eventos, setEventos] = useState([]); 
   const [catalogoPaquetes, setCatalogoPaquetes] = useState([]); 
   const [hiddenClients, setHiddenClients] = useState([]); 
   const [filterDate, setFilterDate] = useState(''); 
@@ -767,6 +668,10 @@ export default function App() {
   const tomorrowStr = useMemo(() => utils.getLocalYYYYMMDD(new Date(currentTime.getTime() + 86400000)), [currentTime]);
   const { start: weekStart, end: weekEnd } = useMemo(() => utils.getWeekRange(currentTime), [currentTime]);
   const todayTime = useMemo(() => new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate()).getTime(), [currentTime]);
+  
+  const eventosActivos = useMemo(() => {
+    return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
+  }, [eventos]);
   
   const stats = useMemo(() => {
      let gananciaHoy = 0, gananciaSemana = 0, deudaTotal = 0, ingresosEsteMes = 0; 
@@ -995,7 +900,7 @@ export default function App() {
   }, [showAlert]);
   
   const handleUpdateEstado = useCallback((id, nuevoEstado) => { 
-      utils.triggerHaptic('light'); setEventosActivos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e)); 
+      utils.triggerHaptic('light'); setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e)); 
       setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true }).catch(err=>console.warn(err)); showAlert(`Estado actualizado a ${nuevoEstado}`, true); 
   }, [showAlert]);
   
@@ -1030,7 +935,7 @@ export default function App() {
     
     const guardarReservaFinal = (id, dataToSave) => { 
         closeModal(); utils.setSafeLocal('diverty_form_draft', ''); 
-        setEventosActivos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
+        setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
         setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true); 
         if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...dataToSave }); setPrintType('cotizacion'); setIsPrinting(true); } 
     };
@@ -1039,16 +944,16 @@ export default function App() {
     else guardarReservaFinal(evtId, safeData);
   }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm]);
 
-  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => { utils.triggerHaptic('light'); setEventosActivos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(err=>console.warn(err)); closeModal(); }), [closeModal, showConfirm]);
+  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(err=>console.warn(err)); closeModal(); }), [closeModal, showConfirm]);
   const handleDeleteClient = useCallback((clientName, eventCount) => { const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`; showConfirm(mensaje, async () => { utils.triggerHaptic('light'); const newHidden = [...hiddenClients, clientName]; setHiddenClients(newHidden); if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true }); showAlert("Cliente eliminado exitosamente.", true); }); }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
-  const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => { utils.triggerHaptic('light'); setEventosActivos([]); Promise.all(eventosActivos.map(e => setDoc(getDocRef(e.id), { deletedLocally: true }, { merge: true }))).catch(err=>console.warn(err)); utils.triggerHaptic('success'); showAlert("Base de datos limpiada.", true); }), [eventosActivos, showConfirm, showAlert]);
+  const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => { utils.triggerHaptic('light'); setEventos([]); Promise.all(eventosActivos.map(e => setDoc(getDocRef(e.id), { deletedLocally: true }, { merge: true }))).catch(err=>console.warn(err)); utils.triggerHaptic('success'); showAlert("Base de datos limpiada.", true); }), [eventosActivos, showConfirm, showAlert]);
   const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert]);
   
   const handleSaveClientName = useCallback((oldName, newName) => {
       const oldKey = utils.normalizeText(oldName); const newKey = utils.normalizeText(newName);
       if(!newName.trim() || oldKey === newKey) { setClientEditModal({ isOpen: false, oldName: '' }); return; }
       utils.triggerHaptic('success'); const eventsToUpdate = eventosActivos.filter(e => utils.normalizeText(e.cliente) === oldKey);
-      setEventosActivos(prev => prev.map(e => { if (utils.normalizeText(e.cliente) === oldKey) { return { ...e, cliente: newName.trim() }; } return e; }));
+      setEventos(prev => prev.map(e => { if (utils.normalizeText(e.cliente) === oldKey) { return { ...e, cliente: newName.trim() }; } return e; }));
       eventsToUpdate.forEach(e => { setDoc(getDocRef(e.id), { cliente: newName.trim() }, { merge: true }).catch(console.warn); });
       showAlert(`Cliente actualizado. Se unificaron ${eventsToUpdate.length} eventos.`, true); setClientEditModal({ isOpen: false, oldName: '' });
   }, [eventosActivos, showAlert]);
@@ -1116,6 +1021,54 @@ export default function App() {
     if (!messaging) { showAlert("Notificaciones no disponibles.", false); return; }
     try { if (!('Notification' in window)) { showAlert("Navegador no soporta notificaciones.", false); return; } const permiso = await Notification.requestPermission(); if (permiso !== "granted") { showAlert("Debes permitir notificaciones", false); return; } showAlert("Generando token, espera...", true); const token = await getToken(messaging, { vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ" }); if (token) { await setDoc(doc(db, "tokens", token), { token: token, createdAt: new Date() }); console.log("Token guardado:", token); showAlert("✅ ¡Token generado y guardado!", true); } else { showAlert("No se generó ningún token.", false); } } catch (error) { console.error("Error obteniendo token:", error); showAlert("Error al obtener token", false); }
   }, [messaging, showAlert]);
+
+  useEffect(() => {
+    if (!db || !appId || !firebaseUser) return; const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500); 
+    const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+    const provRef = collection(db, 'artifacts', appId, 'public', 'data', 'proveedores');
+
+    const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => { 
+        clearTimeout(timeoutId); 
+        const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+        snapshot.docChanges().forEach((change) => { 
+            if (change.type === "added") { 
+                const data = change.doc.data(); 
+                if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) { 
+                    utils.triggerHaptic('success'); 
+                    showAlert(`🔥 ¡Alerta de Sistema! Entró nueva reserva: ${data.cliente}`, true); 
+                } 
+            } 
+        }); 
+        setEventos(prev => { 
+            let hasChanges = false; 
+            const map = new Map(prev.map(e => [e.id, e])); 
+            fbData.forEach(e => { 
+                if (map.has(e.id)) { 
+                    const exist = map.get(e.id); 
+                    if (exist.estado !== e.estado || exist.abono !== e.abono || exist.total !== e.total || exist.deletedLocally !== e.deletedLocally) { 
+                        map.set(e.id, { ...exist, estado: e.estado, abono: e.abono, total: e.total, deletedLocally: e.deletedLocally }); 
+                        hasChanges = true; 
+                    } 
+                } else { 
+                    map.set(e.id, e); 
+                    hasChanges = true; 
+                } 
+            }); 
+            if (!hasChanges && prev.length > 0) return prev; 
+            return Array.from(map.values()).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora))); 
+        }); 
+        setIsDBReady(true); 
+    }, (error) => { 
+        console.warn("Firestore offline:", error); clearTimeout(timeoutId); setIsDBReady(true); 
+    });
+    
+    const unsubscribeProv = onSnapshot(provRef, (snapshot) => { setProveedores(snapshot.docs.map(d => ({id: d.id, ...d.data()}))); });
+
+    getDoc(getConfigRef('serviciosCustom')).then((docSnap) => { if (docSnap.exists()) { setCatalogoPaquetes(docSnap.data().paquetes || []); } }); 
+    getDoc(getConfigRef('clientesOcultos')).then((docSnap) => { if (docSnap.exists()) { setHiddenClients(docSnap.data().clients || []); } }); 
+    
+    return () => { unsubscribeEventos(); unsubscribeProv(); clearTimeout(timeoutId); };
+  }, [db, appId, firebaseUser, showAlert]);
 
   const renderInicio = () => {
      if (isModoOperativo) {
@@ -1194,7 +1147,7 @@ export default function App() {
                 <div className="bg-white/20 p-2 rounded-xl text-white relative z-10"><Zap size={22} strokeWidth={2.5} className="fill-white"/></div> 
                 <span className="hidden sm:inline relative z-10 tracking-wide">Modo Operativo</span>
             </button>
-            <button type="button" onClick={() => window.location.reload()} className="bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-[#2563FF] rounded-[24px] py-5 px-6 flex items-center justify-center hover:bg-white transition-all hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 group" title="Refrescar vista">
+            <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-[#2563FF] rounded-[24px] py-5 px-6 flex items-center justify-center hover:bg-white transition-all hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 group" title="Refrescar vista">
                 <div className="bg-[#2563FF]/10 p-2 rounded-xl"><RefreshCw size={24} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" /></div>
             </button>
           </div>
