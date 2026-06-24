@@ -533,7 +533,6 @@ export default function App() {
   const [calMonth, setCalMonth] = useState(currentTime.getMonth()); 
   const [calYear, setCalYear] = useState(currentTime.getFullYear()); 
   
-  // Utilización de "Deferred values" para no bloquear la pantalla principal al buscar.
   const [globalSearch, setGlobalSearch] = useState('');
   const deferredGlobalSearch = useDeferredValue(globalSearch);
 
@@ -575,7 +574,6 @@ export default function App() {
       return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); }; 
   }, []);
 
-  // --- SOPORTE NATIVO PARA BOTÓN "ATRÁS" DEL CELULAR ---
   const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal });
   useEffect(() => { 
       stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal }; 
@@ -1524,6 +1522,20 @@ export default function App() {
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} onClose={() => setClientEditModal({isOpen:false, oldName:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
       
+      {isPrinting && printData && (
+        <PdfTemplate
+          printData={printData}
+          printType={printType}
+          pdfScale={pdfScale}
+          onClose={() => { setIsPrinting(false); setPrintData(null); setPrintType(null); }}
+          onPrint={printNativePDF}
+          onShare={handleSharePDF}
+          onDownload={downloadPDF}
+          appSettings={appSettings}
+          eventosActivos={eventosActivos}
+        />
+      )}
+
       <div className="flex-1 flex flex-col min-w-0 relative z-10 h-[100dvh] overflow-hidden">
           <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 p-4 flex justify-between items-center z-40 sticky top-0 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
              <div className="flex items-center gap-3"><div className="bg-white p-1.5 rounded-xl border border-slate-200/80 shadow-sm"><img src={LOGO_URL} alt="Logo" className="h-6 w-6 object-contain" /></div><h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">Diverty CRM {!isOnline && <Cloud size={18} className="text-amber-500 animate-pulse"/>}</h1></div>
