@@ -433,18 +433,11 @@ const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, 
     return (<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e) => { if(e){e.preventDefault();e.stopPropagation();} utils.triggerHaptic('light'); onToggleExpand(p.id); }} className="p-6 cursor-pointer flex flex-col gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex justify-between items-start"><div className="flex gap-3"><div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#2563FF] shadow-sm shrink-0"><Briefcase size={20}/></div><div className="flex-1 min-w-0"><h4 className="font-extrabold text-lg text-slate-900 tracking-tight capitalize leading-tight truncate">{p.nombre}</h4><span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 truncate block mt-0.5">{p.especialidad}</span></div></div><button type="button" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 size={18}/></button></div><div className="flex justify-between items-center bg-slate-50/80 rounded-xl p-4 border border-slate-100"><div className="flex items-center gap-3"><Smartphone size={16} className="text-emerald-500"/><span className="font-bold text-slate-700 text-sm">{p.telefono || 'Sin teléfono'}</span></div>{p.costoBase && <span className="text-xs font-black text-slate-900 bg-emerald-100/50 px-2.5 py-1 rounded-lg border border-emerald-200/50">${p.costoBase}</span>}</div><div className="flex gap-2.5 mt-2"><ActionBtn icon={MessageCircle} label="WhatsApp" color="emerald" onClick={(e) => { e.stopPropagation(); onWhatsApp(phoneClean, `¡Hola ${p.nombre}!`); }} /><ActionBtn icon={Handshake} label="Contrato" color="blue" onClick={(e) => { e.stopPropagation(); onContrato(p); }} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e) => { e.stopPropagation(); onEdit(p); }} /></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-5 bg-slate-50/50 rounded-b-[24px]"><h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2563FF] mb-4 flex items-center gap-2"><CalendarDays size={14}/> Eventos Asignados</h5><div className="space-y-5"><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pendientes ({pendientes.length})</p>{pendientes.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos pendientes.</p>) : (<div className="space-y-2">{pendientes.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-white p-3.5 rounded-xl border border-slate-200/60 shadow-sm flex flex-col gap-1.5 transition-all hover:border-blue-200"><div className="flex justify-between items-start"><span className="font-extrabold text-slate-900 text-[13px] capitalize truncate max-w-[160px]">{ev.cliente}</span>{subC?.costo && <span className="text-rose-500 font-bold text-[11px] bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">${subC.costo}</span>}</div><div className="flex gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider"><span className="flex items-center gap-1"><Calendar size={11} className="text-[#2563FF]"/> {ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span className="flex items-center gap-1"><Clock size={11} className="text-[#2563FF]"/> {utils.formatTime12h(ev.hora)}</span></div><div className="text-[10px] font-semibold text-slate-400 truncate flex items-center gap-1 mt-0.5"><MapPin size={10}/> {ev.ubicacion}</div></div>); })}</div>)}</div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Realizados ({realizados.length})</p>{realizados.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos completados.</p>) : (<div className="space-y-2 opacity-75">{realizados.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-slate-100/50 p-3 rounded-xl border border-slate-200/50 flex flex-col gap-1.5"><div className="flex justify-between items-start"><span className="font-bold text-slate-700 text-[12px] capitalize truncate">{ev.cliente}</span>{subC?.costo && <span className="text-slate-500 font-bold text-[10px]">${subC.costo}</span>}</div><div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider"><span>{ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span>{utils.formatTime12h(ev.hora)}</span></div></div>); })}</div>)}</div></div></div>)}</div>);
 });
 
-const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient, eventosActivos }) {
+const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient, historial = [] }) {
     const [showHistory, setShowHistory] = useState(false);
     const phoneClean=String(c.telefono).replace(/\D/g,'');
     const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
     const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#2563FF] to-[#7C3AED]';
-    const historial = useMemo(() => {
-        const key = utils.normalizeText(c.nombre);
-        return (eventosActivos || [])
-            .filter(ev => utils.normalizeText(ev.cliente) === key)
-            .filter(ev => { const est = utils.normalizeText(ev.estado); return !est.includes('cotizaci') && !est.includes('cot.'); })
-            .sort((a,b) => `${String(b.fecha||'')} ${String(b.hora||'')}`.localeCompare(`${String(a.fecha||'')} ${String(a.hora||'')}`));
-    }, [eventosActivos, c.nombre, utils]);
 
     return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}>
       <div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.nombre);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200">
@@ -727,6 +720,33 @@ export default function App() {
   const eventosActivos = useMemo(() => {
     return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
   }, [eventos]);
+
+  // Índices derivados: se calculan una sola vez cuando cambian los eventos.
+  // Evitan recorrer toda la base repetidamente en Calendario y Clientes.
+  const eventosAgendaPorFecha = useMemo(() => {
+    const map = new Map();
+    eventosActivos.forEach(e => {
+      const es = utils.normalizeText(e.estado);
+      if (!e.fecha || es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return;
+      if (!map.has(e.fecha)) map.set(e.fecha, []);
+      map.get(e.fecha).push(e);
+    });
+    return map;
+  }, [eventosActivos]);
+
+  const historialClientesMap = useMemo(() => {
+    const map = new Map();
+    eventosActivos.forEach(ev => {
+      const es = utils.normalizeText(ev.estado);
+      if (es.includes('cotizaci') || es.includes('cot.')) return;
+      const key = utils.normalizeText(ev.cliente);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(ev);
+    });
+    map.forEach(arr => arr.sort((a,b) => `${String(b.fecha||'')} ${String(b.hora||'')}`.localeCompare(`${String(a.fecha||'')} ${String(a.hora||'')}`)));
+    return map;
+  }, [eventosActivos]);
   
   const stats = useMemo(() => {
      let gananciaHoy = 0, gananciaSemana = 0, deudaTotal = 0, ingresosEsteMes = 0; 
@@ -1307,7 +1327,7 @@ export default function App() {
                   {blanks.map(b => <div key={`b-${b}`} className="min-h-[70px] sm:min-h-[130px] bg-transparent"></div>)}
                   {days.map(d => {
                      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                     const dayEvents = eventosActivos.filter(e => e.fecha === dateStr && !utils.normalizeText(e.estado).includes('cotizaci') && !utils.normalizeText(e.estado).includes('cot.') && utils.normalizeText(e.estado) !== 'cancelado');
+                     const dayEvents = eventosAgendaPorFecha.get(dateStr) || [];
                      const isToday = dateStr === todayStr, isSelected = filterDate === dateStr, hasEvents = dayEvents.length > 0;
                      return (
                          <div key={d} onClick={() => { utils.triggerHaptic('light'); setFilterDate(dateStr); setViewMode(''); }} className={`min-h-[70px] sm:min-h-[130px] p-2 sm:p-3 rounded-[16px] border transition-all duration-300 ease-out cursor-pointer flex flex-col justify-start items-center sm:items-start hover:-translate-y-1 active:scale-[0.98] ${isSelected ? 'border-[#2563FF]/50 bg-[#2563FF]/5 shadow-md' : isToday ? 'bg-rose-50/80 border-rose-200' : 'bg-white/50 border-slate-100 hover:border-slate-300 hover:bg-white shadow-sm'}`}>
@@ -1408,7 +1428,7 @@ export default function App() {
                 <div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>
             ) : (
                 sortedFilteredClients.map((c, i) => (
-                    <ClientCardItem key={c.nombre} c={c} idx={i} isExpanded={expandedClientId === c.nombre} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(name) => setClientEditModal({ isOpen: true, oldName: name })} eventosActivos={eventosActivos}/>
+                    <ClientCardItem key={c.nombre} c={c} idx={i} isExpanded={expandedClientId === c.nombre} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(name) => setClientEditModal({ isOpen: true, oldName: name })} historial={historialClientesMap.get(utils.normalizeText(c.nombre)) || []}/>
                 ))
             )}
           </div>
