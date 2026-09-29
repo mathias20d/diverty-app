@@ -198,7 +198,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
     const tot = utils.safeNum(printData.total), trn = utils.safeNum(printData.transporte), abo = utils.safeNum(printData.abono), sub = (tot - trn).toFixed(2);
     const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio || printData.especialidad || 'Servicio General'), precio: sub, cantidad: 1, descripcion: String(printData.comentarios || '') }];
     const idx = isContratoProv ? 1 : [...eventosActivos].sort((a,b)=>new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime()).findIndex(ev=>ev.id===printData.id);
-    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : (isContratoProv ? `SUB-${String(Math.floor(Math.random()*9000)+1000)}` : (isContrato ? `CON-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`));
+    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : (isContratoProv ? `SUB-${String(1000 + (Array.from(String(printData?.id || printData?.nombre || 'DIVERTY')).reduce((a,c)=>a+c.charCodeAt(0),0) % 9000)).padStart(4,'0')}` : (isContrato ? `CON-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`));
 
     return (
       <div className="bg-[#1E293B] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
@@ -547,7 +547,8 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
 // --- APP COMPONENT ---
 export default function App() {
   const lastActivityRef = useRef(Date.now()); 
-  const [currentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 60000); return () => clearInterval(timer); }, []);
   const [appSettings, setAppSettings] = useState(() => { const saved = utils.getSafeLocal('diverty_settings'); return saved ? JSON.parse(saved) : { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }; });
   
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
@@ -839,7 +840,8 @@ export default function App() {
           if (filterDate && e.fecha !== filterDate) return false; 
           
           if (!filterDate && !deferredGlobalSearch) { 
-              if (viewMode === 'hoy') return e.fecha === todayStr; 
+              if (viewMode === 'hoy') return e.fecha === todayStr;
+              if (viewMode === 'manana') { const d = new Date(todayObj); d.setDate(d.getDate()+1); return e.fecha === utils.getLocalYYYYMMDD(d); } 
               let dt; 
               if (e.fecha) { const parts = String(e.fecha).split('-'); if (parts.length === 3) dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); } 
               if (viewMode === 'semana') return dt ? (dt >= weekStart && dt <= weekEnd) : false; 
@@ -1362,7 +1364,7 @@ export default function App() {
             <div className="flex flex-col lg:flex-row gap-5 mt-6">
                  <div className="relative flex-1 group"><div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none"><Search size={20} className="text-slate-400 group-focus-within:text-[#2563FF] transition-colors" /></div><input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-white/80 backdrop-blur-sm border border-slate-200/80 rounded-[16px] pl-12 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#2563FF]/50 focus:ring-4 focus:ring-[#2563FF]/10 transition-all duration-300 shadow-sm placeholder:text-slate-400" />{globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-400 hover:text-[#2563FF] transition-colors"><X size={18}/></button>}</div>
                  <div className="flex gap-3 overflow-x-auto scrollbar-hide py-1 items-center">
-                     {['hoy','semana','mes','pendientes','todas'].map(v => (<button key={v} type="button" onClick={()=>{setFilterDate(''); setViewMode(v)}} className={`px-5 py-3.5 rounded-[14px] text-[10px] uppercase tracking-[0.1em] font-bold transition-all duration-300 ease-out whitespace-nowrap shadow-sm border active:scale-[0.98] ${viewMode===v&&!filterDate?'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white border-transparent shadow-[0_8px_20px_rgba(37,99,235,0.25)]':'bg-white/80 backdrop-blur-sm text-slate-600 hover:text-slate-900 hover:bg-white border-slate-200/80'}`}>{v}</button>))}
+                     {['hoy','manana','semana','mes','pendientes','todas'].map(v => (<button key={v} type="button" onClick={()=>{setFilterDate(''); setViewMode(v)}} className={`px-5 py-3.5 rounded-[14px] text-[10px] uppercase tracking-[0.1em] font-bold transition-all duration-300 ease-out whitespace-nowrap shadow-sm border active:scale-[0.98] ${viewMode===v&&!filterDate?'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white border-transparent shadow-[0_8px_20px_rgba(37,99,235,0.25)]':'bg-white/80 backdrop-blur-sm text-slate-600 hover:text-slate-900 hover:bg-white border-slate-200/80'}`>{v === 'manana' ? 'mañana' : v}</button>))}
                      <div className={`flex items-center justify-between px-5 py-3 rounded-[14px] transition-all duration-300 ease-out cursor-text focus-within:border-[#2563FF]/50 bg-white/80 backdrop-blur-sm border ${filterDate ? 'border-[#2563FF]/50 text-[#2563FF] shadow-md' : 'border-slate-200/80 shadow-sm text-slate-600 hover:bg-white'} shrink-0`}><div className="flex items-center flex-1 relative"><CalendarDays size={18} className={`mr-2.5 transition-colors duration-200`} /><input type="date" value={filterDate} onChange={(e) => { utils.triggerHaptic('light'); setFilterDate(e.target.value); }} className={`bg-transparent text-[11px] uppercase tracking-[0.1em] font-bold outline-none w-full flex-1 cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 absolute inset-0 opacity-0 z-20`} /><span className={`text-[11px] uppercase tracking-[0.1em] font-bold pointer-events-none relative z-10`}>{filterDate ? String(filterDate).split('-').reverse().join('/') : 'Fecha'}</span></div>{filterDate && <button type="button" onClick={() => {utils.triggerHaptic('light'); setFilterDate('');}} className="text-slate-400 hover:text-rose-500 ml-3 z-30 transition-all cursor-pointer"><X size={16}/></button>}</div>
                  </div>
             </div>
