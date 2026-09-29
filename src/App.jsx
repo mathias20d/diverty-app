@@ -914,9 +914,16 @@ export default function App() {
       showAlert("Evento duplicado. Verifica los datos y guarda.", true); 
   }, [showAlert]);
   
-  const handleUpdateEstado = useCallback((id, nuevoEstado) => { 
-      utils.triggerHaptic('light'); setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e)); 
-      setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true }).catch(err=>console.warn(err)); showAlert(`Estado actualizado a ${nuevoEstado}`, true); 
+  const handleUpdateEstado = useCallback(async (id, nuevoEstado) => {
+      utils.triggerHaptic('light');
+      try {
+          await setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true });
+          setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
+          showAlert(`Estado actualizado a ${nuevoEstado}`, true);
+      } catch (err) {
+          console.error("Error actualizando estado:", err);
+          showAlert("No se pudo actualizar el estado. Verifica tu conexión e intenta nuevamente.", false);
+      }
   }, [showAlert]);
   
   const handleConvertirReserva = useCallback((e) => { 
@@ -948,37 +955,85 @@ export default function App() {
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
     });
     
-    const guardarReservaFinal = (id, dataToSave) => { 
-        closeModal(); utils.setSafeLocal('diverty_form_draft', ''); 
-        setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; }); 
-        setDoc(getDocRef(id), dataToSave).catch(err=>console.warn(err)); showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true); 
-        if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...dataToSave }); setPrintType('cotizacion'); setIsPrinting(true); } 
+    const guardarReservaFinal = async (id, dataToSave) => {
+        try {
+            await setDoc(getDocRef(id), dataToSave);
+            setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; });
+            closeModal();
+            utils.setSafeLocal('diverty_form_draft', '');
+            showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
+            if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...dataToSave }); setPrintType('cotizacion'); setIsPrinting(true); }
+        } catch (err) {
+            console.error("Error guardando reserva:", err);
+            showAlert("No se pudo guardar en Firebase. Revisa tu conexión e intenta nuevamente.", false);
+        }
     };
     
     if (hasCollision && !safeData.colisionAprobada) showConfirm("Hay otro evento con menos de 3 horas de diferencia. ¿Guardar de todos modos?", () => { safeData.colisionAprobada = true; guardarReservaFinal(evtId, safeData); }); 
     else guardarReservaFinal(evtId, safeData);
   }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm]);
 
-  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => { utils.triggerHaptic('light'); setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i].deletedLocally=true; return arr; }); setDoc(getDocRef(id), { deletedLocally: true }, { merge: true }).catch(err=>console.warn(err)); closeModal(); }), [closeModal, showConfirm]);
+  const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => {
+      utils.triggerHaptic('light');
+      try {
+          await setDoc(getDocRef(id), { deletedLocally: true }, { merge: true });
+          setEventos(prev => prev.map(e => e.id === id ? { ...e, deletedLocally: true } : e));
+          closeModal();
+          showAlert("Registro eliminado.", true);
+      } catch (err) {
+          console.error("Error eliminando registro:", err);
+          showAlert("No se pudo eliminar el registro. Intenta nuevamente.", false);
+      }
+  }), [closeModal, showConfirm, showAlert]);
   const handleDeleteClient = useCallback((clientName, eventCount) => { const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`; showConfirm(mensaje, async () => { utils.triggerHaptic('light'); const newHidden = [...hiddenClients, clientName]; setHiddenClients(newHidden); if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true }); showAlert("Cliente eliminado exitosamente.", true); }); }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
-  const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => { utils.triggerHaptic('light'); setEventos([]); Promise.all(eventosActivos.map(e => setDoc(getDocRef(e.id), { deletedLocally: true }, { merge: true }))).catch(err=>console.warn(err)); utils.triggerHaptic('success'); showAlert("Base de datos limpiada.", true); }), [eventosActivos, showConfirm, showAlert]);
+  const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => {
+      utils.triggerHaptic('light');
+      try {
+          await Promise.all(eventosActivos.map(e => setDoc(getDocRef(e.id), { deletedLocally: true }, { merge: true })));
+          setEventos(prev => prev.map(e => ({ ...e, deletedLocally: true })));
+          utils.triggerHaptic('success');
+          showAlert("Base de datos limpiada.", true);
+      } catch (err) {
+          console.error("Error limpiando base de datos:", err);
+          showAlert("No se pudo completar la limpieza. Intenta nuevamente.", false);
+      }
+  }), [eventosActivos, showConfirm, showAlert]);
   const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert]);
   
-  const handleSaveClientName = useCallback((oldName, newName) => {
+  const handleSaveClientName = useCallback(async (oldName, newName) => {
       const oldKey = utils.normalizeText(oldName); const newKey = utils.normalizeText(newName);
       if(!newName.trim() || oldKey === newKey) { setClientEditModal({ isOpen: false, oldName: '' }); return; }
-      utils.triggerHaptic('success'); const eventsToUpdate = eventosActivos.filter(e => utils.normalizeText(e.cliente) === oldKey);
-      setEventos(prev => prev.map(e => { if (utils.normalizeText(e.cliente) === oldKey) { return { ...e, cliente: newName.trim() }; } return e; }));
-      eventsToUpdate.forEach(e => { setDoc(getDocRef(e.id), { cliente: newName.trim() }, { merge: true }).catch(console.warn); });
-      showAlert(`Cliente actualizado. Se unificaron ${eventsToUpdate.length} eventos.`, true); setClientEditModal({ isOpen: false, oldName: '' });
+      const eventsToUpdate = eventosActivos.filter(e => utils.normalizeText(e.cliente) === oldKey);
+      try {
+          await Promise.all(eventsToUpdate.map(e => setDoc(getDocRef(e.id), { cliente: newName.trim() }, { merge: true })));
+          setEventos(prev => prev.map(e => utils.normalizeText(e.cliente) === oldKey ? { ...e, cliente: newName.trim() } : e));
+          utils.triggerHaptic('success');
+          showAlert(`Cliente actualizado. Se unificaron ${eventsToUpdate.length} eventos.`, true);
+          setClientEditModal({ isOpen: false, oldName: '' });
+      } catch (err) {
+          console.error("Error actualizando cliente:", err);
+          showAlert("No se pudo actualizar el cliente en Firebase.", false);
+      }
   }, [eventosActivos, showAlert]);
 
-  const handleSaveProveedor = useCallback((data) => {
-      utils.triggerHaptic('success'); const provId = data.id || `prov-${Date.now()}`; const payload = { ...data, id: provId };
-      setDoc(getProvRef(provId), payload).catch(console.warn); showAlert(data.id ? "Proveedor actualizado" : "Proveedor registrado", true); setProveedorModal({ isOpen: false, data: null });
+  const handleSaveProveedor = useCallback(async (data) => {
+      const provId = data.id || `prov-${Date.now()}`; const payload = { ...data, id: provId };
+      try {
+          await setDoc(getProvRef(provId), payload);
+          utils.triggerHaptic('success');
+          showAlert(data.id ? "Proveedor actualizado" : "Proveedor registrado", true);
+          setProveedorModal({ isOpen: false, data: null });
+      } catch (err) {
+          console.error("Error guardando proveedor:", err);
+          showAlert("No se pudo guardar el proveedor. Intenta nuevamente.", false);
+      }
   }, [showAlert]);
 
-  const handleDeleteProveedor = useCallback((id) => { showConfirm("¿Eliminar este proveedor de la agenda?", () => { utils.triggerHaptic('light'); deleteDoc(getProvRef(id)).catch(console.warn); showAlert("Proveedor eliminado", true); }); }, [showConfirm, showAlert]);
+  const handleDeleteProveedor = useCallback((id) => { showConfirm("¿Eliminar este proveedor de la agenda?", async () => {
+      utils.triggerHaptic('light');
+      try { await deleteDoc(getProvRef(id)); showAlert("Proveedor eliminado", true); }
+      catch (err) { console.error("Error eliminando proveedor:", err); showAlert("No se pudo eliminar el proveedor.", false); }
+  }); }, [showConfirm, showAlert]);
   const sendWhatsAppCall = useCallback((e, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(e, type, empresaSettings || appSettings.empresa), phoneClean = String(e.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
   const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/maps?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
@@ -1054,24 +1109,10 @@ export default function App() {
                 } 
             } 
         }); 
-        setEventos(prev => { 
-            let hasChanges = false; 
-            const map = new Map(prev.map(e => [e.id, e])); 
-            fbData.forEach(e => { 
-                if (map.has(e.id)) { 
-                    const exist = map.get(e.id); 
-                    if (exist.estado !== e.estado || exist.abono !== e.abono || exist.total !== e.total || exist.deletedLocally !== e.deletedLocally) { 
-                        map.set(e.id, { ...exist, estado: e.estado, abono: e.abono, total: e.total, deletedLocally: e.deletedLocally }); 
-                        hasChanges = true; 
-                    } 
-                } else { 
-                    map.set(e.id, e); 
-                    hasChanges = true; 
-                } 
-            }); 
-            if (!hasChanges && prev.length > 0) return prev; 
-            return Array.from(map.values()).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora))); 
-        }); 
+        // Firestore es la fuente de verdad: cada snapshot actualiza TODOS los campos
+        // de las reservas (cliente, fecha, hora, dirección, servicios, pagos, estado, etc.).
+        const syncedEvents = [...fbData].sort((a,b) => String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')));
+        setEventos(syncedEvents); 
         setIsDBReady(true); 
     }, (error) => { 
         console.warn("Firestore offline:", error); clearTimeout(timeoutId); setIsDBReady(true); 
