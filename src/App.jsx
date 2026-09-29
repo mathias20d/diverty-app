@@ -242,13 +242,14 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                                 <div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-slate-100"></div></div>
                                 <div className="relative flex justify-center">
                                     <span className="bg-white px-6 text-2xl font-black text-slate-900 tracking-[0.2em] uppercase bg-gradient-to-r from-[#2563FF] to-[#7C3AED] bg-clip-text text-transparent">
-                                        {isC ? 'COTIZACIÓN' : (isContratoProv ? 'SUBCONTRATO SERVICIOS' : (isContrato ? 'CONTRATO DE SERVICIO' : 'FACTURA COMERCIAL'))}
+                                        {isC ? 'COTIZACIÓN' : (isContratoProv ? 'SUBCONTRATO DE SERVICIOS' : (isContrato ? 'CONTRATO DE PRESTACIÓN DE SERVICIOS' : 'FACTURA COMERCIAL'))}
                                     </span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex justify-between gap-6 mb-8 relative z-10">
+
                             <div className="w-1/2 bg-slate-50/70 p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                                 <div>
                                     <h3 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.2em] mb-4 pb-2 border-b border-slate-200/60 flex items-center gap-2">
@@ -260,6 +261,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                                         <div className="flex justify-between gap-4"><span className="text-slate-400">Teléfono:</span><span className="text-slate-950 font-extrabold text-right">{isContratoProv ? appSettings.empresa.telefono : tel}</span></div>
                                         {(isContratoProv ? appSettings.empresa.email : emailStr) && <div className="flex justify-between gap-4"><span className="text-slate-400">Email:</span><span className="text-slate-950 font-extrabold truncate w-40 text-right break-all">{isContratoProv ? appSettings.empresa.email : emailStr}</span></div>}
                                         {(isContratoProv ? appSettings.empresa.ruc : rucStr) && <div className="flex justify-between gap-4"><span className="text-slate-400">RUC / DV:</span><span className="text-slate-950 font-extrabold text-right">{isContratoProv ? appSettings.empresa.ruc : rucStr}</span></div>}
+                                         {!isContratoProv && printData.empresa && <div className="flex justify-between gap-4"><span className="text-slate-400">Empresa:</span><span className="text-slate-950 font-extrabold text-right">{printData.empresa}</span></div>}
                                     </div>
                                 </div>
                             </div>
@@ -382,7 +384,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                             <div className="mt-6 pb-2 avoid-break relative z-10">
                                 {(isContrato || isContratoProv) ? (
                                     <div className="bg-slate-50/70 rounded-2xl border border-slate-100/50 p-5 flex flex-col gap-5 shadow-sm">
-                                        {!isContratoProv && (<div className="text-[10px] text-slate-500 leading-relaxed border-b border-slate-200/60 pb-3"><h4 className="font-black text-slate-900 uppercase tracking-widest mb-1.5 text-[9px] flex items-center gap-1.5"><FileSignature size={13} className="text-[#7C3AED]"/> Compromiso y Mutuo Acuerdo</h4><p className="font-bold">Las partes aceptan y se comprometen a respetar todas las cláusulas, tiempos de montaje y logística establecidos en el presente acuerdo para dar inicio al evento programado.</p></div>)}
+                                        {!isContratoProv && (<div className="text-[10px] text-slate-500 leading-relaxed border-b border-slate-200/60 pb-3"><h4 className="font-black text-slate-900 uppercase tracking-widest mb-1.5 text-[9px] flex items-center gap-1.5"><FileSignature size={13} className="text-[#7C3AED]"/> Aceptación y Condiciones del Servicio</h4><p className="font-bold">Las partes aceptan y se comprometen a respetar todas las cláusulas, tiempos de montaje y logística establecidos en el presente acuerdo para dar inicio al evento programado.</p></div>)}
                                         <div className="flex justify-around items-end pt-4 pb-2">
                                             <div className="w-[42%] text-center"><div className="border-b border-slate-300 w-full mb-2 h-10 flex items-end justify-center"><span className="text-[13px] font-semibold text-slate-400 italic">DIVERTY EVENTOS</span></div><p className="font-black text-slate-800 text-[10px] uppercase truncate">{isContratoProv ? 'DIVERTY EVENTOS PANAMÁ' : appSettings.empresa.nombreTitular}</p><p className="text-slate-400 text-[9px] font-extrabold uppercase tracking-widest">{isContratoProv ? 'El Contratante' : 'Diverty Eventos'}</p></div>
                                             <div className="w-[42%] text-center"><div className="border-b border-slate-300 w-full mb-2 h-10"></div><p className="font-black text-slate-800 text-[10px] uppercase truncate">{cli}</p><p className="text-slate-400 text-[9px] font-extrabold uppercase tracking-widest">{isContratoProv ? 'Firma del Proveedor' : 'Firma del Cliente'}</p></div>
