@@ -19,34 +19,17 @@ const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos
 
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
 const UI = {
-  card: "bg-white/85 backdrop-blur-xl border border-slate-200/60 rounded-[24px] shadow-sm relative overflow-hidden group hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)] hover:border-slate-300/80 transition-all duration-500",
+  card: "bg-white rounded-[28px] border border-slate-100 shadow-[0_15px_45px_rgba(15,23,42,0.08)] relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_25px_60px_rgba(15,23,42,0.12)]",
   modal: "bg-white/95 backdrop-blur-2xl rounded-t-[32px] sm:rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200/50 transition-transform duration-300", 
   input: "w-full bg-slate-50/50 backdrop-blur-sm focus:bg-white border border-slate-200 focus:border-[#2563FF]/50 rounded-2xl p-4 text-[15px] font-semibold text-slate-900 outline-none focus:ring-4 focus:ring-[#2563FF]/10 transition-all placeholder:text-slate-400 shadow-sm", 
   label: "block text-[10px] uppercase text-slate-500 font-extrabold tracking-[0.2em] mb-2 ml-1", 
   title: "text-4xl sm:text-5xl font-black text-slate-900 tracking-tight drop-shadow-sm",
   btnBase: "font-black rounded-[16px] transition-all duration-300 ease-out active:scale-[0.96] flex items-center justify-center gap-2.5 px-5 py-3.5 relative overflow-hidden group",
-  btnPrimary: "bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-[length:200%_auto] hover:bg-[100%_center] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] hover:shadow-[0_15px_35px_rgba(124,58,237,0.5)] border border-white/20",
-  btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300",
+  btnPrimary: "bg-gradient-to-r from-[#2563EB] via-[#6366F1] to-[#7C3AED] text-white shadow-[0_12px_30px_rgba(37,99,235,0.35)] hover:shadow-[0_18px_45px_rgba(124,58,237,0.45)] border border-white/20",
+  btnDefault: "bg-white text-slate-700 border border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300",
   flexBetween: "flex justify-between items-center"
 };
-const COLORS = {
-  primary: '#2563EB',
-  secondary: '#7C3AED',
-  accent: '#F59E0B',
-  success: '#10B981',
-  warning: '#F59E0B',
-  danger: '#EF4444',
-  background: '#F8FAFC',
-  surface: '#FFFFFF',
-  text: '#0F172A',
-  muted: '#64748B',
-  border: '#E2E8F0',
-
-  blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20',
-  rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20',
-  amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
-  emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-};
+const COLORS = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
 
 // --- 3. FUNCIONES UTILITARIAS ---
 export const utils = {
