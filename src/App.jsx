@@ -29,7 +29,24 @@ const UI = {
   btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300",
   flexBetween: "flex justify-between items-center"
 };
-const COLORS = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
+const COLORS = {
+  primary: '#2563EB',
+  secondary: '#7C3AED',
+  accent: '#F59E0B',
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
+  text: '#0F172A',
+  muted: '#64748B',
+  border: '#E2E8F0',
+
+  blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20',
+  rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20',
+  amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+};
 
 // --- 3. FUNCIONES UTILITARIAS ---
 export const utils = {
