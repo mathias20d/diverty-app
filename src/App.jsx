@@ -1214,58 +1214,102 @@ export default function App() {
 
   const renderInicio = () => {
     const totalEventos = eventosActivos.length;
-    const totalIngresos = eventosActivos.reduce((a,e)=>a + utils.safeNum(e.total),0);
+    const fechaActual = new Date();
+    const ingresosMensuales = eventosActivos
+        .filter(e => {
+            if (!e.fecha) return false;
+            const fechaEvento = new Date(e.fecha);
+            return fechaEvento.getMonth() === fechaActual.getMonth() &&
+                   fechaEvento.getFullYear() === fechaActual.getFullYear();
+        })
+        .reduce((acc, e) => acc + utils.safeNum(e.total), 0);
+    const clientes = [...new Set(eventosActivos.map(e => e.cliente).filter(Boolean))].length;
     const pendientes = eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente').length;
-    const clientes = [...new Set(eventosActivos.map(e=>e.cliente).filter(Boolean))].length;
+
+    const proximoEvento = [...eventosActivos]
+        .filter(e => e.fecha)
+        .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha))[0];
 
     return (
-        <div className="space-y-8 animate-fadeIn pb-10">
+        <div className="space-y-6 pb-10">
 
-            <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] p-8 text-white shadow-xl">
-                <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
+            <div className="rounded-[32px] bg-[#09090B] border border-white/10 p-6 text-white shadow-2xl">
+                <div className="flex justify-between items-start">
                     <div>
-                        <p className="text-white/80 text-xs font-black uppercase tracking-[0.25em]">
-                            Dashboard Empresarial
+                        <p className="text-xs uppercase tracking-[0.3em] text-white/50 font-black">
+                            Diverty CRM
                         </p>
-                        <h1 className="text-4xl font-black mt-3">
-                            Bienvenido a Diverty Eventos ✨
+                        <h1 className="text-3xl font-black mt-3">
+                            Hola, Diverty 👋
                         </h1>
-                        <p className="mt-3 text-white/90 font-medium">
-                            Controla tus eventos, clientes y ventas desde un solo lugar.
+                        <p className="text-white/60 mt-2">
+                            Resumen de tu negocio
                         </p>
                     </div>
-                    <AppButton onClick={()=>openModal()} icon={Plus} className="bg-white text-[#2563FF]">
-                        Nuevo Evento
-                    </AppButton>
+                    <BellRing className="text-amber-400"/>
+                </div>
+
+                <div className="mt-6 rounded-3xl bg-white/10 border border-white/10 p-5 backdrop-blur-xl">
+                    <p className="text-xs text-white/50 font-bold uppercase">
+                        Ingresos del Mes
+                    </p>
+                    <h2 className="text-4xl font-black mt-2">
+                        B/. {ingresosMensuales.toFixed(2)}
+                    </h2>
+                    <div className="flex gap-3 mt-5 text-xs">
+                        <span className="bg-white/10 px-3 py-2 rounded-xl">
+                            🎉 {totalEventos} eventos
+                        </span>
+                        <span className="bg-white/10 px-3 py-2 rounded-xl">
+                            👥 {clientes} clientes
+                        </span>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+            <div className="grid grid-cols-2 gap-4">
+                <AppCard title="Pendientes" icon={BellRing}>
+                    <p className="text-3xl font-black">{pendientes}</p>
+                </AppCard>
+
                 <AppCard title="Eventos" icon={Calendar}>
-                    <p className="text-4xl font-black">{totalEventos}</p>
-                </AppCard>
-                <AppCard title="Ingresos" icon={DollarSign} iconColor="success">
-                    <p className="text-3xl font-black">B/. {totalIngresos.toFixed(2)}</p>
-                </AppCard>
-                <AppCard title="Clientes" icon={Users}>
-                    <p className="text-4xl font-black">{clientes}</p>
-                </AppCard>
-                <AppCard title="Pendientes" icon={BellRing} iconColor="warning">
-                    <p className="text-4xl font-black">{pendientes}</p>
+                    <p className="text-3xl font-black">{totalEventos}</p>
                 </AppCard>
             </div>
 
-            <div className={`${UI.card} p-6`}>
-                <h2 className="font-black text-xl mb-5 flex items-center gap-2">
-                    <Zap className="text-[#2563FF]"/> Acciones rápidas
+
+            <div className={`${UI.card} p-5`}>
+                <h2 className="font-black mb-4 flex items-center gap-2">
+                    <Zap className="text-amber-500"/>
+                    Accesos rápidos
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <ActionBtn icon={Plus} label="Nuevo evento" color="blue" onClick={()=>openModal()} />
-                    <ActionBtn icon={Users} label="Clientes" color="white" onClick={()=>setActiveTab('clientes')} />
-                    <ActionBtn icon={Truck} label="Proveedores" color="white" onClick={()=>setActiveTab('proveedores')} />
-                    <ActionBtn icon={PieChart} label="Finanzas" color="white" onClick={()=>setActiveTab('finanzas')} />
+
+                <div className="grid grid-cols-2 gap-3">
+                    <ActionBtn icon={Plus} label="Evento" color="blue" onClick={()=>openModal()}/>
+                    <ActionBtn icon={Users} label="Clientes" onClick={()=>setActiveTab('clientes')}/>
+                    <ActionBtn icon={PieChart} label="Finanzas" onClick={()=>setActiveTab('finanzas')}/>
+                    <ActionBtn icon={Truck} label="Proveedores" onClick={()=>setActiveTab('proveedores')}/>
                 </div>
             </div>
+
+
+            {proximoEvento && (
+                <div className="rounded-[28px] bg-gradient-to-br from-[#111827] to-[#1F2937] text-white p-5 shadow-xl">
+                    <p className="text-xs uppercase tracking-widest text-white/50 font-black">
+                        Próximo Evento
+                    </p>
+                    <h3 className="text-xl font-black mt-3">
+                        {proximoEvento.cliente}
+                    </h3>
+                    <p className="text-white/70 mt-2">
+                        📅 {proximoEvento.fecha?.split('-').reverse().join('/')}
+                    </p>
+                    <p className="text-white/70">
+                        📍 {proximoEvento.ubicacion}
+                    </p>
+                </div>
+            )}
 
         </div>
     );
