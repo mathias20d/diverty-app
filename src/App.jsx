@@ -19,14 +19,14 @@ const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos
 
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
 const UI = {
-  card: "bg-white rounded-[28px] border border-slate-100 shadow-[0_15px_45px_rgba(15,23,42,0.08)] relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_25px_60px_rgba(15,23,42,0.12)]",
+  card: "bg-white/85 backdrop-blur-xl border border-slate-200/60 rounded-[24px] shadow-sm relative overflow-hidden group hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)] hover:border-slate-300/80 transition-all duration-500",
   modal: "bg-white/95 backdrop-blur-2xl rounded-t-[32px] sm:rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.15)] border border-slate-200/50 transition-transform duration-300", 
   input: "w-full bg-slate-50/50 backdrop-blur-sm focus:bg-white border border-slate-200 focus:border-[#2563FF]/50 rounded-2xl p-4 text-[15px] font-semibold text-slate-900 outline-none focus:ring-4 focus:ring-[#2563FF]/10 transition-all placeholder:text-slate-400 shadow-sm", 
   label: "block text-[10px] uppercase text-slate-500 font-extrabold tracking-[0.2em] mb-2 ml-1", 
   title: "text-4xl sm:text-5xl font-black text-slate-900 tracking-tight drop-shadow-sm",
   btnBase: "font-black rounded-[16px] transition-all duration-300 ease-out active:scale-[0.96] flex items-center justify-center gap-2.5 px-5 py-3.5 relative overflow-hidden group",
-  btnPrimary: "bg-gradient-to-r from-[#2563EB] via-[#6366F1] to-[#7C3AED] text-white shadow-[0_12px_30px_rgba(37,99,235,0.35)] hover:shadow-[0_18px_45px_rgba(124,58,237,0.45)] border border-white/20",
-  btnDefault: "bg-white text-slate-700 border border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300",
+  btnPrimary: "bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-[length:200%_auto] hover:bg-[100%_center] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] hover:shadow-[0_15px_35px_rgba(124,58,237,0.5)] border border-white/20",
+  btnDefault: "bg-white/80 backdrop-blur-md text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm hover:shadow-md hover:border-slate-300",
   flexBetween: "flex justify-between items-center"
 };
 const COLORS = { blue: 'bg-[#2563FF]/10 text-[#2563FF] border-[#2563FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
@@ -535,7 +535,7 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
     return (
         <div className="fixed inset-0 z-[9998] bg-slate-900/40 backdrop-blur-sm flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fadeIn">
             <div className={`${UI.modal} w-full h-[92vh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0`}>
-                 <div className="p-6 sm:p-8 border-b border-slate-200/50 flex justify-between items-center z-20 bg-white/95"><h3 className="font-black text-slate-900 text-2xl flex items-center gap-3 tracking-tight">{isCotizacionMode ? <FileText className="text-amber-500 drop-shadow-sm"/> : (initialData?.id && !initialData?.isDuplicated ? <Edit className="text-[#2563FF] drop-shadow-sm"/> : <Plus className="text-[#2563FF] drop-shadow-sm"/>)} {isCotizacionMode ? (initialData?.id ? 'Editar Cotización' : 'Nueva Cotización') : (initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nuevo Evento')}</h3><div className="flex gap-3">{(!initialData?.id || initialData?.isDuplicated) && (<button onClick={handleClearDraft} type="button" className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 active:scale-[0.98] transition-colors border border-rose-200 shadow-sm"><Trash2 size={20}/></button>)}<button onClick={onClose} type="button" className="p-2.5 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-200 active:scale-[0.98] transition-colors border border-slate-200 shadow-sm"><X size={20}/></button></div></div>
+                 <div className="p-6 sm:p-8 border-b border-slate-200/50 flex justify-between items-center z-20 bg-white/95"><h3 className="font-black text-slate-900 text-2xl flex items-center gap-3 tracking-tight">{isCotizacionMode ? <FileText className="text-amber-500 drop-shadow-sm"/> : (initialData?.id && !initialData?.isDuplicated ? <Edit className="text-[#2563FF] drop-shadow-sm"/> : <Plus className="text-[#2563FF] drop-shadow-sm"/>)} {isCotizacionMode ? (initialData?.id ? 'Editar Cotización' : 'Nueva Cotización') : (initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nueva Reserva')}</h3><div className="flex gap-3">{(!initialData?.id || initialData?.isDuplicated) && (<button onClick={handleClearDraft} type="button" className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 active:scale-[0.98] transition-colors border border-rose-200 shadow-sm"><Trash2 size={20}/></button>)}<button onClick={onClose} type="button" className="p-2.5 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-200 active:scale-[0.98] transition-colors border border-slate-200 shadow-sm"><X size={20}/></button></div></div>
                  <div className="overflow-y-auto flex-1 p-5 sm:p-8 bg-slate-50/90"><form onSubmit={handleSubmit} className="max-w-xl mx-auto pb-8 space-y-6">
                      <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-5 sm:p-6 mb-6 shadow-sm"><div className="flex items-center gap-3 mb-6"><IconBox icon={Users} color="blue" /><h4 className="font-extrabold text-slate-900 text-lg tracking-tight">Datos del Cliente</h4></div><div className="space-y-5"><div className="relative z-40"><Field innerRef={nameInputRef} label="Nombre *" required value={formData.cliente} onChange={e => { const val = e.target.value; setFormData(prev => ({...prev, cliente: val})); setShowClientDropdown(true);}} onFocus={() => setShowClientDropdown(true)} onBlur={() => setTimeout(() => setShowClientDropdown(false), 200)} autoComplete="off" />{showClientDropdown && filteredClientes.length > 0 && (<div className="mt-2 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl max-h-48 overflow-y-auto shadow-xl">{filteredClientes.map((c, idx) => (<button type="button" key={idx} onMouseDown={(e) => { e.preventDefault(); handleSelectClient(c); }} className="w-full text-left px-5 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex flex-col transition-colors"><span className="font-bold text-slate-900">{c.nombre}</span>{c.telefono && <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><Smartphone size={12}/> {c.telefono}</span>}</button>))}</div>)}</div><div className="grid grid-cols-2 gap-5"><Field label="Teléfono *" required value={formData.telefono} onChange={e=>setFormData(prev=>({...prev,telefono:e.target.value}))} /><Field label="Correo" value={formData.email} onChange={e=>setFormData(prev=>({...prev,email:e.target.value}))} /></div></div></div>
                      <div className="bg-white/80 border border-slate-200/60 rounded-2xl p-5 sm:p-6 mb-6 shadow-sm"><div className="flex items-center gap-3 mb-6"><IconBox icon={MapPin} color="rose" /><h4 className="font-extrabold text-slate-900 text-lg tracking-tight">Logística</h4></div><div className="grid grid-cols-2 gap-5 mb-5"><Field label="Fecha *" type="date" required value={formData.fecha} onChange={e=>setFormData(prev=>({...prev,fecha:e.target.value}))} /><Field label="Hora *" type="time" required value={formData.hora} onChange={e=>setFormData(prev=>({...prev,hora:e.target.value}))} /></div><div className="mb-5"><Field as="select" label="Zona" value={formData.ubicacion} onChange={handleZoneChange}>{Object.keys(ZONAS_TRANSPORTE).map(z => <option key={z} value={z} className="bg-white text-slate-900">{z}</option>)}</Field></div><Field label="Dirección Exacta" value={formData.direccion} onChange={e=>setFormData(prev=>({...prev,direccion:e.target.value}))} /></div>
@@ -1213,122 +1213,134 @@ export default function App() {
   }, [db, appId, firebaseUser, showAlert]);
 
   const renderInicio = () => {
-    const totalEventos = eventosActivos.length;
-    const fechaActual = new Date();
-    const ingresosMensuales = eventosActivos
-        .filter(e => {
-            if (!e.fecha) return false;
-            const fechaEvento = new Date(e.fecha);
-            return fechaEvento.getMonth() === fechaActual.getMonth() &&
-                   fechaEvento.getFullYear() === fechaActual.getFullYear();
-        })
-        .reduce((acc, e) => acc + utils.safeNum(e.total), 0);
-    const clientes = [...new Set(eventosActivos.map(e => e.cliente).filter(Boolean))].length;
-    const pendientes = eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente').length;
-
-    const hoy = new Date();
-    hoy.setHours(0,0,0,0);
-
-    const proximoEvento = [...eventosActivos]
-        .filter(e => {
-            if (!e.fecha) return false;
-            const fechaEvento = new Date(e.fecha);
-            fechaEvento.setHours(0,0,0,0);
-            return fechaEvento >= hoy;
-        })
-        .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha))[0];
-
-    return (
-        <div className="space-y-6 pb-10">
-
-            <div className="rounded-[32px] bg-[#09090B] border border-white/10 p-6 text-white shadow-2xl">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-white/50 font-black">
-                            Diverty CRM
-                        </p>
-                        <h1 className="text-3xl font-black mt-3">
-                            Hola, Diverty 👋
-                        </h1>
-                        <p className="text-white/60 mt-2">
-                            Resumen de tu negocio
-                        </p>
-                    </div>
-                    <BellRing className="text-amber-400"/>
+     if (isModoOperativo) {
+        const faltanAbono = stats.eventosHoy.filter(e => utils.safeNum(e.abono) <= 0 && utils.normalizeText(e.estado) !== 'completado'), 
+              faltanDireccion = stats.eventosHoy.filter(e => (!e.direccion || String(e.direccion).trim() === '') && utils.normalizeText(e.estado) !== 'completado'), 
+              faltanHora = stats.eventosHoy.filter(e => (!e.hora || String(e.hora).trim() === '') && utils.normalizeText(e.estado) !== 'completado');
+        return (
+          <div className="animate-fadeIn p-4 md:p-10 max-w-2xl mx-auto space-y-6 pb-32 relative z-50">
+             <div className="fixed inset-0 bg-[#F8FAFC] -z-10 animate-fadeIn"></div>
+             <div className="flex justify-between items-center bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white p-6 rounded-[24px] shadow-lg">
+                 <div>
+                     <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-blue-100 mb-1">Modo En Terreno</p>
+                     <h2 className="text-2xl sm:text-3xl font-extrabold flex items-center gap-2 tracking-tight"><Zap size={28} className="fill-white"/> Operativa de Hoy</h2>
+                 </div>
+                 <button type="button" onClick={() => setIsModoOperativo(false)} className="bg-white/20 hover:bg-white/30 p-3.5 rounded-xl transition-all shadow-sm backdrop-blur-md cursor-pointer"><X size={24} /></button>
+             </div>
+             {(faltanAbono.length > 0 || faltanDireccion.length > 0 || faltanHora.length > 0) && (
+                 <div className="bg-white p-6 rounded-[24px] shadow-sm border border-slate-200">
+                     <h3 className="text-slate-900 font-bold text-sm uppercase tracking-[0.1em] mb-4 flex items-center gap-2"><AlertTriangle size={18} className="text-rose-500"/> Checklist de Alertas</h3>
+                     <div className="space-y-4">
+                         {faltanAbono.length > 0 && (<div className="flex items-center gap-4 bg-rose-50 border border-rose-100 p-4 rounded-xl shadow-sm"><IconBox icon={DollarSign} color="rose" className="border-0 p-2.5"/><div><p className="text-slate-900 font-bold text-[15px] leading-tight">Falta abono ({faltanAbono.length})</p><p className="text-rose-500 text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanAbono.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                         {faltanDireccion.length > 0 && (<div className="flex items-center gap-4 bg-amber-50 border border-amber-100 p-4 rounded-xl shadow-sm"><IconBox icon={MapPin} color="amber" className="border-0 p-2.5"/><div><p className="text-slate-900 font-bold text-[15px] leading-tight">Falta dirección ({faltanDireccion.length})</p><p className="text-amber-500 text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanDireccion.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                         {faltanHora.length > 0 && (<div className="flex items-center gap-4 bg-[#2563FF]/5 border border-[#2563FF]/10 p-4 rounded-xl shadow-sm"><IconBox icon={Clock} color="blue" className="border-0 p-2.5"/><div><p className="text-slate-900 font-bold text-[15px] leading-tight">Falta hora ({faltanHora.length})</p><p className="text-[#2563FF] text-xs font-bold uppercase tracking-[0.1em] truncate max-w-[200px] mt-1">{faltanHora.map(e=>String(e.cliente).split(' ')[0]).join(', ')}</p></div></div>)}
+                     </div>
+                 </div>
+             )}
+             <div className="space-y-6">
+                 {stats.eventosHoy.length === 0 ? (
+                     <div className="text-center py-16 bg-white/80 backdrop-blur-md rounded-[24px] border border-slate-200/50 shadow-sm"><Sun size={56} className="mx-auto text-slate-300 mb-5" strokeWidth={1.5}/><p className="text-slate-900 font-extrabold text-xl mb-2 tracking-tight">¡Todo Despejado!</p><p className="text-slate-500 font-medium text-sm">No hay eventos operativos para hoy.</p></div>
+                 ) : (
+                     stats.eventosHoy.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)
+                 )}
+             </div>
+          </div>
+        );
+     }
+     return (
+       <div className="animate-fadeIn p-4 md:p-6 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32 md:pb-10 relative z-10">
+          <div className="bg-gradient-to-br from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] rounded-[40px] p-8 sm:p-12 shadow-[0_20px_50px_rgba(124,58,237,0.3)] relative overflow-hidden group border border-white/20">
+             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.1] mix-blend-overlay pointer-events-none"></div>
+             <div className="absolute -top-24 -right-24 w-96 h-96 bg-[radial-gradient(circle,rgba(255,255,255,0.3)_0%,transparent_60%)] pointer-events-none blur-2xl group-hover:scale-110 transition-transform duration-1000"></div>
+             <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.2)_0%,transparent_60%)] pointer-events-none blur-2xl"></div>
+             <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6">
+                 <div className="text-center sm:text-left">
+                     <h1 className="text-4xl sm:text-6xl font-black mb-4 flex items-center justify-center sm:justify-start gap-3 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white to-white/80 drop-shadow-md">Hola Diverty 👋</h1>
+                     <p className="text-white/90 font-semibold text-sm sm:text-lg tracking-wide max-w-md drop-shadow-sm">Gestiona tus reservas, contratos y finanzas al instante.</p>
+                 </div>
+                 <div className="w-full sm:w-auto relative z-10 mt-4 sm:mt-0 flex shrink-0">
+                     <AppButton onClick={() => openModal()} variant="primary" icon={Plus} className="w-full sm:w-auto py-4 px-8 text-[15px]">Nueva Reserva</AppButton>
+                 </div>
+             </div>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+              <div className="cursor-pointer" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
+                 <AppCard title="Eventos Hoy" icon={Calendar} iconColor="primary"><p className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tighter drop-shadow-sm">{stats.eventosHoy.length}</p></AppCard>
+              </div>
+              <div className="cursor-pointer" onClick={() => handleTabChange('finanzas')}>
+                 <AppCard title="Ingresos Mes" icon={DollarSign} iconColor="success"><p className="text-5xl sm:text-6xl font-black text-emerald-500 tracking-tighter drop-shadow-sm">${stats.ingresosEsteMes.toFixed(0)}</p></AppCard>
+              </div>
+              <div className="cursor-pointer" onClick={() => handleTabChange('clientes')}>
+                 <AppCard title="Clientes Activos" icon={Users} iconColor="warning"><p className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tighter drop-shadow-sm">{clientsList.length}</p></AppCard>
+              </div>
+              <div className="cursor-pointer" onClick={() => handleTabChange('finanzas')}>
+                 <AppCard title="Por Cobrar" icon={TrendingUp} iconColor="danger"><p className="text-5xl sm:text-6xl font-black text-rose-500 tracking-tighter drop-shadow-sm">${stats.deudaTotal.toFixed(0)}</p></AppCard>
+              </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-4 mt-8">
+            <button type="button" onClick={() => openModal(null, true)} className="flex-1 bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-slate-800 rounded-[24px] py-5 font-black flex items-center justify-center gap-3 hover:bg-white hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all group">
+                <div className="bg-amber-500/10 p-2 rounded-xl text-amber-500"><FileText size={22} strokeWidth={2.5}/></div> 
+                <span className="hidden sm:inline tracking-wide">Crear Cotización</span>
+            </button>
+            <button type="button" onClick={() => {utils.triggerHaptic('light'); setIsModoOperativo(true); window.scrollTo(0,0);}} className="flex-1 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white rounded-[24px] py-5 font-black flex items-center justify-center gap-3 transition-all shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:shadow-[0_15px_30px_rgba(124,58,237,0.35)] hover:-translate-y-1 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                <div className="bg-white/20 p-2 rounded-xl text-white relative z-10"><Zap size={22} strokeWidth={2.5} className="fill-white"/></div> 
+                <span className="hidden sm:inline relative z-10 tracking-wide">Modo Operativo</span>
+            </button>
+            <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-[#2563FF] rounded-[24px] py-5 px-6 flex items-center justify-center hover:bg-white transition-all hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 group" title="Refrescar vista">
+                <div className="bg-[#2563FF]/10 p-2 rounded-xl"><RefreshCw size={24} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" /></div>
+            </button>
+          </div>
+          
+          {stats.alertasOperativas.length > 0 && (
+             <div className="animate-slideDown mt-10">
+                <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400 flex items-center gap-2 mb-5">
+                   <AlertTriangle size={16} className="text-rose-500 animate-pulse"/> Urgencias ({stats.alertasOperativas.length})
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                   {stats.alertasOperativas.map((al, i) => { 
+                      const AlIcon = al.icon; 
+                      return (
+                         <div key={al.id} onClick={() => openModal(al.e)} className={`p-5 sm:p-6 rounded-[24px] border border-slate-200/60 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-500 ease-out bg-white/90 backdrop-blur-md hover:border-rose-300 shadow-sm hover:shadow-lg`} style={{animationDelay: `${i*100}ms`}}>
+                            <div className="flex items-center gap-4">
+                               <div className={`p-3.5 rounded-xl ${al.b}`}><AlIcon size={24} strokeWidth={2.5}/></div>
+                               <div className="flex flex-col items-start"><p className={`text-[15px] font-bold text-slate-900 leading-tight capitalize`}>{al.txt}</p><p className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mt-1.5">{al.t}</p></div>
+                            </div>
+                            <ChevronRight size={20} className="text-slate-300" />
+                         </div>
+                      );
+                   })}
                 </div>
-
-                <div className="mt-6 rounded-3xl bg-white/10 border border-white/10 p-5 backdrop-blur-xl">
-                    <p className="text-xs text-white/50 font-bold uppercase">
-                        Ingresos del Mes
-                    </p>
-                    <h2 className="text-4xl font-black mt-2">
-                        B/. {ingresosMensuales.toFixed(2)}
-                    </h2>
-                    <div className="flex gap-3 mt-5 text-xs">
-                        <span className="bg-white/10 px-3 py-2 rounded-xl">
-                            🎉 {totalEventos} eventos
-                        </span>
-                        <span className="bg-white/10 px-3 py-2 rounded-xl">
-                            👥 {clientes} clientes
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-
-            <div className="grid grid-cols-2 gap-4">
-                <AppCard title="Pendientes" icon={BellRing}>
-                    <p className="text-3xl font-black">{pendientes}</p>
-                </AppCard>
-
-                <AppCard title="Eventos" icon={Calendar}>
-                    <p className="text-3xl font-black">{totalEventos}</p>
-                </AppCard>
-            </div>
-
-
-            <div className={`${UI.card} p-5`}>
-                <h2 className="font-black mb-4 flex items-center gap-2">
-                    <Zap className="text-amber-500"/>
-                    Accesos rápidos
-                </h2>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <ActionBtn icon={Plus} label="Evento" color="blue" onClick={()=>openModal()}/>
-                    <ActionBtn icon={Users} label="Clientes" onClick={()=>setActiveTab('clientes')}/>
-                    <ActionBtn icon={PieChart} label="Finanzas" onClick={()=>setActiveTab('finanzas')}/>
-                    <ActionBtn icon={Truck} label="Proveedores" onClick={()=>setActiveTab('proveedores')}/>
-                </div>
-            </div>
-
-
-            <div className="rounded-[28px] bg-[#111827] text-white p-5 shadow-xl border border-white/10">
-                <p className="text-xs uppercase tracking-widest text-white/50 font-black">
-                    Próximo Evento
-                </p>
-
-                {proximoEvento ? (
-                    <>
-                        <h3 className="text-xl font-black mt-3">
-                            {proximoEvento.cliente}
-                        </h3>
-                        <p className="text-white/70 mt-2">
-                            📅 {proximoEvento.fecha?.split('-').reverse().join('/')}
-                        </p>
-                        <p className="text-white/70">
-                            📍 {proximoEvento.ubicacion || 'Sin ubicación'}
-                        </p>
-                    </>
-                ) : (
-                    <p className="text-white/60 mt-3">
-                        No tienes eventos próximos
-                    </p>
-                )}
-            </div>
-
-        </div>
-    );
-};
+             </div>
+          )}
+          
+          {cotizacionesActivas.length > 0 && (
+              <div className="mt-14 pt-10 border-t border-slate-200/50 relative">
+                  <h3 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3 mb-6 tracking-tight"><FileText className="text-amber-500" size={24} /> Cotizaciones Activas</h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
+                  </div>
+              </div>
+          )}
+          
+          <div className="mt-14 pt-10 border-t border-slate-200/50 relative">
+              <div className={UI.flexBetween + " mb-6"}>
+                  <h3 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3 tracking-tight"><CalendarDays className="text-[#2563FF]" size={24} /> Próximas Reservas</h3>
+                  <button type="button" onClick={() => handleTabChange('eventos')} className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 hover:text-[#2563FF] transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
+              </div>
+              {proximasReservas.length > 0 ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {proximasReservas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
+                  </div>
+              ) : (
+                  <EmptyState icon={CalendarDays} title="Agenda Despejada" message="No tienes reservas programadas para hoy ni mañana. ¡Aprovecha para crear nuevas cotizaciones!" actionBtn={<AppButton onClick={()=>openModal()} variant="primary" icon={Plus} className="mt-4 px-8 py-4 shadow-md">Crear Reserva</AppButton>} />
+              )}
+          </div>
+       </div>
+     );
+  };
 
   const renderEventos = () => {
     const renderCalendarGrid = () => {
