@@ -1,4 +1,4 @@
-e deimport React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
@@ -1226,8 +1226,16 @@ export default function App() {
     const clientes = [...new Set(eventosActivos.map(e => e.cliente).filter(Boolean))].length;
     const pendientes = eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente').length;
 
+    const hoy = new Date();
+    hoy.setHours(0,0,0,0);
+
     const proximoEvento = [...eventosActivos]
-        .filter(e => e.fecha)
+        .filter(e => {
+            if (!e.fecha) return false;
+            const fechaEvento = new Date(e.fecha);
+            fechaEvento.setHours(0,0,0,0);
+            return fechaEvento >= hoy;
+        })
         .sort((a,b)=>new Date(a.fecha)-new Date(b.fecha))[0];
 
     return (
@@ -1294,22 +1302,29 @@ export default function App() {
             </div>
 
 
-            {proximoEvento && (
-                <div className="rounded-[28px] bg-gradient-to-br from-[#111827] to-[#1F2937] text-white p-5 shadow-xl">
-                    <p className="text-xs uppercase tracking-widest text-white/50 font-black">
-                        Próximo Evento
+            <div className="rounded-[28px] bg-[#111827] text-white p-5 shadow-xl border border-white/10">
+                <p className="text-xs uppercase tracking-widest text-white/50 font-black">
+                    Próximo Evento
+                </p>
+
+                {proximoEvento ? (
+                    <>
+                        <h3 className="text-xl font-black mt-3">
+                            {proximoEvento.cliente}
+                        </h3>
+                        <p className="text-white/70 mt-2">
+                            📅 {proximoEvento.fecha?.split('-').reverse().join('/')}
+                        </p>
+                        <p className="text-white/70">
+                            📍 {proximoEvento.ubicacion || 'Sin ubicación'}
+                        </p>
+                    </>
+                ) : (
+                    <p className="text-white/60 mt-3">
+                        No tienes eventos próximos
                     </p>
-                    <h3 className="text-xl font-black mt-3">
-                        {proximoEvento.cliente}
-                    </h3>
-                    <p className="text-white/70 mt-2">
-                        📅 {proximoEvento.fecha?.split('-').reverse().join('/')}
-                    </p>
-                    <p className="text-white/70">
-                        📍 {proximoEvento.ubicacion}
-                    </p>
-                </div>
-            )}
+                )}
+            </div>
 
         </div>
     );
