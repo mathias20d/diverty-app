@@ -672,6 +672,7 @@ export default function App() {
   const [clientFilter, setClientFilter] = useState('todos'); 
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [financeFocus, setFinanceFocus] = useState(null);
 
   // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
   // la fuente oficial; este ID solo evita que un dispositivo procese su propia señal dos veces.
@@ -721,13 +722,13 @@ export default function App() {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId });
+  const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus });
   useEffect(() => { 
-      stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId }; 
+      stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus }; 
   });
   
   useEffect(() => {
-    // Entrada centinela: el botón Atrás primero navega dentro de Diverty antes de abandonar la app.
+    // Una sola entrada centinela: Atrás consume capas internas; en Inicio sin capas no se repone y el navegador/app puede salir.
     window.history.pushState({ divertyApp: true }, '', window.location.href);
     const handleBack = () => {
         const s = stateRef.current;
@@ -748,6 +749,7 @@ export default function App() {
             else if (s.expandedFinanceId) { setExpandedFinanceId(null); blocked = true; }
             else if (s.isNotifOpen) { setIsNotifOpen(false); blocked = true; }
             else if (s.isModoOperativo) { setIsModoOperativo(false); blocked = true; }
+            else if (s.financeFocus) { setFinanceFocus(null); blocked = true; }
             else if (tabHistoryRef.current.length > 1) {
                 tabHistoryRef.current.pop();
                 const previousTab = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'inicio';
@@ -832,6 +834,42 @@ export default function App() {
       }, 80);
   }, []);
   
+  const openCuentasPorCobrar = useCallback(() => {
+      setFinanceFocus('cobros');
+      handleTabChange('finanzas');
+      setTimeout(() => {
+          const target = document.getElementById('cuentas-por-cobrar');
+          const mainEl = document.getElementById('main-content');
+          if (target && mainEl) {
+              const top = Math.max(0, target.offsetTop - 20);
+              mainEl.scrollTo({ top, behavior: 'smooth' });
+          } else if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 180);
+  }, [handleTabChange]);
+
+  const handleMarcarCobrado = useCallback((ev) => {
+      const total = utils.safeNum(ev?.total);
+      const pendiente = Math.max(total - utils.safeNum(ev?.abono), 0);
+      if (!ev?.id || pendiente <= 0) return;
+      utils.triggerHaptic('light');
+      setConfirmModal({
+          isOpen: true,
+          message: `¿Marcar como cobrado el saldo de $${pendiente.toFixed(2)} de ${ev.cliente || 'esta reserva'}?`,
+          onConfirm: async () => {
+              try {
+                  await patchEventoAtomic(ev.id, { abono: total });
+                  setEventos(prev => prev.map(item => item.id === ev.id ? { ...item, abono: total } : item));
+                  setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                  showAlert('Pago marcado como cobrado.', true);
+              } catch (err) {
+                  console.error('Error marcando cobro:', err);
+                  setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                  showAlert('No se pudo actualizar el cobro. Intenta nuevamente.', false);
+              }
+          }
+      });
+  }, [patchEventoAtomic, showAlert]);
+
   const updateSettings = useCallback((newSettings) => { 
       setAppSettings(prev => {
          const updated = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
@@ -1759,7 +1797,7 @@ export default function App() {
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-4">Clientes Activos</p><p className="text-[38px] sm:text-[44px] leading-none font-black text-slate-950 tracking-[-0.05em] mt-1.5">{clientsList.length}</p>
                  </div>
               </button>
-              <button type="button" className="text-left group" onClick={() => handleTabChange('finanzas')}>
+              <button type="button" className="text-left group" onClick={openCuentasPorCobrar}>
                  <div className="h-full min-h-[148px] rounded-[24px] p-4 sm:p-5 bg-white/[0.92] backdrop-blur-xl border border-white shadow-[0_14px_35px_rgba(15,23,42,.08)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-rose-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-rose-500/10 text-rose-500 border border-rose-500/10 flex items-center justify-center"><TrendingUp size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-rose-500 transition-colors"/></div>
@@ -2055,7 +2093,7 @@ export default function App() {
              )}
 
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
-                <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '300ms'}}>
+                <div id="cuentas-por-cobrar" className={`flex flex-col gap-5 animate-fadeInUp scroll-mt-6 ${financeFocus === 'cobros' ? 'ring-2 ring-rose-300/60 rounded-[28px] p-2 -m-2' : ''}`} style={{animationDelay: '300ms'}}>
                   <div className="flex justify-between items-center px-2">
                       <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><Clock size={22} className="text-rose-500"/> Cuentas por Cobrar <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Histórico' : financePeriod === 'anio' ? `Año ${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
                       {tieneDeudas && (<button type="button" onClick={handleCopiarCobros} className="text-[10px] font-bold uppercase tracking-widest text-[#7657FF] bg-[#7657FF]/10 hover:bg-[#7657FF]/20 py-2.5 px-5 rounded-[12px] transition-all border border-[#7657FF]/20 flex items-center gap-2"><Copy size={16}/> Copiar Lista</button>)}
@@ -2068,7 +2106,7 @@ export default function App() {
                             {deudasPendientes.map((ev) => (
                                 <div key={ev.id} className="w-full flex justify-between items-center p-5 rounded-[20px] bg-white/80 hover:bg-white transition-all duration-300 border border-slate-200/50">
                                     <div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-extrabold capitalize text-[16px] text-slate-900 truncate tracking-tight">{String(ev.cliente || '')}</p><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mt-1.5">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''}</p></div>
-                                    <div className="text-right shrink-0"><span className="text-rose-500 font-extrabold text-2xl block leading-none mb-2.5 tracking-tight">${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}</span><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-500 transition-colors flex items-center justify-end gap-1.5 ml-auto">Cobrar <MessageCircle size={14}/></button></div>
+                                    <div className="text-right shrink-0"><span className="text-rose-500 font-extrabold text-2xl block leading-none mb-2.5 tracking-tight">${(utils.safeNum(ev.total) - utils.safeNum(ev.abono)).toFixed(2)}</span><div className="flex flex-col gap-2 items-end"><button type="button" onClick={() => handleMarcarCobrado(ev)} className="text-[10px] font-black uppercase tracking-wider text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5"><CheckCircle2 size={14}/> Marcar cobrado</button><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-500 transition-colors flex items-center justify-end gap-1.5">WhatsApp <MessageCircle size={14}/></button></div></div>
                                 </div>
                             ))}
                         </div>
