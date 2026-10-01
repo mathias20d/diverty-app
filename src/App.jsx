@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc, enableIndexedDbPersistence, runTransaction } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
@@ -16,6 +16,89 @@ const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon
 const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', subcontratos: [], costosSeparados: true, total: '', abono: '', estado: 'Pendiente', colisionAprobada: false, vigenciaCotizacion: 7, fechaEmisionCotizacion: '' });
 const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id); const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id); const getProvRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'proveedores', id);
+
+
+const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
+const isEventRef = ref => ref.path.startsWith(`artifacts/${appId}/public/data/eventos/`);
+const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', id);
+const publicSlot = value => {
+  const state = String(value.estado || '').toLowerCase();
+  if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
+  return { fecha: String(value.fecha), hora: String(value.hora || '') };
+};
+const clientStatusRef = id => doc(db,'artifacts',appId,'public','data','reservas_cliente',id);
+const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono','fecha','hora','estado','servicio','total','abono'].map(key => [key,String(value[key] ?? '')]));
+const projectEvent = (writer, ref, value) => {
+  if (value.ownerUid) writer.set(clientStatusRef(ref.id), clientStatus(value));
+  else writer.delete(clientStatusRef(ref.id));
+  const slot = publicSlot(value);
+  if (slot) writer.set(availabilityRef(ref.id), slot);
+  else writer.delete(availabilityRef(ref.id));
+};
+const runTransaction = (database, callback) => rawRunTransaction(database, async tx => {
+  const readValues = new Map();
+  const wrapped = {
+    get: async ref => { const snap = await tx.get(ref); readValues.set(ref.path, snap.exists() ? snap.data() : {}); return snap; },
+    set: (ref, value, options) => {
+      if (options) tx.set(ref, value, options); else tx.set(ref, value);
+      if (isEventRef(ref)) {
+        if (options?.merge && !readValues.has(ref.path)) throw new Error('EVENT_READ_REQUIRED');
+        projectEvent(tx, ref, options?.merge ? {...readValues.get(ref.path), ...value} : value);
+      }
+      return wrapped;
+    },
+    delete: ref => { tx.delete(ref); if (isEventRef(ref)) {tx.delete(availabilityRef(ref.id)); tx.delete(clientStatusRef(ref.id));} return wrapped; }
+  };
+  return callback(wrapped);
+});
+const setDoc = async (ref, value, options) => {
+  if (!isEventRef(ref)) return options ? rawSetDoc(ref, value, options) : rawSetDoc(ref, value);
+  return runTransaction(db, async tx => {
+    if (options?.merge) await tx.get(ref);
+    tx.set(ref, value, options);
+  });
+};
+const deleteDoc = async ref => {
+  if (!isEventRef(ref)) return rawDeleteDoc(ref);
+  const batch = writeBatch(db); batch.delete(ref); batch.delete(availabilityRef(ref.id)); batch.delete(clientStatusRef(ref.id)); await batch.commit();
+};
+let preparationPromise = null;
+let preparationComplete = false;
+async function prepareDivertyData() {
+  if (preparationComplete) return;
+  if (preparationPromise) return preparationPromise;
+  preparationPromise = (async () => {
+    if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
+    const marker = getConfigRef('migracion_segura_v1');
+    if ((await getDoc(marker)).exists()) {preparationComplete=true; return;}
+    // One intentional migration read, never executed by public visitors.
+    const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+    const max = {factura: 0, contrato: 0, cotizacion: 0};
+    const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
+    const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
+    let batch = writeBatch(db), size = 0;
+    for (const row of snap.docs) {
+      const ev = row.data();
+      for (const type of Object.keys(fields)) {
+        const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
+        if (match) max[type] = Math.max(max[type], Number(match[1]));
+      }
+      if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
+      if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
+    }
+    if (size) await batch.commit();
+    await rawRunTransaction(db, async tx => {
+      const types = Object.keys(max);
+      const refs = types.map(type => getConfigRef('contador_' + type));
+      const values = [];
+      for (const ref of refs) values.push(await tx.get(ref));
+      refs.forEach((ref, i) => tx.set(ref, {ultimo: Math.max(max[types[i]], Number(values[i].data()?.ultimo) || 0)}));
+      tx.set(marker, {completada: true, fecha: new Date().toISOString()});
+      tx.set(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'disponibilidad'), {lista: true});
+    });
+  })();
+  try { await preparationPromise; preparationComplete=true; } finally { preparationPromise = null; }
+}
 
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
 const UI = {
@@ -644,8 +727,8 @@ export default function App() {
     const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 500); 
     const unsubscribe = onAuthStateChanged(auth, (user) => { 
         clearTimeout(fallbackTimer); 
-        if (user) { setFirebaseUser(user); setIsAuthenticated(true); } 
-        else { setFirebaseUser(null); setIsAuthenticated(false); } 
+        if (user?.uid === ADMIN_UID) { setFirebaseUser(user); setIsAuthenticated(true); } 
+        else { setFirebaseUser(null); setIsAuthenticated(false); setEventos([]); if (user) signOut(auth); } 
         setIsAuthLoading(false); 
     }, () => { 
         clearTimeout(fallbackTimer); setIsAuthLoading(false); 
@@ -695,8 +778,12 @@ export default function App() {
       setIsHistoryLoading(true);
       try {
           const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
-          const snapshot = await getDocs(eventosRef);
-          const fullData = snapshot.docs.filter(d => !d.data()?._system).map(d => ({ id: d.id, ...d.data() }));
+          let cursor = null; const fullData = [];
+          do {
+            const page = await getDocs(query(eventosRef, orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(200)));
+            fullData.push(...page.docs.filter(d => !d.data()?._system).map(d => ({...d.data(), id:d.id})));
+            cursor = page.size === 200 ? page.docs[page.docs.length-1] : null;
+          } while (cursor);
           setEventos(prev => {
               const map = new Map(prev.map(e => [e.id, e]));
               fullData.forEach(e => map.set(e.id, e));
@@ -712,12 +799,34 @@ export default function App() {
       }
   }, [firebaseUser, showAlert]);
 
-  // Solo las vistas que realmente necesitan años de datos solicitan el historial completo.
   useEffect(() => {
-      const needsHistory = activeTab === 'clientes' || activeTab === 'finanzas' || activeTab === 'proveedores' ||
-          (activeTab === 'eventos' && (viewMode === 'todas' || viewMode === 'pendientes' || viewMode === 'completadas' || !!deferredGlobalSearch || !!filterDate));
-      if (needsHistory) loadFullHistory(true);
-  }, [activeTab, viewMode, deferredGlobalSearch, filterDate, loadFullHistory]);
+    const needsHistory = activeTab === 'clientes' || activeTab === 'proveedores' ||
+      (activeTab === 'finanzas' && financePeriod === 'todos') ||
+      (activeTab === 'eventos' && (viewMode === 'todas' || viewMode === 'pendientes' || viewMode === 'completadas' || !!deferredGlobalSearch || !!filterDate));
+    if (needsHistory) loadFullHistory(false);
+  }, [activeTab, viewMode, deferredGlobalSearch, filterDate, loadFullHistory, financePeriod]);
+
+  const [financeLoadError, setFinanceLoadError] = useState('');
+  const [financeLoading, setFinanceLoading] = useState(false);
+  useEffect(() => {
+    if (!firebaseUser || activeTab !== 'finanzas' || financePeriod === 'todos') return;
+    let cancelled = false;
+    const now = new Date();
+    const year = financePeriod === 'mes' ? now.getFullYear() : selectedFinanceYear;
+    const month = financePeriod === 'mes' ? now.getMonth()+1 : selectedFinanceMonth;
+    const start = financePeriod === 'anio' ? `${year}-01-01` : `${year}-${String(month).padStart(2,'0')}-01`;
+    const end = financePeriod === 'anio' ? `${year}-12-31` : `${year}-${String(month).padStart(2,'0')}-${new Date(year,month,0).getDate()}`;
+    setFinanceLoading(true); setFinanceLoadError('');
+    getDocs(query(collection(db,'artifacts',appId,'public','data','eventos'),where('fecha','>=',start),where('fecha','<=',end)))
+      .then(snap => { if (!cancelled) setEventos(prev => {
+        const map = new Map(prev.filter(e => e.fecha < start || e.fecha > end).map(e => [e.id,e]));
+        snap.docs.filter(d => !d.data()?._system).forEach(d => map.set(d.id,{...d.data(),id:d.id}));
+        return [...map.values()];
+      }); })
+      .catch(() => { if (!cancelled) setFinanceLoadError('No se pudo actualizar el período. Vuelve a seleccionarlo para reintentar.'); })
+      .finally(() => { if (!cancelled) setFinanceLoading(false); });
+    return () => { cancelled = true; };
+  }, [firebaseUser,activeTab,financePeriod,selectedFinanceMonth,selectedFinanceYear]);
 
 
   useEffect(() => {
@@ -1047,7 +1156,7 @@ export default function App() {
   const closeModal = useCallback(() => { utils.triggerHaptic('light'); setModalConfig({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); }, []);
   
   const handleDuplicateEvento = useCallback((e) => { 
-      utils.triggerHaptic('light'); const { id, createdAt, deletedLocally, colisionAprobada, ...rest } = e; const isCotizacionOrig = utils.normalizeText(e.estado).includes('cot'); 
+      utils.triggerHaptic('light'); const { id, createdAt, deletedLocally, colisionAprobada, numeroFactura, numeroContrato, numeroCotizacion, ownerUid, _rev, ...rest } = e; const isCotizacionOrig = utils.normalizeText(e.estado).includes('cot'); 
       setModalConfig({ isOpen: true, isCotizacion: isCotizacionOrig, initialData: { ...rest, abono: '', estado: isCotizacionOrig ? 'Cotización' : 'Pendiente', isDuplicated: true } }); 
       showAlert("Evento duplicado. Verifica los datos y guarda.", true); 
   }, [showAlert]);
@@ -1108,54 +1217,28 @@ export default function App() {
       }
   }, [showAlert, publishSync]);
 
-  // DOCUMENTOS PRO 3.3: numeración compatible sin documento contador.
-  // Se calcula el siguiente consecutivo desde los documentos ya emitidos y se guarda
-  // únicamente en la propia reserva. Si Firestore rechaza ese campo, el PDF abre igual
-  // con un número de respaldo estable para no bloquear Factura/Contrato/Cotización.
+  // Counters and event numbers are committed together; no guessed fallback numbers.
   const ensureDocumentNumber = useCallback(async (eventData, type) => {
-      if (!eventData?.id || type === 'contrato_proveedor') return eventData;
-      const config = {
-          factura: { field: 'numeroFactura', prefix: 'FAC' },
-          contrato: { field: 'numeroContrato', prefix: 'CON' },
-          cotizacion: { field: 'numeroCotizacion', prefix: 'COT' }
-      }[type];
-      if (!config || eventData[config.field]) return eventData;
-
-      let number = '';
-      try {
-          // Solo se ejecuta al emitir por primera vez un documento.
-          // No existe ningún documento técnico/contador adicional.
-          const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-          const re = new RegExp(`^${config.prefix}-(\\d+)$`, 'i');
-          let max = 0;
-          allSnap.docs.forEach(d => {
-              if (d.data()?._system) return;
-              const match = String(d.data()?.[config.field] || '').match(re);
-              if (match) max = Math.max(max, Number(match[1]) || 0);
-          });
-          number = `${config.prefix}-${String(max + 1).padStart(5, '0')}`;
-
-          // Guardar solamente en la reserva, una ubicación que la app ya edita normalmente.
-          try {
-              const nowIso = new Date().toISOString();
-              await setDoc(getDocRef(eventData.id), { [config.field]: number, updatedAt: nowIso }, { merge: true });
-              setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: number, updatedAt: nowIso } : ev));
-              try { await publishSync('evento', eventData.id, 'update'); } catch (_) {}
-              return { ...eventData, [config.field]: number, updatedAt: nowIso };
-          } catch (saveErr) {
-              console.warn('No se pudo persistir el número; se usará en el documento actual:', saveErr);
-              return { ...eventData, [config.field]: number };
-          }
-      } catch (readErr) {
-          console.warn('No se pudo consultar la secuencia; usando número de respaldo:', readErr);
-          // Respaldo determinista: mismo evento + mismo tipo => mismo número visible.
-          let hash = 0;
-          const key = `${type}:${eventData.id}`;
-          for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
-          number = `${config.prefix}-${String((hash % 99999) + 1).padStart(5, '0')}`;
-          return { ...eventData, [config.field]: number };
-      }
-  }, [publishSync]);
+    if (!eventData?.id || type === 'contrato_proveedor') return eventData;
+    const config = {factura: ['numeroFactura','FAC'], contrato:['numeroContrato','CON'], cotizacion:['numeroCotizacion','COT']}[type];
+    if (!config) return eventData;
+    await prepareDivertyData();
+    const result = await rawRunTransaction(db, async tx => {
+      const eventRef = getDocRef(eventData.id), counterRef = getConfigRef('contador_' + type);
+      const eventSnap = await tx.get(eventRef);
+      if (!eventSnap.exists()) throw new Error('EVENT_NOT_FOUND');
+      const current = eventSnap.data();
+      if (current[config[0]]) return {...current, id: eventData.id};
+      const counter = await tx.get(counterRef);
+      if (!counter.exists()) throw new Error('COUNTER_NOT_READY');
+      const next = (Number(counter.data().ultimo) || 0) + 1;
+      const patch = {[config[0]]: `${config[1]}-${String(next).padStart(5,'0')}`, updatedAt: new Date().toISOString(), _rev: (Number(current._rev)||0)+1};
+      tx.set(counterRef, {ultimo: next}); tx.set(eventRef, patch, {merge:true});
+      return {...current, ...patch, id: eventData.id};
+    });
+    setEventos(prev => prev.map(ev => ev.id === result.id ? result : ev));
+    return result;
+  }, []);
 
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
@@ -1262,13 +1345,12 @@ export default function App() {
   const handleViewDoc = useCallback(async (e, type) => {
       try {
           utils.triggerHaptic('light');
-          await loadFullHistory(true);
           const numbered = await ensureDocumentNumber(e, type);
           setPrintData(numbered);
           setPrintType(type);
           setIsPrinting(true);
-      } catch (err) { console.error(err); }
-  }, [loadFullHistory, ensureDocumentNumber]);
+      } catch (err) { console.error(err); showAlert("No se pudo asignar el número. Revisa la conexión y vuelve a intentar.", false); }
+  }, [ensureDocumentNumber, showAlert]);
   
   const handleSaveClientName = useCallback(async (oldName, newName, clientKey) => {
       const newKey = utils.normalizeText(newName);
@@ -1994,7 +2076,8 @@ export default function App() {
             {activeTab === 'eventos' && renderEventos()}
             {activeTab === 'clientes' && renderClientes()}
             {activeTab === 'proveedores' && renderProveedores()}
-            {activeTab === 'finanzas' && renderFinanzas()}
+            {activeTab === 'finanzas' && (financeLoading || isHistoryLoading ? <p className="p-6">Actualizando período…</p> : financeLoadError ? <p className="p-6 text-red-600">{financeLoadError}</p> : renderFinanzas())}
+            {activeTab === 'config' && <div className="m-4 p-4 rounded-xl bg-violet-50 border border-violet-200"><p className="text-sm mb-2">Preparación de disponibilidad pública y numeración: ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button className="px-4 py-2 rounded-lg bg-violet-600 text-white" onClick={async e => { const button=e.currentTarget; button.disabled=true; try { await prepareDivertyData(); showAlert('Preparación completada.',true); } catch(err) {console.error(err); showAlert('Preparación incompleta. Reintenta con conexión.',false);} finally {button.disabled=false;} }}>Preparar actualización</button></div>}
             {activeTab === 'config' && renderConfig()}
           </main>
       </div>
