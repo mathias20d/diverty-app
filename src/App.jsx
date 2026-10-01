@@ -847,6 +847,21 @@ export default function App() {
       }, 180);
   }, [handleTabChange]);
 
+
+
+  const updateSettings = useCallback((newSettings) => { 
+      setAppSettings(prev => {
+         const updated = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
+         utils.setSafeLocal('diverty_settings', JSON.stringify(updated));
+         return updated;
+      });
+  }, []); 
+  
+  const showAlert = useCallback((message, success = false) => { 
+      setToastAlert({ isOpen: true, message: String(message), success }); 
+      setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); 
+  }, []);
+
   const handleMarcarCobrado = useCallback((ev) => {
       const total = utils.safeNum(ev?.total);
       const pendiente = Math.max(total - utils.safeNum(ev?.abono), 0);
@@ -869,19 +884,6 @@ export default function App() {
           }
       });
   }, [patchEventoAtomic, showAlert]);
-
-  const updateSettings = useCallback((newSettings) => { 
-      setAppSettings(prev => {
-         const updated = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
-         utils.setSafeLocal('diverty_settings', JSON.stringify(updated));
-         return updated;
-      });
-  }, []); 
-  
-  const showAlert = useCallback((message, success = false) => { 
-      setToastAlert({ isOpen: true, message: String(message), success }); 
-      setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); 
-  }, []);
   
   const showConfirm = useCallback((message, onConfirm) => { 
       setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); 
