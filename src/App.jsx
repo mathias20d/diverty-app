@@ -1083,13 +1083,18 @@ export default function App() {
       try {
           // Solo al inicializar una secuencia antigua se usa el tamaño actual como piso,
           // para no retroceder desde numeraciones que ya se mostraban en documentos previos.
-          const counterRef = getConfigRef('secuenciasDocumentos');
+          // COMPATIBILIDAD 3.1: usamos el documento serviciosCustom, que ya forma parte
+          // de la configuración autorizada de esta app. Los consecutivos viven en un mapa
+          // independiente y el merge conserva intacto el catálogo de servicios.
+          const counterRef = getConfigRef('serviciosCustom');
           const counterSnap = await getDoc(counterRef);
           let seed = 0;
-          if (!counterSnap.exists() || !utils.safeNum(counterSnap.data()?.[config.counter])) {
+          const storedSequences = counterSnap.exists() ? (counterSnap.data()?._secuenciasDocumentos || {}) : {};
+          if (!utils.safeNum(storedSequences?.[config.counter])) {
               const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
               seed = allSnap.docs.filter(d => {
-                  const est = utils.normalizeText(d.data()?.estado || '');
+                  const data = d.data() || {};
+                  const est = utils.normalizeText(data?.estado || '');
                   const q = est.includes('cotizaci') || est.includes('cot.');
                   return config.isQuote ? q : !q;
               }).length;
@@ -1101,10 +1106,14 @@ export default function App() {
               const remote = evSnap.data();
               if (remote[config.field]) return { id: eventData.id, ...remote };
               const seqSnap = await tx.get(counterRef);
-              const current = seqSnap.exists() ? utils.safeNum(seqSnap.data()?.[config.counter]) : 0;
+              const sequences = seqSnap.exists() ? (seqSnap.data()?._secuenciasDocumentos || {}) : {};
+              const current = utils.safeNum(sequences?.[config.counter]);
               const next = Math.max(current, seed) + 1;
               const number = `${config.prefix}-${String(next).padStart(5, '0')}`;
-              tx.set(counterRef, { [config.counter]: next, updatedAt: new Date().toISOString() }, { merge: true });
+              tx.set(counterRef, {
+                  _secuenciasDocumentos: { ...sequences, [config.counter]: next },
+                  secuenciasUpdatedAt: new Date().toISOString()
+              }, { merge: true });
               tx.set(evRef, { [config.field]: number, updatedAt: new Date().toISOString() }, { merge: true });
               return { id: eventData.id, ...remote, [config.field]: number };
           });
@@ -1112,7 +1121,7 @@ export default function App() {
           return numbered;
       } catch (err) {
           console.error('Error asignando consecutivo:', err);
-          showAlert('No se pudo asignar el número permanente del documento. Revisa la conexión e intenta nuevamente.', false);
+          showAlert('No se pudo asignar el número del documento. Cierra el documento e inténtalo nuevamente.', false);
           throw err;
       }
   }, [showAlert]);
