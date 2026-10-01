@@ -975,8 +975,11 @@ export default function App() {
     eventosActivos.forEach(e => {
       const es = utils.normalizeText(e.estado);
       if (!e.fecha || es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return;
-      if (!map.has(e.fecha)) map.set(e.fecha, []);
-      map.get(e.fecha).push(e);
+      // Normaliza fechas que puedan venir como YYYY-MM-DD, ISO o con espacios.
+      const fechaKey = String(e.fecha).trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaKey)) return;
+      if (!map.has(fechaKey)) map.set(fechaKey, []);
+      map.get(fechaKey).push(e);
     });
     return map;
   }, [eventosActivos]);
@@ -1881,7 +1884,7 @@ export default function App() {
                      return (
                          <div key={d} onClick={() => { utils.triggerHaptic('light'); setFilterDate(dateStr); setViewMode(''); }} className={`min-h-[70px] sm:min-h-[130px] p-2 sm:p-3 rounded-[16px] border transition-all duration-300 ease-out cursor-pointer flex flex-col justify-start items-center sm:items-start hover:-translate-y-1 active:scale-[0.98] ${isSelected ? 'border-[#8B5CF6]/45 bg-[#8B5CF6]/10 shadow-[0_10px_24px_rgba(118,87,255,.10)]' : isToday ? 'bg-[#FF3EA5]/8 border-[#FF3EA5]/30' : 'bg-white/[0.035] border-white/[0.08] hover:border-white/20 hover:bg-white/[0.07] shadow-sm'}`}>
                             <p className={`text-xs sm:text-sm font-bold sm:self-end w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg sm:rounded-xl transition-all ${isSelected ? 'bg-gradient-to-br from-[#A855F7] to-[#4F7CFF] text-white shadow-[0_0_20px_rgba(118,87,255,.35)]' : isToday ? 'bg-[#FF3EA5] text-white shadow-[0_0_18px_rgba(255,62,165,.3)]' : 'text-slate-600 bg-white border border-slate-200/80'}`}>{d}</p>
-                            <div className="mt-2 sm:mt-3 flex flex-wrap sm:flex-col gap-1 sm:gap-1.5 w-full justify-center sm:justify-start flex-1 overflow-hidden">{hasEvents && <div className="hidden sm:flex flex-col gap-1.5 w-full">{dayEvents.slice(0, 2).map((ev, i) => (<div key={i} className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-[8px] truncate bg-white border border-slate-200/80 text-slate-600 w-full shadow-sm" title={ev.cliente}>{String(ev.cliente).split(' ')[0]}</div>))}{dayEvents.length > 2 && <div className="text-[9px] text-[#C8B8FF] font-bold uppercase tracking-wider mt-0.5 text-center w-full">+{dayEvents.length - 2}</div>}</div>}{hasEvents && <div className="sm:hidden flex gap-1.5 mt-1 justify-center flex-wrap">{dayEvents.slice(0, 3).map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[#C084FC]' : 'bg-white/40'}`}></div>)}{dayEvents.length > 3 && <div className="w-1.5 h-1.5 rounded-full bg-white/25"></div>}</div>}</div>
+                            <div className="mt-2 sm:mt-3 flex flex-wrap sm:flex-col gap-1 sm:gap-1.5 w-full justify-center sm:justify-start flex-1 overflow-hidden">{hasEvents && <div className="hidden sm:flex flex-col gap-1.5 w-full">{dayEvents.slice(0, 2).map((ev, i) => (<div key={i} className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-[8px] truncate bg-white border border-slate-200/80 text-slate-600 w-full shadow-sm" title={ev.cliente}>{String(ev.cliente).split(' ')[0]}</div>))}{dayEvents.length > 2 && <div className="text-[9px] text-[#C8B8FF] font-bold uppercase tracking-wider mt-0.5 text-center w-full">+{dayEvents.length - 2}</div>}</div>}{hasEvents && <div className="sm:hidden flex gap-1.5 mt-1 justify-center flex-wrap">{dayEvents.slice(0, 3).map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-[#C084FC]' : 'bg-[#7657FF] shadow-[0_0_6px_rgba(118,87,255,.45)]'}`}></div>)}{dayEvents.length > 3 && <div className="w-1.5 h-1.5 rounded-full bg-[#FF3EA5]/70"></div>}</div>}</div>
                          </div>
                      );
                   })}
