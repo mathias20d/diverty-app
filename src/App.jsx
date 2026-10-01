@@ -253,9 +253,9 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                 <div className="bg-white p-2.5 rounded-[18px] border border-slate-100 shadow-sm w-[138px]"><img src={LOGO_URL} alt="Diverty" className="h-12 w-full object-contain" crossOrigin="anonymous" /></div>
                 <div><p className="text-[10px] font-black tracking-[0.23em] text-[#2563FF] uppercase">Diverty Eventos Panamá</p><p className="text-[9px] font-semibold text-slate-400 mt-1">{appSettings.empresa.email} · {appSettings.empresa.telefono}</p><p className="text-[9px] font-semibold text-slate-400">{appSettings.empresa.web}</p></div>
             </div>
-            <div className="text-right"><div className="inline-block bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl"><p className="text-[8px] font-black text-slate-400 tracking-[0.18em] uppercase">Nº Documento</p><p className="text-[14px] font-black text-slate-900 mt-0.5">{numRef}</p></div><p className="text-[9px] font-bold text-slate-400 mt-2">Emisión: {fechaEmision}</p></div>
+            <div className="text-right relative z-20"><div className="inline-block border border-slate-200 px-4 py-2 rounded-xl" style={{backgroundColor:'#F8FAFC', color:'#0F172A'}}><p className="text-[8px] font-black tracking-[0.18em] uppercase" style={{color:'#94A3B8'}}>Nº Documento</p><p className="text-[14px] font-black mt-0.5" style={{color:'#0F172A', WebkitTextFillColor:'#0F172A'}}>{numRef}</p></div><p className="text-[9px] font-bold mt-2" style={{color:'#94A3B8'}}>Emisión: {fechaEmision}</p></div>
         </div>
-        <div className="mt-5 mb-5 relative z-10"><h1 className="text-[25px] font-black tracking-[0.16em] text-center bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-clip-text text-transparent">{docTitle}</h1>{isContrato && <p className="text-center text-[8px] font-black tracking-[0.3em] text-slate-400 uppercase mt-1">Eventos infantiles y sociales</p>}{isC && <p className="text-center text-[9px] font-bold text-slate-400 mt-1">Propuesta comercial sujeta a disponibilidad al momento de confirmar</p>}</div>
+        <div className="mt-5 mb-5 relative z-10"><h1 className="text-[25px] font-black tracking-[0.16em] text-center" style={{color:'#5B4BE8', WebkitTextFillColor:'#5B4BE8', background:'transparent'}}>{docTitle}</h1>{isContrato && <p className="text-center text-[8px] font-black tracking-[0.3em] text-slate-400 uppercase mt-1">Eventos infantiles y sociales</p>}{isC && <p className="text-center text-[9px] font-bold text-slate-400 mt-1">Propuesta comercial sujeta a disponibilidad al momento de confirmar</p>}</div>
     </>);
 
     const InfoCards = ({ compact=false }) => (<div className={`grid grid-cols-2 gap-4 ${compact?'mb-4':'mb-5'} relative z-10`}>
@@ -313,7 +313,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
     return (<div className="bg-[#172235] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
         <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}`}</style>
         <div className="sticky top-0 bg-slate-900/95 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4"><button type="button" onClick={onClose} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button><div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto"><button type="button" onClick={onPrint} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Printer size={16} className="mr-2"/> Imprimir PDF</button><button type="button" onClick={onShare} className="bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Share2 size={16} className="mr-2"/> Compartir</button><button type="button" onClick={onDownload} className="bg-violet-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Download size={16} className="mr-2"/> Guardar</button></div></div>
-        <div className="w-full flex-1 flex justify-center pb-12 pt-8 overflow-hidden"><div style={{width:`${794*pdfScale}px`,height:`${1123*pdfScale}px`,position:'relative'}}><div id="pdf-wrapper-scaler" style={{transform:`scale(${pdfScale})`,transformOrigin:'top left',width:'794px',position:'absolute',top:0,left:0}}><div id="pdf-content" className="bg-white w-[794px] h-[1123px] relative overflow-hidden font-sans text-slate-800 px-10 pt-9 pb-7 flex flex-col shadow-2xl">{isContratoProv?<ProviderContract/>:isContrato?<Contract/>:isC?<Quote/>:<Invoice/>}</div></div></div></div>
+        <div className="w-full flex-1 flex justify-center pb-12 pt-8 overflow-hidden"><div style={{width:`${794*pdfScale}px`,height:`${1123*pdfScale}px`,position:'relative'}}><div id="pdf-wrapper-scaler" style={{transform:`scale(${pdfScale})`,transformOrigin:'top left',width:'794px',position:'absolute',top:0,left:0}}><div id="pdf-content" className="bg-white w-[794px] h-[1123px] relative overflow-hidden font-sans text-slate-800 px-10 pt-9 pb-7 flex flex-col">{isContratoProv?<ProviderContract/>:isContrato?<Contract/>:isC?<Quote/>:<Invoice/>}</div></div></div></div>
     </div>);
 });
 
@@ -1019,15 +1019,19 @@ export default function App() {
   
   const handleUpdateEstado = useCallback(async (id, nuevoEstado) => {
       utils.triggerHaptic('light');
+      const anterior = eventos.find(e => e.id === id)?.estado || 'Pendiente';
+      const nowIso = new Date().toISOString();
+      setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado, updatedAt: nowIso } : e));
       try {
-          const patch = await patchEventoAtomic(id, { estado: nuevoEstado });
-          setEventos(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+          await setDoc(getDocRef(id), { estado: nuevoEstado, updatedAt: nowIso }, { merge: true });
+          publishSync('evento', id, 'update').catch(() => {});
           showAlert(`Estado actualizado a ${nuevoEstado}`, true);
       } catch (err) {
           console.error("Error actualizando estado:", err);
-          showAlert("No se pudo actualizar el estado. Verifica tu conexión e intenta nuevamente.", false);
+          setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: anterior } : e));
+          showAlert("No se pudo actualizar el estado de la reserva.", false);
       }
-  }, [showAlert, patchEventoAtomic]);
+  }, [eventos, showAlert, publishSync]);
   
   const handleRegistrarAbono = useCallback(async (ev) => {
       utils.triggerHaptic('light');
@@ -1278,7 +1282,10 @@ export default function App() {
     if (wrapper) { oldTransform = wrapper.style.transform; oldPosition = wrapper.style.position; wrapper.style.transform = 'scale(1)'; wrapper.style.position = 'relative'; }
     const oldScrollY = window.scrollY; window.scrollTo(0, 0);
     try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        if (document.fonts?.ready) { try { await document.fonts.ready; } catch (_) {} }
+        const imgs = Array.from(element.querySelectorAll('img'));
+        await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : (printData?.nombre ? String(printData.nombre).replace(/[^a-z0-9]/gi, '_') : 'Documento'); 
         const filePrefix = printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : (printType === 'contrato_proveedor' ? 'Subcontrato' : 'Factura'));
         const fileName = `${filePrefix}_Diverty_${docName}.pdf`;
@@ -1294,7 +1301,10 @@ export default function App() {
     if (wrapper) { oldTransform = wrapper.style.transform; oldPosition = wrapper.style.position; wrapper.style.transform = 'scale(1)'; wrapper.style.position = 'relative'; } 
     const oldScrollY = window.scrollY; window.scrollTo(0, 0);
     try {
-        await new Promise(resolve => setTimeout(resolve, 300)); 
+        if (document.fonts?.ready) { try { await document.fonts.ready; } catch (_) {} }
+        const imgs = Array.from(element.querySelectorAll('img'));
+        await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })));
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); 
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : (printData?.nombre ? String(printData.nombre).replace(/[^a-z0-9]/gi, '_') : 'Documento'); 
         const filePrefix = printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : (printType === 'contrato_proveedor' ? 'Subcontrato' : 'Factura'));
         const fileName = `${filePrefix}_Diverty_${docName}.pdf`;
