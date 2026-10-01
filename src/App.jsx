@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc, enableIndexedDbPersistence, runTransaction } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
@@ -57,10 +57,14 @@ const getClientKey = (obj) => {
 // Finanzas 3.0: separa gastos internos de costos de proveedores.
 // Registros antiguos conservan su cálculo histórico porque antes los subcontratos ya se sumaban dentro de `gastos`.
 const sumSubcontratos = (ev) => Array.isArray(ev?.subcontratos) ? ev.subcontratos.reduce((sum, sc) => sum + utils.safeNum(sc?.costo), 0) : 0;
-const getCostosEvento = (ev) => {
-  const gastosInternos = utils.safeNum(ev?.gastos);
-  return ev?.costosSeparados === true ? gastosInternos + sumSubcontratos(ev) : gastosInternos;
+const getGastosInternosEvento = (ev) => {
+  const gastosGuardados = utils.safeNum(ev?.gastos);
+  if (ev?.costosSeparados === true) return gastosGuardados;
+  // Compatibilidad histórica: antes el costo de proveedores podía estar incluido dentro de `gastos`.
+  return Math.max(0, gastosGuardados - sumSubcontratos(ev));
 };
+const getCostoProveedoresEvento = (ev) => sumSubcontratos(ev);
+const getCostosEvento = (ev) => getGastosInternosEvento(ev) + getCostoProveedoresEvento(ev);
 const normalizeLegacyCostsForEdit = (ev) => {
   if (!ev || ev.costosSeparados === true) return ev;
   const proveedores = sumSubcontratos(ev);
@@ -627,6 +631,44 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
+  // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
+  // la fuente oficial; este ID solo evita que un dispositivo procese su propia señal dos veces.
+  const deviceIdRef = useRef((() => {
+      try {
+          let id = localStorage.getItem('diverty_device_id');
+          if (!id) { id = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; localStorage.setItem('diverty_device_id', id); }
+          return id;
+      } catch { return `dev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
+  })());
+
+  const publishSync = useCallback(async (entityType, entityId, action = 'update') => {
+      if (!firebaseUser) return;
+      try {
+          await setDoc(getConfigRef('syncBus'), {
+              entityType, entityId: entityId || '', action,
+              deviceId: deviceIdRef.current,
+              changedAt: new Date().toISOString(),
+              nonce: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          });
+      } catch (err) { console.warn('No se pudo publicar señal de sincronización:', err); }
+  }, [firebaseUser]);
+
+  // Parche atómico para campos pequeños de una reserva. Incrementa revisión para detectar
+  // si otro teléfono cambió la misma reserva mientras alguien la estaba editando.
+  const patchEventoAtomic = useCallback(async (id, patch) => {
+      let saved = null;
+      await runTransaction(db, async (tx) => {
+          const ref = getDocRef(id);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+          const current = snap.data();
+          saved = { ...patch, _rev: (Number(current._rev) || 0) + 1, updatedAt: new Date().toISOString() };
+          tx.set(ref, saved, { merge: true });
+      });
+      await publishSync('evento', id, 'update');
+      return saved;
+  }, [publishSync]);
+
   useEffect(() => { 
       const handleOnline = () => setIsOnline(true); 
       const handleOffline = () => setIsOnline(false); 
@@ -970,20 +1012,26 @@ export default function App() {
       if (!e.fecha) return false;
       const parts = String(e.fecha).trim().split('-');
       if (parts.length < 2) return false;
-      return parseInt(parts[0], 10) === financeYear && parseInt(parts[1], 10) === financeMonth;
+      const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+      if (financePeriod === 'anio') return y === financeYear;
+      return y === financeYear && m === financeMonth;
     });
   }, [eventosActivos, financePeriod, financeYear, financeMonth]);
 
-  const finanzasData = useMemo(() => { 
-      const tI = evtCalculoBase.reduce((a, e) => a + utils.safeNum(e.total), 0), 
-            tG = evtCalculoBase.reduce((a, e) => a + getCostosEvento(e), 0), 
-            bT = tI - tG, 
-            roi = tI > 0 ? ((bT / tI) * 100).toFixed(0) : 0, 
-            deudaTotalGlobal = evtCalculoBase.reduce((acc, e) => { 
-                const pendiente = utils.safeNum(e.total) - utils.safeNum(e.abono); 
-                return pendiente > 0 ? acc + pendiente : acc; 
-            }, 0); 
-      return { tI, tG, bT, roi, deudaTotalGlobal }; 
+  const finanzasData = useMemo(() => {
+      const facturado = evtCalculoBase.reduce((a, e) => a + utils.safeNum(e.total), 0);
+      const cobrado = evtCalculoBase.reduce((a, e) => a + Math.min(utils.safeNum(e.abono), utils.safeNum(e.total)), 0);
+      const porCobrar = evtCalculoBase.reduce((a, e) => a + Math.max(utils.safeNum(e.total) - utils.safeNum(e.abono), 0), 0);
+      const gastosInternos = evtCalculoBase.reduce((a, e) => a + getGastosInternosEvento(e), 0);
+      const proveedores = evtCalculoBase.reduce((a, e) => a + getCostoProveedoresEvento(e), 0);
+      const costosTotales = gastosInternos + proveedores;
+      const ganancia = facturado - costosTotales;
+      const roi = facturado > 0 ? ((ganancia / facturado) * 100).toFixed(0) : 0;
+      return {
+        facturado, cobrado, porCobrar, gastosInternos, proveedores, costosTotales, ganancia, roi,
+        // Alias para mantener compatibilidad con componentes existentes.
+        tI: facturado, tG: costosTotales, bT: ganancia, deudaTotalGlobal: porCobrar
+      };
   }, [evtCalculoBase]);
   
   const finanzasMes = useMemo(() => { 
@@ -1005,7 +1053,18 @@ export default function App() {
     return { ingresosEsteMesGlobal, diasTranscurridos, diasTotales, proyeccion, progresoMeta }; 
   }, [eventosActivos, financeYear, financeMonth, todayObj, todayTime, appSettings.metaMensual]);
 
-  const chartData = useMemo(() => { 
+  const chartData = useMemo(() => {
+    if (financePeriod === 'anio') {
+      return NOMBRES_MESES.map((nombre, idx) => {
+        const month = idx + 1;
+        const value = eventosActivos.filter(e => {
+          if (!e.fecha || utils.normalizeText(e.estado) === 'cancelado' || utils.normalizeText(e.estado).includes('cot')) return false;
+          const parts = String(e.fecha).split('-');
+          return parseInt(parts[0], 10) === financeYear && parseInt(parts[1], 10) === month;
+        }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
+        return { date: nombre.substring(0,3), value };
+      });
+    }
     if (financePeriod === 'todos') {
       const mesesLabels = []; const d = new Date(todayTime);
       for (let i = 5; i >= 0; i--) { const temp = new Date(d.getFullYear(), d.getMonth() - i, 1); mesesLabels.push({ label: NOMBRES_MESES[temp.getMonth()].substring(0,3), year: temp.getFullYear(), month: temp.getMonth() + 1 }); }
@@ -1069,36 +1128,54 @@ export default function App() {
   const handleUpdateEstado = useCallback(async (id, nuevoEstado) => {
       utils.triggerHaptic('light');
       try {
-          await setDoc(getDocRef(id), { estado: nuevoEstado }, { merge: true });
-          setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado } : e));
+          const patch = await patchEventoAtomic(id, { estado: nuevoEstado });
+          setEventos(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
           showAlert(`Estado actualizado a ${nuevoEstado}`, true);
       } catch (err) {
           console.error("Error actualizando estado:", err);
           showAlert("No se pudo actualizar el estado. Verifica tu conexión e intenta nuevamente.", false);
       }
-  }, [showAlert]);
+  }, [showAlert, patchEventoAtomic]);
   
   const handleRegistrarAbono = useCallback(async (ev) => {
       utils.triggerHaptic('light');
-      const total = utils.safeNum(ev.total);
-      const recibido = utils.safeNum(ev.abono);
-      const pendiente = Math.max(0, total - recibido);
-      if (pendiente <= 0) return showAlert("Esta reserva ya está pagada por completo.", true);
-      const entrada = window.prompt(`Monto del nuevo abono (pendiente: $${pendiente.toFixed(2)}):`);
+      const totalVista = utils.safeNum(ev.total);
+      const recibidoVista = utils.safeNum(ev.abono);
+      const pendienteVista = Math.max(0, totalVista - recibidoVista);
+      if (pendienteVista <= 0) return showAlert("Esta reserva ya está pagada por completo.", true);
+      const entrada = window.prompt(`Monto del nuevo abono (pendiente: $${pendienteVista.toFixed(2)}):`);
       if (entrada === null) return;
       const monto = Number(String(entrada).replace(',', '.').trim());
       if (!Number.isFinite(monto) || monto <= 0) return showAlert("Ingresa un monto válido mayor que 0.", false);
-      if (monto > pendiente) return showAlert(`El abono no puede superar el saldo pendiente de $${pendiente.toFixed(2)}.`, false);
-      const nuevoAbono = Number((recibido + monto).toFixed(2));
       try {
-          await setDoc(getDocRef(ev.id), { abono: nuevoAbono }, { merge: true });
-          setEventos(prev => prev.map(item => item.id === ev.id ? { ...item, abono: nuevoAbono } : item));
+          let nuevoAbono = 0;
+          let nuevoRev = 0;
+          await runTransaction(db, async (tx) => {
+              const ref = getDocRef(ev.id);
+              const snap = await tx.get(ref);
+              if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+              const actual = snap.data();
+              const totalActual = utils.safeNum(actual.total);
+              const recibidoActual = utils.safeNum(actual.abono);
+              const pendienteActual = Math.max(0, totalActual - recibidoActual);
+              if (monto > pendienteActual) {
+                  const error = new Error('PAYMENT_EXCEEDS_BALANCE');
+                  error.pendiente = pendienteActual;
+                  throw error;
+              }
+              nuevoAbono = Number((recibidoActual + monto).toFixed(2));
+              nuevoRev = (Number(actual._rev) || 0) + 1;
+              tx.set(ref, { abono: nuevoAbono, _rev: nuevoRev, updatedAt: new Date().toISOString() }, { merge: true });
+          });
+          await publishSync('evento', ev.id, 'update');
+          setEventos(prev => prev.map(item => item.id === ev.id ? { ...item, abono: nuevoAbono, _rev: nuevoRev, updatedAt: new Date().toISOString() } : item));
           showAlert(`Abono de $${monto.toFixed(2)} registrado correctamente.`, true);
       } catch (err) {
           console.error("Error registrando abono:", err);
+          if (err?.message === 'PAYMENT_EXCEEDS_BALANCE') return showAlert(`Otro dispositivo actualizó esta reserva. El saldo actual es $${utils.safeNum(err.pendiente).toFixed(2)}.`, false);
           showAlert("No se pudo registrar el abono. Verifica tu conexión e intenta nuevamente.", false);
       }
-  }, [showAlert]);
+  }, [showAlert, publishSync]);
 
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
@@ -1131,21 +1208,43 @@ export default function App() {
     
     const guardarReservaFinal = async (id, dataToSave) => {
         try {
-            await setDoc(getDocRef(id), dataToSave);
-            setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=dataToSave; else arr.push(dataToSave); return arr; });
+            let savedData = dataToSave;
+            const isExisting = Boolean(formDataToSave.id && !formDataToSave.isDuplicated);
+            if (isExisting) {
+                await runTransaction(db, async (tx) => {
+                    const ref = getDocRef(id);
+                    const snap = await tx.get(ref);
+                    if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+                    const remote = snap.data();
+                    const remoteRev = Number(remote._rev) || 0;
+                    const openedRev = Number(modalConfig.initialData?._rev) || 0;
+                    if (remoteRev !== openedRev) throw new Error('EDIT_CONFLICT');
+                    savedData = { ...dataToSave, _rev: remoteRev + 1, updatedAt: new Date().toISOString() };
+                    tx.set(ref, savedData);
+                });
+            } else {
+                savedData = { ...dataToSave, _rev: 1, updatedAt: new Date().toISOString() };
+                await setDoc(getDocRef(id), savedData);
+            }
+            await publishSync('evento', id, 'update');
+            setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=savedData; else arr.push(savedData); return arr; });
             closeModal();
             utils.setSafeLocal('diverty_form_draft', '');
             showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
-            if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...dataToSave }); setPrintType('cotizacion'); setIsPrinting(true); }
+            if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...savedData }); setPrintType('cotizacion'); setIsPrinting(true); }
         } catch (err) {
             console.error("Error guardando reserva:", err);
+            if (err?.message === 'EDIT_CONFLICT') {
+                showAlert("Esta reserva cambió en otro dispositivo mientras la editabas. Ciérrala, vuelve a abrirla y aplica tu cambio sobre la versión actualizada.", false);
+                return;
+            }
             showAlert("No se pudo guardar en Firebase. Revisa tu conexión e intenta nuevamente.", false);
         }
     };
     
     if (hasCollision && !safeData.colisionAprobada) showConfirm("Hay otro evento con menos de 3 horas de diferencia. ¿Guardar de todos modos?", () => { safeData.colisionAprobada = true; guardarReservaFinal(evtId, safeData); }); 
     else guardarReservaFinal(evtId, safeData);
-  }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm]);
+  }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm, publishSync]);
 
   const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => {
       utils.triggerHaptic('light');
@@ -1153,6 +1252,7 @@ export default function App() {
           // Eliminación real: evita que registros borrados sigan ocupando la colección
           // y vuelvan a descargarse en futuras sincronizaciones de Firestore.
           await deleteDoc(getDocRef(id));
+          await publishSync('evento', id, 'delete');
           setEventos(prev => prev.filter(e => e.id !== id));
           closeModal();
           showAlert("Registro eliminado.", true);
@@ -1160,7 +1260,7 @@ export default function App() {
           console.error("Error eliminando registro:", err);
           showAlert("No se pudo eliminar el registro. Intenta nuevamente.", false);
       }
-  }), [closeModal, showConfirm, showAlert]);
+  }), [closeModal, showConfirm, showAlert, publishSync]);
   const handleDeleteClient = useCallback((client, eventCount) => { const clientName = client?.nombre || 'Cliente'; const mensaje = eventCount > 0 ? `¿Seguro que deseas ocultar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas ocultar este cliente?`; showConfirm(mensaje, async () => { utils.triggerHaptic('light'); const marker = client?.clientKey ? `key:${client.clientKey}` : clientName; const newHidden = [...new Set([...hiddenClients, marker])]; setHiddenClients(newHidden); if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true }); showAlert("Cliente ocultado del CRM. Sus eventos se conservan.", true); }); }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
   const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => {
       utils.triggerHaptic('light');
@@ -1184,7 +1284,7 @@ export default function App() {
       if(!newName.trim() || utils.normalizeText(oldName) === newKey) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); return; }
       const eventsToUpdate = eventosActivos.filter(e => clientKey ? getClientKey(e) === clientKey : utils.normalizeText(e.cliente) === utils.normalizeText(oldName));
       try {
-          await Promise.all(eventsToUpdate.map(e => setDoc(getDocRef(e.id), { cliente: newName.trim() }, { merge: true })));
+          await Promise.all(eventsToUpdate.map(e => patchEventoAtomic(e.id, { cliente: newName.trim() })));
           const ids = new Set(eventsToUpdate.map(e => e.id));
           setEventos(prev => prev.map(e => ids.has(e.id) ? { ...e, cliente: newName.trim() } : e));
           utils.triggerHaptic('success');
@@ -1194,12 +1294,13 @@ export default function App() {
           console.error("Error actualizando cliente:", err);
           showAlert("No se pudo actualizar el cliente en Firebase.", false);
       }
-  }, [eventosActivos, showAlert]);
+  }, [eventosActivos, showAlert, patchEventoAtomic]);
 
   const handleSaveProveedor = useCallback(async (data) => {
       const provId = data.id || `prov-${Date.now()}`; const payload = { ...data, id: provId };
       try {
-          await setDoc(getProvRef(provId), payload);
+          await setDoc(getProvRef(provId), { ...payload, updatedAt: new Date().toISOString() });
+          await publishSync('proveedor', provId, 'update');
           setProveedores(prev => { const next = prev.filter(p => p.id !== provId); next.push(payload); return next; });
           utils.triggerHaptic('success');
           showAlert(data.id ? "Proveedor actualizado" : "Proveedor registrado", true);
@@ -1208,13 +1309,13 @@ export default function App() {
           console.error("Error guardando proveedor:", err);
           showAlert("No se pudo guardar el proveedor. Intenta nuevamente.", false);
       }
-  }, [showAlert]);
+  }, [showAlert, publishSync]);
 
   const handleDeleteProveedor = useCallback((id) => { showConfirm("¿Eliminar este proveedor de la agenda?", async () => {
       utils.triggerHaptic('light');
-      try { await deleteDoc(getProvRef(id)); setProveedores(prev => prev.filter(p => p.id !== id)); showAlert("Proveedor eliminado", true); }
+      try { await deleteDoc(getProvRef(id)); await publishSync('proveedor', id, 'delete'); setProveedores(prev => prev.filter(p => p.id !== id)); showAlert("Proveedor eliminado", true); }
       catch (err) { console.error("Error eliminando proveedor:", err); showAlert("No se pudo eliminar el proveedor.", false); }
-  }); }, [showConfirm, showAlert]);
+  }); }, [showConfirm, showAlert, publishSync]);
   const sendWhatsAppCall = useCallback((e, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(e, type, empresaSettings || appSettings.empresa), phoneClean = String(e.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
   const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/maps?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
@@ -1259,9 +1360,9 @@ export default function App() {
   }, [printData, printType, appSettings, showAlert]);
 
   const downloadExcel = useCallback(() => {
-    utils.triggerHaptic('success'); const filteredForExport = eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(e.total) <= 0) return false; if (financePeriod === 'todos') return true; const fStr = String(e.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); return parseInt(ey) === financeYear && parseInt(em) === financeMonth; } return false; });
-    let csv = 'Fecha,Cliente,Tipo Evento,Ubicacion,Ingreso Bruto,Gastos,Ganancia Neta,Estado\n'; filteredForExport.forEach(e => { const t = utils.safeNum(e.total), g = getCostosEvento(e); csv += `"${e.fecha||''}","${String(e.cliente||'').replace(/,/g,'')}","${String(e.tipoEvento||'').replace(/,/g,'')}","${String(e.ubicacion||'').replace(/,/g,'')}",${t},${g},${t-g},"${e.estado||''}"\n`; });
-    const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Reporte_Finanzas_Diverty_${financePeriod === 'todos' ? 'Historico' : `${NOMBRES_MESES[financeMonth - 1]}_${financeYear}`}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    utils.triggerHaptic('success'); const filteredForExport = eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(e.total) <= 0) return false; if (financePeriod === 'todos') return true; const fStr = String(e.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); if (financePeriod === 'anio') return parseInt(ey) === financeYear; return parseInt(ey) === financeYear && parseInt(em) === financeMonth; } return false; });
+    let csv = 'Fecha,Cliente,Tipo Evento,Ubicacion,Facturado,Cobrado,Por Cobrar,Gastos Internos,Proveedores,Costos Totales,Ganancia Estimada,Estado\n'; filteredForExport.forEach(e => { const t = utils.safeNum(e.total), cobrado = Math.min(utils.safeNum(e.abono), t), pendiente = Math.max(t - utils.safeNum(e.abono), 0), gi = getGastosInternosEvento(e), prov = getCostoProveedoresEvento(e), g = gi + prov; csv += `"${e.fecha||''}","${String(e.cliente||'').replace(/,/g,'')}","${String(e.tipoEvento||'').replace(/,/g,'')}","${String(e.ubicacion||'').replace(/,/g,'')}",${t},${cobrado},${pendiente},${gi},${prov},${g},${t-g},"${e.estado||''}"\n`; });
+    const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Reporte_Finanzas_Diverty_${financePeriod === 'todos' ? 'Historico' : financePeriod === 'anio' ? `Anual_${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}_${financeYear}`}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
   }, [eventosActivos, financePeriod, financeYear, financeMonth]);
 
   const handleLogin = useCallback(async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, emailInput, passwordInput); utils.triggerHaptic('success'); setEmailInput(''); setPasswordInput(''); } catch (error) { utils.triggerHaptic('warning'); showAlert("Credenciales incorrectas", false); } }, [emailInput, passwordInput, showAlert]);
@@ -1356,8 +1457,40 @@ export default function App() {
 
     getDoc(getConfigRef('serviciosCustom')).then((docSnap) => { if (docSnap.exists()) { setCatalogoPaquetes(docSnap.data().paquetes || []); } }); 
     getDoc(getConfigRef('clientesOcultos')).then((docSnap) => { if (docSnap.exists()) { setHiddenClients(docSnap.data().clients || []); } }); 
+
+    // BUS MULTIDISPOSITIVO: un solo documento avisa qué registro cambió. Los otros equipos
+    // descargan únicamente ese documento, en vez de volver a leer colecciones completas.
+    let syncInitialized = false;
+    const unsubscribeSyncBus = onSnapshot(getConfigRef('syncBus'), async (syncSnap) => {
+        if (!syncSnap.exists()) return;
+        const signal = syncSnap.data() || {};
+        if (!syncInitialized) { syncInitialized = true; return; }
+        if (!signal.entityType || signal.deviceId === deviceIdRef.current) return;
+        try {
+            if (signal.entityType === 'evento') {
+                if (signal.action === 'delete') {
+                    setEventos(prev => prev.filter(e => e.id !== signal.entityId));
+                } else if (signal.entityId) {
+                    const changed = await getDoc(getDocRef(signal.entityId));
+                    if (changed.exists()) {
+                        const fresh = { id: changed.id, ...changed.data() };
+                        setEventos(prev => { const map = new Map(prev.map(e => [e.id, e])); map.set(fresh.id, fresh); return Array.from(map.values()); });
+                    } else setEventos(prev => prev.filter(e => e.id !== signal.entityId));
+                }
+            } else if (signal.entityType === 'proveedor') {
+                if (signal.action === 'delete') setProveedores(prev => prev.filter(p => p.id !== signal.entityId));
+                else if (signal.entityId) {
+                    const changed = await getDoc(getProvRef(signal.entityId));
+                    if (changed.exists()) {
+                        const fresh = { id: changed.id, ...changed.data() };
+                        setProveedores(prev => { const map = new Map(prev.map(p => [p.id, p])); map.set(fresh.id, fresh); return Array.from(map.values()); });
+                    }
+                }
+            }
+        } catch (err) { console.warn('Error sincronizando cambio de otro dispositivo:', err); }
+    }, (err) => console.warn('Sync multidispositivo no disponible:', err));
     
-    return () => { unsubscribeEventos(); unsubscribeCotizaciones(); clearTimeout(timeoutId); };
+    return () => { unsubscribeEventos(); unsubscribeCotizaciones(); unsubscribeSyncBus(); clearTimeout(timeoutId); };
   }, [db, appId, firebaseUser, showAlert]);
 
   const renderInicio = () => {
@@ -1660,13 +1793,19 @@ export default function App() {
                <div><h2 className={UI.title}>Finanzas</h2><p className="text-slate-500 text-sm mt-2 font-medium">Facturación, cobros pendientes, costos internos, proveedores y ganancia.</p></div>
                <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center bg-white/95 backdrop-blur-md p-2 rounded-[24px] border border-slate-200/80 shadow-md w-full sm:w-auto">
                  <div className="flex gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/50">
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('mes');}} className={`px-5 py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'mes' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Este Mes</button>
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('todos');}} className={`px-5 py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'todos' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Histórico</button>
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('seleccionado');}} className={`px-5 py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'seleccionado' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Otro Mes</button>
+                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('mes');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'mes' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Este Mes</button>
+                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('anio'); setSelectedFinanceYear(todayObj.getFullYear());}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'anio' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Año</button>
+                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('todos');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'todos' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Histórico</button>
+                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('seleccionado');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'seleccionado' ? 'bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Otro Mes</button>
                  </div>
                  {financePeriod === 'seleccionado' && (
                    <div className="flex gap-2 items-center animate-fadeIn py-1 px-2 border-l border-slate-200">
                      <select value={selectedFinanceMonth} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceMonth(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#2563FF] cursor-pointer">{NOMBRES_MESES.map((name, idx) => (<option key={idx} value={idx + 1}>{name}</option>))}</select>
+                     <select value={selectedFinanceYear} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceYear(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#2563FF] cursor-pointer">{[2024, 2025, 2026, 2027, 2028].map(y => (<option key={y} value={y}>{y}</option>))}</select>
+                   </div>
+                 )}
+                 {financePeriod === 'anio' && (
+                   <div className="flex gap-2 items-center animate-fadeIn py-1 px-2 border-l border-slate-200">
                      <select value={selectedFinanceYear} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceYear(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#2563FF] cursor-pointer">{[2024, 2025, 2026, 2027, 2028].map(y => (<option key={y} value={y}>{y}</option>))}</select>
                    </div>
                  )}
@@ -1679,38 +1818,44 @@ export default function App() {
                 <div className="absolute -top-32 -left-32 w-64 h-64 bg-[radial-gradient(circle,rgba(37,99,235,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
                 <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-[radial-gradient(circle,rgba(124,58,237,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
                 <div className="text-center relative z-10">
-                  <p className="text-slate-400 font-bold uppercase tracking-[0.25em] text-[11px] mb-4 flex justify-center items-center gap-2"><Star size={16} className="text-amber-400 fill-amber-400 animate-spin-slow"/> BALANCE NETO DE {financePeriod === 'mes' ? 'ESTE MES' : financePeriod === 'todos' ? 'HISTÓRICO' : `${NOMBRES_MESES[financeMonth - 1].toUpperCase()} ${financeYear}`}</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-[0.25em] text-[11px] mb-4 flex justify-center items-center gap-2"><Star size={16} className="text-amber-400 fill-amber-400 animate-spin-slow"/> GANANCIA ESTIMADA DE {financePeriod === 'mes' ? 'ESTE MES' : financePeriod === 'anio' ? `AÑO ${financeYear}` : financePeriod === 'todos' ? 'HISTÓRICO' : `${NOMBRES_MESES[financeMonth - 1].toUpperCase()} ${financeYear}`}</p>
                   <h1 className={`text-6xl sm:text-7xl md:text-8xl font-black mb-12 tracking-tighter ${finanzasData.bT >= 0 ? 'text-slate-900' : 'text-rose-500'}`}>${finanzasData.bT.toFixed(0)}<span className="text-3xl sm:text-4xl text-slate-300">.{(finanzasData.bT % 1).toFixed(2).substring(2)}</span></h1>
                   
-                  <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-8 sm:gap-16 border-t border-slate-200/60 pt-10 mt-2">
-                    <div className="flex items-center gap-4 bg-[#2563FF]/5 px-5 py-3 rounded-2xl border border-[#2563FF]/10 shadow-sm flex-1 sm:flex-initial"><IconBox icon={ArrowUpRight} color="emerald" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shadow-none" /><div className="text-left"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-1.5">Total Facturado</p><p className="text-emerald-500 font-black text-2xl leading-none tracking-tight">${finanzasData.tI.toFixed(2)}</p></div></div>
-                    <div className="flex items-center gap-4 bg-rose-500/5 px-5 py-3 rounded-2xl border border-rose-500/10 shadow-sm flex-1 sm:flex-initial"><IconBox icon={ArrowDownRight} color="rose" className="bg-rose-500/10 text-rose-500 border-rose-500/20 shadow-none" /><div className="text-left"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-1.5">Costos Totales</p><p className="text-rose-500 font-black text-2xl leading-none tracking-tight">-${finanzasData.tG.toFixed(2)}</p></div></div>
-                    <div className="flex items-center gap-4 bg-[#7C3AED]/5 px-5 py-3 rounded-2xl border border-[#7C3AED]/10 shadow-sm flex-1 sm:flex-initial"><IconBox icon={BarChart3} color="purple" className="bg-purple-500/10 text-[#7C3AED] border-purple-500/20 shadow-none" /><div className="text-left"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-1.5">Margen (ROI)</p><p className="text-[#2563FF] font-black text-2xl leading-none tracking-tight">{finanzasData.roi}%</p></div></div>
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 border-t border-slate-200/60 pt-8 mt-2">
+                    <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Facturado</p><p className="text-emerald-600 font-black text-2xl tracking-tight">${finanzasData.facturado.toFixed(2)}</p></div>
+                    <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-100 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Cobrado</p><p className="text-[#2563FF] font-black text-2xl tracking-tight">${finanzasData.cobrado.toFixed(2)}</p></div>
+                    <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-100 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Por cobrar</p><p className="text-rose-500 font-black text-2xl tracking-tight">${finanzasData.porCobrar.toFixed(2)}</p></div>
+                    <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-100 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Gastos internos</p><p className="text-amber-600 font-black text-2xl tracking-tight">-${finanzasData.gastosInternos.toFixed(2)}</p></div>
+                    <div className="bg-purple-50/70 p-4 rounded-2xl border border-purple-100 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Proveedores</p><p className="text-[#7C3AED] font-black text-2xl tracking-tight">-${finanzasData.proveedores.toFixed(2)}</p></div>
+                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 text-left"><p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mb-1.5">Margen estimado</p><p className="text-slate-900 font-black text-2xl tracking-tight">{finanzasData.roi}%</p></div>
                   </div>
                 </div>
              </div>
 
              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 animate-fadeInUp" style={{animationDelay: '100ms'}}>
                <div className={`${UI.card} p-6 sm:p-8 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Ganancia Hoy</p><p className="text-3xl font-extrabold text-emerald-500 tracking-tight">${animatedGananciaHoy.toFixed(0)}</p></div>
-               <div className={`${UI.card} p-6 sm:p-8 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Por Cobrar Total</p><p className="text-3xl font-extrabold text-rose-500 tracking-tight">${finanzasData.deudaTotalGlobal.toFixed(0)}</p></div>
+               <div className={`${UI.card} p-6 sm:p-8 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Por Cobrar Período</p><p className="text-3xl font-extrabold text-rose-500 tracking-tight">${finanzasData.deudaTotalGlobal.toFixed(0)}</p></div>
                <div className={`col-span-2 ${UI.card} p-6 sm:p-8 flex items-end justify-between gap-4 h-[120px]`}>
                  <div className="flex-1 flex justify-between items-end h-full gap-2 sm:gap-3">
                    {chartData.map((d, i) => { const hPercent = (d.value / maxChartVal) * 100; return (<div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative"><div className="absolute -top-8 bg-slate-900 text-white text-[9px] font-extrabold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap shadow-md">${d.value.toFixed(0)}</div><div className="w-full bg-slate-100/50 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-slate-200/80 h-[70px]"><div className="absolute bottom-0 w-full bg-gradient-to-t from-[#2563FF] to-[#7C3AED] transition-all duration-1000 ease-out" style={{height: `${hPercent}%`}}></div></div><span className="text-[9px] font-bold uppercase text-slate-400 tracking-[0.15em]">{d.date}</span></div>) })}
                  </div>
-                 <div className="pl-6 border-l border-slate-200/80 flex flex-col justify-center h-full"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-2 leading-none">Total Período</p><p className="text-2xl font-black text-slate-900 tracking-tight leading-none">${totalGanancia.toFixed(0)}</p></div>
+                 <div className="pl-6 border-l border-slate-200/80 flex flex-col justify-center h-full"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-2 leading-none">Ganancia Período</p><p className="text-2xl font-black text-slate-900 tracking-tight leading-none">${totalGanancia.toFixed(0)}</p></div>
                </div>
              </div>
 
+             {financePeriod !== 'anio' && financePeriod !== 'todos' && (
              <div className={`${UI.card} p-6 sm:p-8 animate-fadeInUp`} style={{animationDelay: '200ms'}}>
                <div className="flex justify-between items-end mb-6"><div><h4 className="font-extrabold text-2xl text-slate-900 tracking-tight flex items-center gap-3"><Award size={28} className="text-amber-500"/> Meta del Período</h4><p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500 mt-2">{financePeriod === 'todos' ? 'Progreso histórico acumulado' : `Día ${finanzasMes.diasTranscurridos} de ${finanzasMes.diasTotales} del mes`}</p></div><div className="text-right"><span className="text-4xl font-black text-emerald-500 tracking-tight">${finanzasMes.ingresosEsteMesGlobal.toFixed(0)} <span className="text-xl font-bold text-slate-400">/ ${appSettings.metaMensual}</span></span></div></div>
                <div className="w-full bg-slate-200/80 rounded-full h-3 mb-5 overflow-hidden"><AnimatedProgress value={finanzasMes.progresoMeta} /></div>
                <div className={UI.flexBetween}><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600 bg-slate-100/80 px-3.5 py-1.5 rounded-[10px] border border-slate-200/50 shadow-sm">{finanzasMes.progresoMeta.toFixed(1)}% Alcanzado</p>{financePeriod !== 'todos' && (<p className={`text-[11px] font-bold uppercase tracking-[0.1em] px-3.5 py-1.5 rounded-[10px] border shadow-sm ${finanzasMes.proyeccion >= appSettings.metaMensual ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-500 border-rose-200'}`}>Proyectado: ${finanzasMes.proyeccion.toFixed(0)}</p>)}</div>
              </div>
 
+             )}
+
              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
                 <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '300ms'}}>
                   <div className="flex justify-between items-center px-2">
-                      <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><Clock size={22} className="text-rose-500"/> Cuentas por Cobrar <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Histórico' : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
+                      <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><Clock size={22} className="text-rose-500"/> Cuentas por Cobrar <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Histórico' : financePeriod === 'anio' ? `Año ${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
                       {tieneDeudas && (<button type="button" onClick={handleCopiarCobros} className="text-[10px] font-bold uppercase tracking-widest text-[#2563FF] bg-[#2563FF]/10 hover:bg-[#2563FF]/20 py-2.5 px-5 rounded-[12px] transition-all border border-[#2563FF]/20 flex items-center gap-2"><Copy size={16}/> Copiar Lista</button>)}
                   </div>
                   <div className={`${UI.card} overflow-hidden flex flex-col h-[400px] p-0`}>
@@ -1730,7 +1875,7 @@ export default function App() {
                 </div>
                 <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '400ms'}}>
                   <div className="flex justify-between items-center px-2">
-                      <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-500"/> Detalle de Eventos <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Todos' : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
+                      <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-500"/> Detalle de Eventos <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Todos' : financePeriod === 'anio' ? `Año ${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
                   </div>
                   <div className={`${UI.card} overflow-hidden flex flex-col h-[400px] p-0`}>
                       {evtCalculoBase.length === 0 ? (
