@@ -218,246 +218,103 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     );
 });
 
-const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, eventosActivos }) {
+const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings }) {
     const isC = printType === 'cotizacion', isContrato = printType === 'contrato', isContratoProv = printType === 'contrato_proveedor';
-    const cli = String(printData.cliente || printData.nombre || ''), tel = String(printData.telefono || ''), emailStr = String(printData.email || ''), rucStr = String(printData.ruc || ''), ubi = String(printData.ubicacion || 'Por definir'), dir = String(printData.direccion || '');
-    const fechaDoc = printData.fecha ? String(printData.fecha).split('-').reverse().join('/') : utils.getLocalYYYYMMDD(new Date()).split('-').reverse().join('/'), horaStr = utils.formatTime12h(printData.hora);
-    const tot = utils.safeNum(printData.total), trn = utils.safeNum(printData.transporte), abo = utils.safeNum(printData.abono), sub = (tot - trn).toFixed(2);
-    const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio || printData.especialidad || 'Servicio General'), precio: sub, cantidad: 1, descripcion: String(printData.comentarios || '') }];
-    const idx = isContratoProv ? 1 : [...eventosActivos].sort((a,b)=>new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime()).findIndex(ev=>ev.id===printData.id);
-    const numRef = isC ? `COT-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : (isContratoProv ? `SUB-${String(Math.floor(Math.random()*9000)+1000)}` : (isContrato ? `CON-${String(idx!==-1?idx+1:1).padStart(5,'0')}` : `FAC-${String(idx!==-1?idx+1:1).padStart(5,'0')}`));
+    const cli = String(printData.cliente || printData.nombre || ''), tel = String(printData.telefono || ''), emailStr = String(printData.email || ''), rucStr = String(printData.ruc || '');
+    const ubi = String(printData.ubicacion || 'Por definir'), dir = String(printData.direccion || '');
+    const fechaEvento = printData.fecha ? String(printData.fecha).split('-').reverse().join('/') : 'Por definir';
+    const fechaEmision = utils.getLocalYYYYMMDD(new Date()).split('-').reverse().join('/');
+    const horaStr = utils.formatTime12h(printData.hora), tot = utils.safeNum(printData.total), trn = utils.safeNum(printData.transporte), abo = utils.safeNum(printData.abono);
+    const saldo = Math.max(0, tot - abo), subServicios = Math.max(0, tot - trn);
+    const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio || printData.especialidad || 'Servicio General'), precio: subServicios, cantidad: 1, descripcion: String(printData.comentarios || '') }];
+    const numRef = isC ? (printData.numeroCotizacion || 'COT-PENDIENTE') : isContratoProv ? (printData.numeroSubcontrato || 'SUB-PENDIENTE') : isContrato ? (printData.numeroContrato || 'CON-PENDIENTE') : (printData.numeroFactura || 'FAC-PENDIENTE');
+    const docTitle = isC ? 'COTIZACIÓN' : isContratoProv ? 'SUBCONTRATO DE SERVICIOS' : isContrato ? 'CONTRATO DE SERVICIO' : 'FACTURA COMERCIAL';
 
-    return (
-      <div className="bg-[#1E293B] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
-        <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:auto;margin:0mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}.avoid-break{page-break-inside:avoid;break-inside:avoid;}`}</style>
-        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4">
-            <button type="button" onClick={onClose} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto transition-colors"><X size={20} className="mr-1"/> Atrás</button>
-            <div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto">
-                <button type="button" onClick={onPrint} className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm mr-2 transition-all active:scale-95"><Printer size={16} className="mr-2"/> Imprimir PDF</button>
-                <button type="button" onClick={onShare} className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm transition-all active:scale-95"><Share2 size={16} className="mr-2"/> Compartir</button>
-                <button type="button" onClick={onDownload} className="bg-gradient-to-r from-violet-500 to-indigo-600 hover:from-violet-400 hover:to-indigo-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm ml-2 transition-all active:scale-95"><Download size={16} className="mr-2"/> Guardar</button>
+    const serviceInfo = (servicio) => {
+        const cant = Number(servicio.cantidad) || 1;
+        const text = [servicio.duracion, servicio.duracionTexto, servicio.descripcion, ...(Array.isArray(servicio.incluye) ? servicio.incluye : [])].filter(Boolean).join(' ');
+        const m = text.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b/i);
+        const n = utils.normalizeText(servicio.nombre || '');
+        const fallback = n.includes('plan recreativo') ? 2 : (n.includes('plan diverty') ? 3 : 0);
+        const hrs = utils.safeNum(servicio.duracionHoras) || (m ? Number(String(m[1]).replace(',', '.')) : 0) || fallback;
+        const hourly = utils.normalizeText(servicio.tipoCobro || '') === 'hora' || servicio.isHourly === true;
+        const duracion = hourly ? `${cant} ${cant === 1 ? 'Hora' : 'Horas'}` : (hrs > 0 ? `${hrs} ${hrs === 1 ? 'Hora' : 'Horas'}` : '—');
+        const descLines = String(servicio.descripcion || '').split('\n').map(x=>x.replace(/^[•-]\s*/, '').trim()).filter(Boolean);
+        const includeLines = Array.isArray(servicio.incluye) ? servicio.incluye.map(x=>String(x).trim()).filter(Boolean) : [];
+        const detalles = [...new Set([...includeLines, ...descLines])].slice(0, 7);
+        return { cant, duracion, detalles, precio: utils.safeNum(servicio.precio) };
+    };
+
+    const BrandHeader = () => (<>
+        <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5]" />
+        <div className="absolute -top-24 -right-20 w-80 h-80 rounded-full bg-gradient-to-br from-[#FF3EA5]/10 via-[#7C3AED]/8 to-[#2563FF]/5 pointer-events-none" />
+        <div className="flex justify-between items-start relative z-10">
+            <div className="flex items-center gap-4">
+                <div className="bg-white p-2.5 rounded-[18px] border border-slate-100 shadow-sm w-[138px]"><img src={LOGO_URL} alt="Diverty" className="h-12 w-full object-contain" crossOrigin="anonymous" /></div>
+                <div><p className="text-[10px] font-black tracking-[0.23em] text-[#2563FF] uppercase">Diverty Eventos Panamá</p><p className="text-[9px] font-semibold text-slate-400 mt-1">{appSettings.empresa.email} · {appSettings.empresa.telefono}</p><p className="text-[9px] font-semibold text-slate-400">{appSettings.empresa.web}</p></div>
             </div>
+            <div className="text-right"><div className="inline-block bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl"><p className="text-[8px] font-black text-slate-400 tracking-[0.18em] uppercase">Nº Documento</p><p className="text-[14px] font-black text-slate-900 mt-0.5">{numRef}</p></div><p className="text-[9px] font-bold text-slate-400 mt-2">Emisión: {fechaEmision}</p></div>
         </div>
-        <div className="w-full flex-1 flex justify-center pb-12 pt-8 overflow-hidden">
-            <div style={{ width: `${794 * pdfScale}px`, height: `${1123 * pdfScale}px`, position: 'relative' }}>
-                <div id="pdf-wrapper-scaler" style={{ transform: `scale(${pdfScale})`, transformOrigin: 'top left', width: '794px', position: 'absolute', top: 0, left: 0 }}>
-                    <div id="pdf-content" className="bg-[#FFFFFF] w-[794px] min-h-[1123px] h-auto relative overflow-hidden font-sans text-slate-800 p-12 flex flex-col shadow-2xl rounded-sm">
-                        <div className="absolute top-0 right-0 w-[350px] h-[350px] bg-gradient-to-bl from-[#2563FF]/8 to-[#7C3AED]/8 rounded-bl-[180px] z-0 pointer-events-none" />
-                        <div className="absolute top-[280px] left-[-100px] w-[300px] h-[300px] bg-radial-gradient(circle,rgba(255,62,165,0.04)_0%,transparent_70%) z-0 pointer-events-none" />
-                        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-[#7C3AED]/5 to-[#2563FF]/5 rounded-tr-[240px] z-0 pointer-events-none" />
-                        
-                        <div className="flex flex-col mb-8 relative z-10">
-                            <div className="flex justify-between items-start w-full">
-                                <div className="flex flex-col gap-3">
-                                    <div className="bg-white/80 p-3.5 rounded-[22px] shadow-sm border border-slate-100 inline-block w-40">
-                                        <img src={LOGO_URL} alt="Diverty" className="h-12 w-full object-contain" crossOrigin="anonymous" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-xs font-black uppercase tracking-[0.25em] text-[#2563FF] mb-0.5">Diverty Eventos Panamá</h2>
-                                        <p className="text-[10px] text-slate-500 font-semibold">{appSettings.empresa.email} &nbsp;|&nbsp; {appSettings.empresa.telefono}</p>
-                                    </div>
-                                </div>
-                                <div className="text-right flex flex-col items-end">
-                                    <div className="bg-[#2563FF]/5 border border-[#2563FF]/15 px-4 py-2 rounded-2xl mb-2">
-                                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#2563FF]">Nº Documento</span>
-                                        <p className="text-base font-black text-slate-900 leading-none mt-1">{numRef}</p>
-                                    </div>
-                                    <p className="text-[11px] text-slate-500 font-bold tracking-wide">Fecha de Emisión: {fechaDoc}</p>
-                                </div>
-                            </div>
-                            <div className="relative mt-8">
-                                <div className="absolute inset-0 flex items-center" aria-hidden="true"><div className="w-full border-t border-slate-100"></div></div>
-                                <div className="relative flex justify-center">
-                                    <span className="bg-white px-6 text-2xl font-black text-slate-900 tracking-[0.2em] uppercase bg-gradient-to-r from-[#2563FF] to-[#7C3AED] bg-clip-text text-transparent">
-                                        {isC ? 'COTIZACIÓN' : (isContratoProv ? 'SUBCONTRATO DE SERVICIOS' : (isContrato ? 'CONTRATO DE PRESTACIÓN DE SERVICIOS' : 'FACTURA COMERCIAL'))}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+        <div className="mt-5 mb-5 relative z-10"><h1 className="text-[25px] font-black tracking-[0.16em] text-center bg-gradient-to-r from-[#2563FF] via-[#7C3AED] to-[#FF3EA5] bg-clip-text text-transparent">{docTitle}</h1>{isContrato && <p className="text-center text-[8px] font-black tracking-[0.3em] text-slate-400 uppercase mt-1">Eventos infantiles y sociales</p>}{isC && <p className="text-center text-[9px] font-bold text-slate-400 mt-1">Propuesta comercial sujeta a disponibilidad al momento de confirmar</p>}</div>
+    </>);
 
-                        <div className="flex justify-between gap-6 mb-8 relative z-10">
+    const InfoCards = ({ compact=false }) => (<div className={`grid grid-cols-2 gap-4 ${compact?'mb-4':'mb-5'} relative z-10`}>
+        <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#7C3AED] mb-3 flex items-center gap-1.5"><Users size={12}/> Datos del cliente</p><div className="space-y-1.5 text-[9.5px]"><p><span className="text-slate-400 font-bold">Nombre:</span> <strong className="float-right text-slate-800 max-w-[190px] truncate">{cli || '—'}</strong></p><p><span className="text-slate-400 font-bold">Teléfono:</span> <strong className="float-right text-slate-800">{tel || '—'}</strong></p>{emailStr&&<p><span className="text-slate-400 font-bold">Correo:</span> <strong className="float-right text-slate-800 max-w-[190px] truncate">{emailStr}</strong></p>}{rucStr&&<p><span className="text-slate-400 font-bold">Cédula/RUC:</span> <strong className="float-right text-slate-800 max-w-[180px] truncate">{rucStr}</strong></p>}</div></div>
+        <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#2563FF] mb-3 flex items-center gap-1.5"><Calendar size={12}/> Detalles del evento</p><div className="space-y-1.5 text-[9.5px]"><p><span className="text-slate-400 font-bold">Fecha:</span> <strong className="float-right text-slate-800">{fechaEvento}</strong></p><p><span className="text-slate-400 font-bold">Horario:</span> <strong className="float-right text-slate-800">{horaStr || 'Por definir'}</strong></p><p><span className="text-slate-400 font-bold">Zona:</span> <strong className="float-right text-slate-800 max-w-[180px] truncate">{ubi}</strong></p>{dir&&<p className="pt-1 text-[8.5px] text-slate-500 italic line-clamp-2 text-right">{dir}</p>}</div></div>
+    </div>);
 
-                            <div className="w-1/2 bg-slate-50/70 p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-[10px] font-black text-[#7C3AED] uppercase tracking-[0.2em] mb-4 pb-2 border-b border-slate-200/60 flex items-center gap-2">
-                                        {isContratoProv ? <Briefcase size={14} className="text-[#7C3AED]"/> : <Users size={14} className="text-[#7C3AED]"/>} 
-                                        {isContratoProv ? 'Datos del Contratante' : 'Información del Cliente'}
-                                    </h3>
-                                    <div className="space-y-2.5 text-[12px] font-semibold text-slate-600">
-                                        <div className="flex justify-between gap-4"><span className="text-slate-400">Nombre:</span><span className="text-slate-950 font-extrabold truncate w-40 text-right capitalize">{isContratoProv ? 'DIVERTY EVENTOS PANAMÁ' : cli}</span></div>
-                                        <div className="flex justify-between gap-4"><span className="text-slate-400">Teléfono:</span><span className="text-slate-950 font-extrabold text-right">{isContratoProv ? appSettings.empresa.telefono : tel}</span></div>
-                                        {(isContratoProv ? appSettings.empresa.email : emailStr) && <div className="flex justify-between gap-4"><span className="text-slate-400">Email:</span><span className="text-slate-950 font-extrabold truncate w-40 text-right break-all">{isContratoProv ? appSettings.empresa.email : emailStr}</span></div>}
-                                        {(isContratoProv ? appSettings.empresa.ruc : rucStr) && <div className="flex justify-between gap-4"><span className="text-slate-400">RUC / DV:</span><span className="text-slate-950 font-extrabold text-right">{isContratoProv ? appSettings.empresa.ruc : rucStr}</span></div>}
-                                         {!isContratoProv && printData.empresa && <div className="flex justify-between gap-4"><span className="text-slate-400">Empresa:</span><span className="text-slate-950 font-extrabold text-right">{printData.empresa}</span></div>}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="w-1/2 bg-slate-50/70 p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                                <div>
-                                    <h3 className="text-[10px] font-black text-[#2563FF] uppercase tracking-[0.2em] mb-4 pb-2 border-b border-slate-200/60 flex items-center gap-2">
-                                        {isContratoProv ? <Truck size={14} className="text-[#2563FF]"/> : <MapPin size={14} className="text-[#2563FF]"/>} 
-                                        {isContratoProv ? 'Datos del Proveedor' : 'Logística de Celebración'}
-                                    </h3>
-                                    <div className="space-y-2.5 text-[12px] font-semibold text-slate-600">
-                                        {isContratoProv ? (
-                                            <>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">Nombre/Empresa:</span><span className="text-slate-950 font-extrabold text-right">{cli}</span></div>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">Especialidad:</span><span className="text-slate-950 font-extrabold text-right">{printData.especialidad || 'Servicios Varios'}</span></div>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">WhatsApp:</span><span className="text-slate-950 font-extrabold truncate w-32 text-right">{tel}</span></div>
-                                                {printData.costoBase && <div className="flex justify-between gap-4"><span className="text-slate-400">Costo Acordado:</span><span className="text-slate-950 font-extrabold text-right">${printData.costoBase}</span></div>}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">Fecha del Evento:</span><span className="text-slate-950 font-extrabold text-right">{fechaDoc}</span></div>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">Horario Reservado:</span><span className="text-slate-950 font-extrabold text-right">{horaStr}</span></div>
-                                                <div className="flex justify-between gap-4"><span className="text-slate-400">Zona / Ciudad:</span><span className="text-slate-950 font-extrabold truncate w-32 text-right">{ubi}</span></div>
-                                                {dir && <div className="text-[11px] text-slate-500 italic mt-1 line-clamp-2 text-right">{dir}</div>}
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+    const FooterBrand = () => (<div className="mt-auto pt-3 relative z-10"><div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-3"/><div className="flex justify-between items-center"><p className="text-[8px] font-bold text-slate-400">Diverty Eventos Panamá · {appSettings.empresa.telefono}</p><p className="text-[10px] font-black italic text-[#7C3AED]">¡Hacemos de tu evento un momento inolvidable!</p></div></div>);
 
-                        {isContratoProv ? (
-                            <div className="mb-6 flex-1 relative z-10 bg-slate-50/50 p-6 border border-slate-100 rounded-2xl">
-                                <h4 className="font-black text-slate-900 uppercase tracking-widest mb-4 text-[11px] flex items-center gap-2"><Handshake size={16} className="text-[#2563FF]"/> Acuerdos y Condiciones de Subcontratación</h4>
-                                <div className="space-y-4 text-[11px] text-slate-700 leading-relaxed text-justify">
-                                    <p>1. <strong>OBJETO DEL CONTRATO:</strong> DIVERTY EVENTOS contrata los servicios de <strong>{cli}</strong> en calidad de proveedor independiente para prestar servicios de {printData.especialidad || 'entretenimiento/logística'} en los eventos que le sean formalmente asignados.</p>
-                                    <p>2. <strong>INDEPENDENCIA:</strong> El PROVEEDOR actúa de manera independiente y no existe relación laboral, de subordinación, ni exclusividad entre las partes. El proveedor utilizará sus propios equipos y personal si aplica.</p>
-                                    <p>3. <strong>PAGOS Y HONORARIOS:</strong> Los pagos se realizarán de acuerdo a la tarifa acordada previamente para cada evento específico. DIVERTY EVENTOS se compromete a cancelar el monto acordado según las políticas de la empresa (transferencia o efectivo) tras la culminación satisfactoria del servicio.</p>
-                                    <p>4. <strong>PUNTUALIDAD Y CALIDAD:</strong> El PROVEEDOR se compromete a llegar con al menos 30 minutos de anticipación a la hora estipulada de cada evento y mantener el estándar de calidad, respeto y animación que caracteriza a DIVERTY EVENTOS ante el cliente final.</p>
-                                    <p>5. <strong>CONFIDENCIALIDAD:</strong> Queda estrictamente prohibido que el PROVEEDOR comparta sus contactos directos (tarjetas, redes sociales personales) con el cliente final durante un evento de DIVERTY EVENTOS, para proteger la relación comercial de la empresa.</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="mb-6 flex-1 relative z-10">
-                                <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white">
-                                    <table className="w-full text-left text-[12px]">
-                                        <thead className="bg-gradient-to-r from-slate-50 to-[#2563FF]/5 border-b border-slate-100 text-slate-700">
-                                            <tr>
-                                                <th className="py-4 px-5 font-black uppercase text-center tracking-widest w-1/3 text-[9px] text-slate-500">Paquete / Servicio</th>
-                                                <th className="py-4 px-5 font-black uppercase tracking-widest text-left border-l border-slate-100 w-1/2 text-[9px] text-slate-500">Especificaciones y Actividades</th>
-                                                <th className="py-4 px-5 font-black uppercase text-center tracking-widest border-l border-slate-100 w-1/6 text-[9px] text-slate-500">Precio Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {sA.map((s, i) => { 
-                                                const cant = Number(s.cantidad) || 1, precioUnitario = utils.safeNum(s.precio) / cant;
-                                                // Cantidad y duración NO son lo mismo. Para paquetes, la duración
-                                                // viene del propio plan (campo explícito o texto de descripción/incluye).
-                                                const textoDuracion = [s.duracion, s.duracionTexto, s.descripcion, ...(Array.isArray(s.incluye) ? s.incluye : [])].filter(Boolean).join(' ');
-                                                const matchDuracion = textoDuracion.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b/i);
-                                                const nombreNormalizado = utils.normalizeText(s.nombre || '');
-                                                const duracionFallback = nombreNormalizado.includes('plan recreativo') ? 2 : (nombreNormalizado.includes('plan diverty') ? 3 : 0);
-                                                const duracionHoras = utils.safeNum(s.duracionHoras) || (matchDuracion ? Number(String(matchDuracion[1]).replace(',', '.')) : 0) || duracionFallback;
-                                                const esPorHora = utils.normalizeText(s.tipoCobro || '') === 'hora' || s.isHourly === true;
-                                                const etiquetaServicio = esPorHora
-                                                    ? `${cant} ${cant === 1 ? 'Hora' : 'Horas'}`
-                                                    : (duracionHoras > 0
-                                                        ? `${duracionHoras} ${duracionHoras === 1 ? 'Hora' : 'Horas'}`
-                                                        : (cant > 1 ? `x${cant} unidades` : ''));
-                                                return (
-                                                    <tr key={i} className="avoid-break hover:bg-slate-50/50 transition-colors">
-                                                        <td className="py-5 px-5 text-center border-r border-slate-100 align-top">
-                                                            <div className="flex justify-center mb-2.5 text-[#2563FF]"><Star size={24} className="fill-[#2563FF]/10" strokeWidth={1.8}/></div>
-                                                            <p className="font-extrabold text-slate-900 text-[13px] leading-tight">{String(s.nombre)}</p>
-                                                            {etiquetaServicio && (<p className="font-bold text-[#7C3AED] text-[10px] mt-2 bg-[#7C3AED]/8 py-1 rounded-md inline-block px-2.5">{etiquetaServicio}</p>)}
-                                                        </td>
-                                                        <td className="py-5 px-6 border-r border-slate-100 align-top">
-                                                            <div className="text-slate-600 text-[11px] leading-relaxed space-y-2">
-                                                                {String(s.descripcion || 'Diversión premium para tu fiesta.').split('\n').map((line, j) => { 
-                                                                    const tLine = String(line).trim(); 
-                                                                    if(tLine.startsWith('•') || tLine.startsWith('-')) { 
-                                                                        return (<div key={j} className="flex items-start gap-2 font-semibold"><CheckCircle2 size={13} className="text-[#2563FF] shrink-0 mt-[2px]"/> <span className="text-slate-700">{tLine.replace(/^[•-]\s*/, '')}</span></div>); 
-                                                                    } 
-                                                                    return <div key={j} className="mb-1.5 font-medium">{tLine}</div>; 
-                                                                })}
-                                                            </div>
-                                                        </td>
-                                                        <td className="py-5 px-5 text-center align-middle">
-                                                            <p className="font-black text-slate-900 text-[15px]">B/. {utils.safeNum(s.precio).toFixed(2)}</p>
-                                                            <p className="text-[10px] text-slate-400 mt-1 font-semibold">{cant} x B/. {precioUnitario.toFixed(2)}</p>
-                                                        </td>
-                                                    </tr>
-                                                ); 
-                                            })}
-                                            {trn > 0 && (
-                                                <tr className="avoid-break bg-[#2563FF]/3">
-                                                    <td className="py-4 px-5 text-center border-r border-slate-100 align-middle">
-                                                        <div className="flex justify-center mb-1 text-[#2563FF]"><MapIcon size={22} strokeWidth={1.8}/></div>
-                                                        <p className="font-extrabold text-slate-900 text-[13px]">Viáticos de Ruta</p>
-                                                    </td>
-                                                    <td className="py-4 px-6 border-r border-slate-100 align-middle text-[11px] text-slate-600 font-bold">
-                                                        <div className="flex items-center gap-2"><CheckCircle2 size={13} className="text-[#2563FF] shrink-0"/> <span>Desplazamiento operativo y cobertura logística a zona: {ubi}</span></div>
-                                                    </td>
-                                                    <td className="py-4 px-5 text-center align-middle"><p className="font-black text-slate-900 text-[15px]">B/. {trn.toFixed(2)}</p></td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {!isContratoProv && (
-                            <div className="px-0 mt-2 flex justify-between gap-6 avoid-break relative z-10">
-                                <div className="w-[53%]">
-                                    <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-100 shadow-sm h-full flex flex-col justify-between">
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-3 text-slate-800 border-b border-slate-200/60 pb-2"><Info size={16} className="text-[#2563FF]"/><h3 className="font-black uppercase tracking-widest text-[10px]">Políticas y Condiciones</h3></div>
-                                            <div className="text-[10px] font-bold text-slate-500 leading-relaxed space-y-1.5"><p className="flex items-start gap-1"><span className="text-[#2563FF]">•</span> Para garantizar la fecha del evento, se requiere confirmación formal mediante abono.</p><p className="flex items-start gap-1"><span className="text-[#2563FF]">•</span> El abono inicial no es reembolsable por cancelación ajena a Diverty.</p><p className="flex items-start gap-1"><span className="text-[#2563FF]">•</span> El saldo restante debe ser cancelado al culminar el show.</p></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-[43%] flex flex-col items-end">
-                                    <div className="w-full border border-slate-200/60 rounded-2xl overflow-hidden bg-slate-50 shadow-sm flex flex-col">
-                                        <div className="flex justify-between items-center py-3 px-5 border-b border-slate-200/60 text-[12px]"><span className="font-extrabold text-slate-500">Inversión Show:</span><span className="font-black text-slate-900">B/. {tot.toFixed(2)}</span></div>
-                                        {!isC && abo > 0 && (<div className="flex justify-between items-center py-3 px-5 border-b border-slate-200/60 text-[12px] bg-emerald-500/5"><span className="font-extrabold text-emerald-600">Abono Confirmado:</span><span className="font-black text-emerald-600">- B/. {abo.toFixed(2)}</span></div>)}
-                                        <div className="bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white py-4.5 px-5 text-center"><span className="block text-[10px] uppercase tracking-[0.2em] font-extrabold mb-1 opacity-90">{isC ? 'TOTAL PROPUESTO:' : 'SALDO PENDIENTE:'}</span><span className="block text-3xl font-black leading-none">B/. {isC ? tot.toFixed(2) : (tot - abo).toFixed(2)}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {(!isC || isContratoProv) && (
-                            <div className="mt-6 pb-2 avoid-break relative z-10">
-                                {(isContrato || isContratoProv) ? (
-                                    <div className="bg-slate-50/70 rounded-2xl border border-slate-100/50 p-5 flex flex-col gap-5 shadow-sm">
-                                        {!isContratoProv && (<div className="text-[10px] text-slate-500 leading-relaxed border-b border-slate-200/60 pb-3"><h4 className="font-black text-slate-900 uppercase tracking-widest mb-1.5 text-[9px] flex items-center gap-1.5"><FileSignature size={13} className="text-[#7C3AED]"/> Aceptación y Condiciones del Servicio</h4><p className="font-bold">Las partes aceptan y se comprometen a respetar todas las cláusulas, tiempos de montaje y logística establecidos en el presente acuerdo para dar inicio al evento programado.</p></div>)}
-                                        <div className="flex justify-around items-end pt-4 pb-2">
-                                            <div className="w-[42%] text-center"><div className="border-b border-slate-300 w-full mb-2 h-10 flex items-end justify-center"><span className="text-[13px] font-semibold text-slate-400 italic">DIVERTY EVENTOS</span></div><p className="font-black text-slate-800 text-[10px] uppercase truncate">{isContratoProv ? 'DIVERTY EVENTOS PANAMÁ' : appSettings.empresa.nombreTitular}</p><p className="text-slate-400 text-[9px] font-extrabold uppercase tracking-widest">{isContratoProv ? 'El Contratante' : 'Diverty Eventos'}</p></div>
-                                            <div className="w-[42%] text-center"><div className="border-b border-slate-300 w-full mb-2 h-10"></div><p className="font-black text-slate-800 text-[10px] uppercase truncate">{cli}</p><p className="text-slate-400 text-[9px] font-extrabold uppercase tracking-widest">{isContratoProv ? 'Firma del Proveedor' : 'Firma del Cliente'}</p></div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-slate-50/70 rounded-2xl border border-slate-100 p-5 flex justify-between items-center text-[11px] shadow-sm">
-                                        <div className="flex gap-4 border-r border-slate-200/60 pr-6 w-[55%]">
-                                            <div className="text-[#2563FF] shrink-0 mt-1"><Briefcase size={20} strokeWidth={1.8}/></div>
-                                            <div className="leading-snug space-y-1 font-bold text-slate-600">
-                                                <h4 className="font-black text-slate-900 uppercase tracking-widest mb-2 text-[9px]">Instrucciones de Transferencia</h4>
-                                                <p className="text-slate-950 font-extrabold flex justify-between">Banco: <span className="text-slate-700 font-semibold">{appSettings.empresa.banco}</span></p>
-                                                <p className="text-slate-950 font-extrabold flex justify-between">Tipo: <span className="text-slate-700 font-semibold">{appSettings.empresa.tipoCuenta}</span></p>
-                                                <p className="text-slate-950 font-extrabold flex justify-between">Cuenta: <span className="text-[#2563FF] font-black">{appSettings.empresa.numeroCuenta}</span></p>
-                                                <p className="text-slate-950 font-extrabold flex justify-between">Titular: <span className="text-slate-700 font-semibold truncate w-32 uppercase">{appSettings.empresa.nombreTitular}</span></p>
-                                                <p className="text-slate-950 font-extrabold flex justify-between">Yappy/Cel: <span className="text-[#7C3AED] font-black">{appSettings.empresa.telefono}</span></p>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col items-center justify-center pl-6 w-[40%]">
-                                            <div className="text-[#2563FF] flex items-center gap-1.5 mb-2 font-black text-[12px] uppercase tracking-widest"><ShieldCheck size={18} /> ¡Garantía Diverty!</div>
-                                            <p className="text-[10px] text-slate-400 font-bold text-center leading-normal mb-3">Envía el comprobante para procesar y agendar.</p>
-                                            <h3 className="text-xl text-[#2563FF] font-black italic tracking-wider">Diverty Eventos</h3>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+    const Invoice = () => (<>
+        <BrandHeader/><InfoCards/>
+        <div className="relative z-10 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+            <table className="w-full text-[10px]"><thead className="bg-gradient-to-r from-[#2563FF]/7 to-[#FF3EA5]/7"><tr className="text-[8px] uppercase tracking-wider text-slate-500"><th className="p-3 text-center w-[8%]">Cant.</th><th className="p-3 text-left w-[42%]">Concepto / Servicio</th><th className="p-3 text-center w-[16%]">Duración</th><th className="p-3 text-right w-[17%]">P. Unit.</th><th className="p-3 text-right w-[17%]">Total</th></tr></thead><tbody className="divide-y divide-slate-100">
+            {sA.map((s,i)=>{const x=serviceInfo(s); return <tr key={i}><td className="p-3 text-center font-bold">{x.cant}</td><td className="p-3"><p className="font-black text-slate-900">{String(s.nombre)}</p><p className="text-[8.5px] text-slate-400 mt-1">Servicio según reserva y condiciones contratadas.</p></td><td className="p-3 text-center font-bold text-[#7C3AED]">{x.duracion}</td><td className="p-3 text-right font-bold">B/. {(x.precio/x.cant).toFixed(2)}</td><td className="p-3 text-right font-black">B/. {x.precio.toFixed(2)}</td></tr>})}
+            {trn>0&&<tr><td className="p-3 text-center font-bold">1</td><td className="p-3"><p className="font-black">Viáticos / Transporte</p><p className="text-[8.5px] text-slate-400 mt-1">Cobertura logística a {ubi}.</p></td><td className="p-3 text-center">—</td><td className="p-3 text-right font-bold">B/. {trn.toFixed(2)}</td><td className="p-3 text-right font-black">B/. {trn.toFixed(2)}</td></tr>}
+            </tbody></table>
         </div>
-      </div>
-    );
+        <div className="grid grid-cols-[1.15fr_.85fr] gap-5 mt-5 relative z-10">
+            <div className="space-y-4"><div className="bg-slate-50 rounded-2xl border border-slate-100 p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#2563FF] mb-2 flex items-center gap-1.5"><Briefcase size={12}/> Datos para transferencia</p><div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px]"><p><b>Banco:</b> {appSettings.empresa.banco}</p><p><b>Tipo:</b> {appSettings.empresa.tipoCuenta}</p><p><b>Cuenta:</b> <span className="text-[#2563FF] font-black">{appSettings.empresa.numeroCuenta}</span></p><p><b>Yappy/Cel:</b> <span className="text-[#7C3AED] font-black">{appSettings.empresa.telefono}</span></p><p className="col-span-2 truncate"><b>Titular:</b> {appSettings.empresa.nombreTitular}</p></div></div><div className="bg-blue-50/60 rounded-2xl border border-blue-100 p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#2563FF] mb-2">Información del documento</p><p className="text-[9px] text-slate-500 leading-relaxed font-semibold">Factura correspondiente a los servicios reservados para el evento indicado. El detalle contractual completo y las condiciones del servicio se encuentran en el contrato asociado.</p></div></div>
+            <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-sm h-fit"><div className="flex justify-between px-4 py-3 text-[10px] bg-slate-50"><b>Subtotal servicios</b><b>B/. {subServicios.toFixed(2)}</b></div>{trn>0&&<div className="flex justify-between px-4 py-3 text-[10px] border-t border-slate-100"><b>Transporte</b><b>B/. {trn.toFixed(2)}</b></div>}<div className="flex justify-between px-4 py-3 text-[11px] border-t border-slate-100"><b>TOTAL FACTURADO</b><b>B/. {tot.toFixed(2)}</b></div><div className="flex justify-between px-4 py-3 text-[10px] border-t border-slate-100 bg-emerald-50 text-emerald-700"><b>Abono recibido</b><b>- B/. {abo.toFixed(2)}</b></div><div className="bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white p-4 text-center"><p className="text-[8px] font-black tracking-[0.2em] uppercase">Saldo pendiente</p><p className="text-[27px] leading-none font-black mt-1">B/. {saldo.toFixed(2)}</p></div></div>
+        </div><FooterBrand/>
+    </>);
+
+    const Quote = () => (<>
+        <BrandHeader/><InfoCards compact/>
+        <div className="relative z-10 border border-slate-100 rounded-2xl overflow-hidden shadow-sm"><table className="w-full text-[9px]"><thead className="bg-gradient-to-r from-[#2563FF]/7 to-[#FF3EA5]/7"><tr className="text-[7.5px] uppercase tracking-wider text-slate-500"><th className="p-2.5 text-left w-[28%]">Paquete / Servicio</th><th className="p-2.5 text-left w-[47%]">Qué incluye</th><th className="p-2.5 text-center w-[10%]">Duración</th><th className="p-2.5 text-right w-[15%]">Precio</th></tr></thead><tbody className="divide-y divide-slate-100">{sA.map((s,i)=>{const x=serviceInfo(s);return <tr key={i}><td className="p-3 align-top"><p className="font-black text-[10px] text-slate-900">{String(s.nombre)}</p>{x.cant>1&&<p className="text-[8px] text-slate-400 mt-1">Cantidad: {x.cant}</p>}</td><td className="p-3 align-top"><div className="grid grid-cols-1 gap-0.5">{(x.detalles.length?x.detalles:['Servicio personalizado según lo conversado.']).slice(0,6).map((d,j)=><p key={j} className="text-[8.2px] text-slate-600 flex gap-1"><span className="text-[#FF3EA5]">•</span><span>{d}</span></p>)}</div></td><td className="p-3 text-center align-middle font-black text-[#7C3AED]">{x.duracion}</td><td className="p-3 text-right align-middle font-black text-[11px]">B/. {x.precio.toFixed(2)}</td></tr>})}{trn>0&&<tr><td className="p-3 font-black">Viáticos / Transporte</td><td className="p-3 text-slate-500">Traslado y cobertura logística a {ubi}.</td><td className="p-3 text-center">—</td><td className="p-3 text-right font-black">B/. {trn.toFixed(2)}</td></tr>}</tbody></table></div>
+        <div className="grid grid-cols-[1.2fr_.8fr] gap-5 mt-5 relative z-10"><div className="bg-slate-50 rounded-2xl border border-slate-100 p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#7C3AED] mb-2">Condiciones de la propuesta</p><div className="text-[9px] text-slate-500 font-semibold leading-relaxed space-y-1"><p>• La fecha queda reservada únicamente al confirmarse el abono acordado.</p><p>• La disponibilidad se confirma al momento de aceptar esta cotización.</p><p>• Cambios de horario, ubicación o servicios pueden modificar el valor final.</p><p>• Esta cotización no constituye comprobante de pago.</p></div></div><div className="rounded-2xl overflow-hidden border border-slate-200 h-fit"><div className="px-4 py-3 flex justify-between text-[10px] bg-slate-50"><b>Servicios</b><b>B/. {subServicios.toFixed(2)}</b></div>{trn>0&&<div className="px-4 py-3 flex justify-between text-[10px] border-t border-slate-100"><b>Transporte</b><b>B/. {trn.toFixed(2)}</b></div>}<div className="bg-gradient-to-r from-[#2563FF] to-[#FF3EA5] text-white px-4 py-4 text-center"><p className="text-[8px] font-black tracking-[0.2em] uppercase">Inversión propuesta</p><p className="text-[26px] font-black leading-none mt-1">B/. {tot.toFixed(2)}</p></div></div></div>
+        <div className="mt-5 bg-gradient-to-r from-[#2563FF]/5 via-[#7C3AED]/5 to-[#FF3EA5]/5 border border-[#7C3AED]/10 rounded-2xl p-4 text-center relative z-10"><p className="text-[11px] font-black text-slate-800">¿Deseas reservar esta experiencia?</p><p className="text-[9px] text-slate-500 font-semibold mt-1">Confírmanos por WhatsApp al {appSettings.empresa.telefono} para validar disponibilidad y abono.</p></div><FooterBrand/>
+    </>);
+
+    const Contract = () => (<>
+        <BrandHeader/><InfoCards compact/>
+        <div className="relative z-10 border border-slate-100 rounded-2xl overflow-hidden shadow-sm mb-4"><table className="w-full text-[8.5px]"><thead className="bg-gradient-to-r from-[#2563FF]/7 to-[#FF3EA5]/7"><tr className="text-[7px] uppercase tracking-wider text-slate-500"><th className="p-2 text-left w-[25%]">Servicio</th><th className="p-2 text-left w-[45%]">Todo lo contratado</th><th className="p-2 text-center w-[12%]">Duración</th><th className="p-2 text-right w-[18%]">Precio</th></tr></thead><tbody className="divide-y divide-slate-100">{sA.map((s,i)=>{const x=serviceInfo(s);return <tr key={i}><td className="p-2.5 align-top"><p className="font-black text-slate-900">{String(s.nombre)}</p>{x.cant>1&&<p className="text-[7px] text-slate-400 mt-1">Cant. {x.cant}</p>}</td><td className="p-2.5 align-top">{(x.detalles.length?x.detalles:['Servicio personalizado según lo acordado.']).slice(0,5).map((d,j)=><p key={j} className="text-[7.6px] leading-[1.35] text-slate-600">• {d}</p>)}</td><td className="p-2.5 text-center align-middle font-black text-[#7C3AED]">{x.duracion}</td><td className="p-2.5 text-right align-middle font-black">B/. {x.precio.toFixed(2)}</td></tr>})}{trn>0&&<tr><td className="p-2.5 font-black">Viáticos / Transporte</td><td className="p-2.5 text-slate-500">Traslado y cobertura logística a {ubi}.</td><td className="p-2.5 text-center">—</td><td className="p-2.5 text-right font-black">B/. {trn.toFixed(2)}</td></tr>}</tbody></table></div>
+        <div className="grid grid-cols-[1.42fr_.58fr] gap-4 relative z-10">
+            <div className="border border-slate-100 rounded-2xl p-4"><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#2563FF] mb-2.5 flex items-center gap-1.5"><FileSignature size={12}/> Cláusulas y condiciones del servicio</p><div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[7.4px] leading-[1.34] text-slate-600 text-justify">
+                <p><b className="text-slate-800">1. Objeto.</b> Diverty prestará los servicios descritos en este documento, en la fecha, horario y ubicación acordados.</p>
+                <p><b className="text-slate-800">2. Reserva y pago.</b> La fecha se confirma mediante el abono acordado. El saldo pendiente deberá cancelarse conforme a las condiciones pactadas para el evento.</p>
+                <p><b className="text-slate-800">3. Cancelación.</b> El abono no es reembolsable cuando la cancelación sea ajena a Diverty. Cualquier reprogramación estará sujeta a disponibilidad.</p>
+                <p><b className="text-slate-800">4. Cambios.</b> Modificaciones de fecha, horario, dirección, cantidad o servicios pueden generar ajustes de precio, logística o disponibilidad.</p>
+                <p><b className="text-slate-800">5. Obligaciones del cliente.</b> Garantizar acceso seguro, espacio adecuado, permisos del lugar y condiciones necesarias para montaje y operación.</p>
+                <p><b className="text-slate-800">6. Obligaciones de Diverty.</b> Prestar los servicios contratados con personal y equipos adecuados y comunicar oportunamente cualquier situación operativa relevante.</p>
+                <p><b className="text-slate-800">7. Horarios y retrasos.</b> El tiempo contratado corresponde al horario acordado. Retrasos imputables al cliente no obligan a extender el servicio.</p>
+                <p><b className="text-slate-800">8. Seguridad y equipos.</b> El cliente y sus invitados deberán respetar las instrucciones del personal. Diverty podrá suspender una actividad ante condiciones inseguras.</p>
+                <p><b className="text-slate-800">9. Daños.</b> Daños causados por uso indebido, negligencia de invitados o terceros podrán ser responsabilidad del cliente cuando corresponda.</p>
+                <p><b className="text-slate-800">10. Clima y fuerza mayor.</b> Situaciones fuera del control razonable de las partes podrán requerir ajustes, suspensión o reprogramación según disponibilidad.</p>
+                <p><b className="text-slate-800">11. Proveedores.</b> Diverty podrá apoyarse en personal o proveedores para ejecutar componentes del servicio, manteniendo la coordinación del evento.</p>
+                <p><b className="text-slate-800">12. Aceptación.</b> La firma o aceptación del presente documento confirma que el cliente conoce el alcance, precio y condiciones aquí indicadas.</p>
+            </div></div>
+            <div className="space-y-3"><div className="rounded-2xl overflow-hidden border border-slate-200"><div className="p-3 bg-slate-50 flex justify-between text-[8.5px]"><b>Total contratado</b><b>B/. {tot.toFixed(2)}</b></div><div className="p-3 border-t border-slate-100 flex justify-between text-[8.5px] text-emerald-600"><b>Abono</b><b>B/. {abo.toFixed(2)}</b></div><div className="p-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white text-center"><p className="text-[7px] font-black uppercase tracking-widest">Saldo</p><p className="text-[18px] font-black">B/. {saldo.toFixed(2)}</p></div></div><div className="bg-slate-50 border border-slate-100 rounded-2xl p-3"><p className="text-[7px] font-black uppercase tracking-wider text-[#FF3EA5] mb-2">Aceptación y firmas</p><div className="pt-5 border-b border-slate-300 mb-1"></div><p className="text-[7px] text-center font-black text-slate-700 truncate">{cli}</p><p className="text-[6.5px] text-center text-slate-400">Firma del cliente</p><div className="pt-5 border-b border-slate-300 mb-1 mt-2"></div><p className="text-[7px] text-center font-black text-slate-700 truncate">{appSettings.empresa.nombreTitular}</p><p className="text-[6.5px] text-center text-slate-400">Diverty Eventos</p></div></div>
+        </div><FooterBrand/>
+    </>);
+
+    const ProviderContract = () => (<><BrandHeader/><div className="relative z-10 bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-5"><p className="text-[10px] font-black text-[#2563FF] uppercase tracking-widest mb-3">Proveedor contratado</p><p className="text-lg font-black">{cli}</p><p className="text-[10px] text-slate-500 mt-1">{printData.especialidad || 'Servicios para eventos'} · {tel}</p></div><div className="relative z-10 border border-slate-100 rounded-2xl p-5 text-[10px] leading-relaxed text-slate-600 space-y-3"><p><b>1. Objeto:</b> prestación independiente de los servicios formalmente asignados por Diverty Eventos.</p><p><b>2. Independencia:</b> no existe relación laboral, subordinación ni exclusividad entre las partes.</p><p><b>3. Honorarios:</b> se pagará la tarifa acordada para cada evento tras la prestación satisfactoria del servicio.</p><p><b>4. Puntualidad y calidad:</b> el proveedor deberá cumplir horarios, presentación y estándares acordados.</p><p><b>5. Confidencialidad comercial:</b> el proveedor respetará la relación comercial entre Diverty y el cliente final.</p></div><div className="grid grid-cols-2 gap-8 mt-10 relative z-10"><div className="border-t border-slate-300 pt-2 text-center text-[9px] font-black">DIVERTY EVENTOS</div><div className="border-t border-slate-300 pt-2 text-center text-[9px] font-black">{cli}</div></div><FooterBrand/></>);
+
+    return (<div className="bg-[#172235] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
+        <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}`}</style>
+        <div className="sticky top-0 bg-slate-900/95 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4"><button type="button" onClick={onClose} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button><div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto"><button type="button" onClick={onPrint} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Printer size={16} className="mr-2"/> Imprimir PDF</button><button type="button" onClick={onShare} className="bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Share2 size={16} className="mr-2"/> Compartir</button><button type="button" onClick={onDownload} className="bg-violet-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Download size={16} className="mr-2"/> Guardar</button></div></div>
+        <div className="w-full flex-1 flex justify-center pb-12 pt-8 overflow-hidden"><div style={{width:`${794*pdfScale}px`,height:`${1123*pdfScale}px`,position:'relative'}}><div id="pdf-wrapper-scaler" style={{transform:`scale(${pdfScale})`,transformOrigin:'top left',width:'794px',position:'absolute',top:0,left:0}}><div id="pdf-content" className="bg-white w-[794px] h-[1123px] relative overflow-hidden font-sans text-slate-800 px-10 pt-9 pb-7 flex flex-col shadow-2xl">{isContratoProv?<ProviderContract/>:isContrato?<Contract/>:isC?<Quote/>:<Invoice/>}</div></div></div></div>
+    </div>);
 });
 
 const ClientEditModal = memo(function ClientEditModal({ isOpen, oldName, clientKey, onClose, onSave }) {
@@ -1212,6 +1069,55 @@ export default function App() {
       }
   }, [showAlert, publishSync]);
 
+  // DOCUMENTOS PRO 3.0: consecutivos permanentes e independientes por tipo.
+  // El contador se guarda en Firestore y usa transacción, por lo que varios dispositivos
+  // no pueden tomar el mismo número. El número queda guardado en la reserva/cotización.
+  const ensureDocumentNumber = useCallback(async (eventData, type) => {
+      if (!eventData?.id || type === 'contrato_proveedor') return eventData;
+      const config = {
+          factura: { field: 'numeroFactura', counter: 'facturas', prefix: 'FAC', isQuote: false },
+          contrato: { field: 'numeroContrato', counter: 'contratos', prefix: 'CON', isQuote: false },
+          cotizacion: { field: 'numeroCotizacion', counter: 'cotizaciones', prefix: 'COT', isQuote: true }
+      }[type];
+      if (!config || eventData[config.field]) return eventData;
+      try {
+          // Solo al inicializar una secuencia antigua se usa el tamaño actual como piso,
+          // para no retroceder desde numeraciones que ya se mostraban en documentos previos.
+          const counterRef = getConfigRef('secuenciasDocumentos');
+          const counterSnap = await getDoc(counterRef);
+          let seed = 0;
+          if (!counterSnap.exists() || !utils.safeNum(counterSnap.data()?.[config.counter])) {
+              const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+              seed = allSnap.docs.filter(d => {
+                  const est = utils.normalizeText(d.data()?.estado || '');
+                  const q = est.includes('cotizaci') || est.includes('cot.');
+                  return config.isQuote ? q : !q;
+              }).length;
+          }
+          const numbered = await runTransaction(db, async (tx) => {
+              const evRef = getDocRef(eventData.id);
+              const evSnap = await tx.get(evRef);
+              if (!evSnap.exists()) throw new Error('EVENT_NOT_FOUND');
+              const remote = evSnap.data();
+              if (remote[config.field]) return { id: eventData.id, ...remote };
+              const seqSnap = await tx.get(counterRef);
+              const current = seqSnap.exists() ? utils.safeNum(seqSnap.data()?.[config.counter]) : 0;
+              const next = Math.max(current, seed) + 1;
+              const number = `${config.prefix}-${String(next).padStart(5, '0')}`;
+              tx.set(counterRef, { [config.counter]: next, updatedAt: new Date().toISOString() }, { merge: true });
+              tx.set(evRef, { [config.field]: number, updatedAt: new Date().toISOString() }, { merge: true });
+              return { id: eventData.id, ...remote, [config.field]: number };
+          });
+          setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: numbered[config.field] } : ev));
+          return numbered;
+      } catch (err) {
+          console.error('Error asignando consecutivo:', err);
+          showAlert('No se pudo asignar el número permanente del documento. Revisa la conexión e intenta nuevamente.', false);
+          throw err;
+      }
+  }, [showAlert]);
+
+
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
   }, [showAlert]);
@@ -1266,7 +1172,7 @@ export default function App() {
             closeModal();
             utils.setSafeLocal('diverty_form_draft', '');
             showAlert(isCotizacionMode ? "¡Cotización guardada!" : "¡Reserva guardada!", true);
-            if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { setPrintData({ ...savedData }); setPrintType('cotizacion'); setIsPrinting(true); }
+            if (isCotizacionMode && (!formDataToSave.id || formDataToSave.isDuplicated)) { try { const numberedQuote = await ensureDocumentNumber({ ...savedData }, 'cotizacion'); setPrintData(numberedQuote); setPrintType('cotizacion'); setIsPrinting(true); } catch (_) {} }
         } catch (err) {
             console.error("Error guardando reserva:", err);
             if (err?.message === 'EDIT_CONFLICT') {
@@ -1279,7 +1185,7 @@ export default function App() {
     
     if (hasCollision && !safeData.colisionAprobada) showConfirm("Hay otro evento con menos de 3 horas de diferencia. ¿Guardar de todos modos?", () => { safeData.colisionAprobada = true; guardarReservaFinal(evtId, safeData); }); 
     else guardarReservaFinal(evtId, safeData);
-  }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm, publishSync]);
+  }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm, publishSync, ensureDocumentNumber]);
 
   const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => {
       utils.triggerHaptic('light');
@@ -1312,7 +1218,16 @@ export default function App() {
           showAlert("No se pudo completar la limpieza. Intenta nuevamente.", false);
       }
   }), [eventosActivos, showConfirm, showAlert]);
-  const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); loadFullHistory(true); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert, loadFullHistory]);
+  const handleViewDoc = useCallback(async (e, type) => {
+      try {
+          utils.triggerHaptic('light');
+          await loadFullHistory(true);
+          const numbered = await ensureDocumentNumber(e, type);
+          setPrintData(numbered);
+          setPrintType(type);
+          setIsPrinting(true);
+      } catch (err) { console.error(err); }
+  }, [loadFullHistory, ensureDocumentNumber]);
   
   const handleSaveClientName = useCallback(async (oldName, newName, clientKey) => {
       const newKey = utils.normalizeText(newName);
