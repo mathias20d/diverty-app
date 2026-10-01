@@ -44,6 +44,16 @@ export const utils = {
   openWhatsAppBusiness: (phone, msg) => { const text = encodeURIComponent(msg); const url = `https://api.whatsapp.com/send?phone=${phone}&text=${text}`; const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 };
 
+// CRM Clientes 2.0: el teléfono normalizado es el identificador principal.
+// Si una reserva antigua no tiene teléfono, se usa el nombre como respaldo.
+const normalizeClientPhone = (phone) => String(phone || '').replace(/\D/g, '');
+const getClientKey = (obj) => {
+  const phone = normalizeClientPhone(obj?.telefono);
+  if (phone) return `tel:${phone}`;
+  const name = utils.normalizeText(obj?.cliente || obj?.nombre).trim();
+  return name ? `nom:${name}` : '';
+};
+
 // Finanzas 3.0: separa gastos internos de costos de proveedores.
 // Registros antiguos conservan su cálculo histórico porque antes los subcontratos ya se sumaban dentro de `gastos`.
 const sumSubcontratos = (ev) => Array.isArray(ev?.subcontratos) ? ev.subcontratos.reduce((sum, sc) => sum + utils.safeNum(sc?.costo), 0) : 0;
@@ -433,9 +443,9 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
     );
 });
 
-const ClientEditModal = memo(function ClientEditModal({ isOpen, oldName, onClose, onSave }) {
+const ClientEditModal = memo(function ClientEditModal({ isOpen, oldName, clientKey, onClose, onSave }) {
     const [newName, setNewName] = useState(''); useEffect(() => { if(isOpen) setNewName(oldName); }, [isOpen, oldName]); if (!isOpen) return null;
-    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-sm w-full p-8`}><div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><Edit size={24} className="text-[#2563FF]" /><h3 className="text-xl font-black text-slate-900">Editar Cliente</h3></div><p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">Al cambiar este nombre, todos los eventos asociados se actualizarán y se unificarán si el nuevo nombre ya existe en el sistema.</p><div className="space-y-4 mb-8"><div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre Actual</label><input type="text" value={oldName} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-500 font-semibold text-sm cursor-not-allowed" /></div><div><label className="block text-[10px] font-bold text-[#2563FF] uppercase tracking-widest mb-1.5">Nuevo Nombre</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} autoFocus className="w-full bg-white border border-[#2563FF]/50 rounded-xl p-3 text-slate-900 font-bold text-base outline-none focus:ring-4 ring-[#2563FF]/10 shadow-sm" /></div></div><div className="flex gap-3"><button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest transition-colors">Cancelar</button><button type="button" onClick={() => onSave(oldName, newName)} className="flex-1 py-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white font-bold rounded-xl text-xs uppercase tracking-widest shadow-md transition-transform active:scale-95">Guardar</button></div></div></div>);
+    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-sm w-full p-8`}><div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><Edit size={24} className="text-[#2563FF]" /><h3 className="text-xl font-black text-slate-900">Editar Cliente</h3></div><p className="text-xs text-slate-500 mb-5 leading-relaxed font-medium">El cambio se aplicará únicamente a las reservas asociadas a este cliente, identificado principalmente por su teléfono.</p><div className="space-y-4 mb-8"><div><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre Actual</label><input type="text" value={oldName} disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-500 font-semibold text-sm cursor-not-allowed" /></div><div><label className="block text-[10px] font-bold text-[#2563FF] uppercase tracking-widest mb-1.5">Nuevo Nombre</label><input type="text" value={newName} onChange={e => setNewName(e.target.value)} autoFocus className="w-full bg-white border border-[#2563FF]/50 rounded-xl p-3 text-slate-900 font-bold text-base outline-none focus:ring-4 ring-[#2563FF]/10 shadow-sm" /></div></div><div className="flex gap-3"><button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs uppercase tracking-widest transition-colors">Cancelar</button><button type="button" onClick={() => onSave(oldName, newName, clientKey)} className="flex-1 py-3 bg-gradient-to-r from-[#2563FF] to-[#7C3AED] text-white font-bold rounded-xl text-xs uppercase tracking-widest shadow-md transition-transform active:scale-95">Guardar</button></div></div></div>);
 });
 
 const ProveedorModal = memo(function ProveedorModal({ isOpen, data, onClose, onSave }) {
@@ -455,17 +465,18 @@ const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onTogg
     const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#2563FF] to-[#7C3AED]';
 
     return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}>
-      <div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.nombre);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200">
-        <div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-md bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><h4 className="font-bold text-[17px] text-slate-900 capitalize truncate tracking-tight mb-1">{String(c.nombre)}</h4><p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Smartphone size={14} className="text-slate-400"/> {String(c.telefono)||'Sin número'}</p></div></div>
-        <div className="text-right shrink-0"><p className="text-xl font-bold text-emerald-500 leading-none tracking-tight">${c.totalGastado.toFixed(0)}</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400" title="Contactar"></span>}</div></div>
+      <div onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}utils.triggerHaptic('light');onToggleExpand(c.clientKey);}} className="p-5 sm:p-6 cursor-pointer flex items-center justify-between gap-4 relative z-10 bg-transparent transition-colors duration-200">
+        <div className="flex items-center gap-4 flex-1 min-w-0"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl text-white shrink-0 shadow-md bg-gradient-to-tr ${grad}`}>{c.isVIP ? <Award size={20} className="drop-shadow-md" /> : String(c.nombre).charAt(0).toUpperCase()}</div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 min-w-0"><h4 className="font-bold text-[17px] text-slate-900 capitalize truncate tracking-tight">{String(c.nombre)}</h4>{c.isVIP&&<span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">VIP</span>}</div><p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 mt-1"><Smartphone size={14} className="text-slate-400"/> {String(c.telefono)||'Sin número'}</p>{c.email&&<p className="text-[10px] font-semibold text-slate-400 truncate mt-1">{c.email}</p>}{(!c.telefono||!c.email)&&<p className="text-[9px] font-black uppercase tracking-wider text-rose-500 mt-1">Faltan datos de contacto</p>}</div></div>
+        <div className="text-right shrink-0"><p className="text-xl font-bold text-emerald-500 leading-none tracking-tight">${c.totalCobrado.toFixed(0)}</p><p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-1">Cobrado</p><div className="flex justify-end gap-1.5 mt-2.5">{c.isVIP && <span className="w-2 h-2 rounded-full bg-amber-400" title="VIP"></span>}{c.isFrecuente && <span className="w-2 h-2 rounded-full bg-indigo-400" title="Frecuente"></span>}{c.isNuevo && <span className="w-2 h-2 rounded-full bg-emerald-400" title="Nuevo"></span>}{c.needsContact && <span className="w-2 h-2 rounded-full bg-rose-400" title="Contactar"></span>}</div></div>
       </div>
       {isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-4 bg-slate-50/50 rounded-b-[24px]">
-        <div className="flex justify-between items-stretch bg-white/80 rounded-[16px] mb-5 border border-slate-200/50 shadow-sm overflow-hidden">
-          <button type="button" onClick={(e)=>{e.stopPropagation();utils.triggerHaptic('light');setShowHistory(v=>!v);}} className="text-center flex-1 border-r border-slate-100 p-4 hover:bg-blue-50/60 active:bg-blue-100/60 transition-colors">
-            <p className="text-[10px] uppercase tracking-widest font-bold text-[#2563FF] mb-1.5 flex items-center justify-center gap-1">Eventos <ChevronDown size={13} className={`transition-transform ${showHistory?'rotate-180':''}`}/></p><p className="font-bold text-base text-slate-800">{c.eventos}</p>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <button type="button" onClick={(e)=>{e.stopPropagation();utils.triggerHaptic('light');setShowHistory(v=>!v);}} className="text-left bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm hover:bg-blue-50/60 transition-colors">
+            <p className="text-[9px] uppercase tracking-widest font-black text-[#2563FF] mb-1 flex items-center gap-1">Eventos <ChevronDown size={12} className={`transition-transform ${showHistory?'rotate-180':''}`}/></p><p className="font-black text-xl text-slate-900">{c.eventos}</p><p className="text-[9px] font-bold text-slate-400 mt-1">{c.eventosCompletados} completados</p>
           </button>
-          <div className="text-center flex-1 border-r border-slate-100 p-4"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Último</p><p className="font-bold text-base text-slate-800">{c.ultimoEventoFecha?String(c.ultimoEventoFecha).split('-').reverse().join('/'):'N/A'}</p></div>
-          <div className="text-center flex-1 p-4"><p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-1.5">Estado</p><p className="font-bold text-base text-slate-800 capitalize flex justify-center items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${String(c.ultimoEstado).toLowerCase()==='completado'?'bg-emerald-400':'bg-amber-400'}`}></span>{String(c.ultimoEstado).substring(0,4)}.</p></div>
+          <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Facturado</p><p className="font-black text-xl text-slate-900">${c.totalFacturado.toFixed(0)}</p><p className="text-[9px] font-bold text-emerald-500 mt-1">Cobrado ${c.totalCobrado.toFixed(0)}</p></div>
+          <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Pendiente</p><p className={`font-black text-xl ${c.saldoPendiente>0?'text-rose-500':'text-emerald-500'}`}>${c.saldoPendiente.toFixed(0)}</p><p className="text-[9px] font-bold text-slate-400 mt-1">Saldo por cobrar</p></div>
+          <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Próxima reserva</p><p className="font-black text-sm text-slate-900">{c.proximaReserva?.fecha?String(c.proximaReserva.fecha).split('-').reverse().join('/'):'Sin reserva'}</p><p className="text-[9px] font-bold text-slate-400 mt-1 truncate">{c.proximaReserva?.servicio || '—'}</p></div>
         </div>
 
         {showHistory && (<div className="mb-5 animate-fadeIn bg-white rounded-[18px] border border-slate-200/70 shadow-sm overflow-hidden">
@@ -480,8 +491,8 @@ const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onTogg
           </div>
         </div>)}
 
-        <div className="grid grid-cols-2 gap-3 mb-4"><ActionBtn icon={MessageCircle} label="Contactar" color="emerald" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean, `¡Hola ${c.nombre}!`);}} /><ActionBtn icon={Sparkles} label="Promo" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgPromo);}} /><ActionBtn icon={BellRing} label="Recordar" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgRecordatorio);}} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e)=>{e.stopPropagation(); onEditClient(c.nombre);}} /></div>
-        <div className="flex gap-3"><AppButton variant="primary" icon={Plus} onClick={(e)=>{e.stopPropagation();openModal()}} className="flex-1 text-[13px] uppercase tracking-wider py-3.5 shadow-md">Reservar</AppButton><button type="button" onClick={(e)=>{e.stopPropagation();onDeleteClient(c.nombre,c.eventos)}} className="px-5 bg-rose-50 text-rose-500 rounded-[16px] hover:bg-rose-100 transition-colors border border-rose-100"><Trash2 size={20} /></button></div>
+        <div className="grid grid-cols-2 gap-3 mb-4"><ActionBtn icon={MessageCircle} label="Contactar" color="emerald" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean, `¡Hola ${c.nombre}!`);}} /><ActionBtn icon={Sparkles} label="Promo" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgPromo);}} /><ActionBtn icon={BellRing} label="Recordar" color="white" onClick={(e)=>{e.stopPropagation();utils.openWhatsAppBusiness(phoneClean,msgRecordatorio);}} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e)=>{e.stopPropagation(); onEditClient(c);}} /></div>
+        <div className="flex gap-3"><AppButton variant="primary" icon={Plus} onClick={(e)=>{e.stopPropagation();openModal()}} className="flex-1 text-[13px] uppercase tracking-wider py-3.5 shadow-md">Reservar</AppButton><button type="button" onClick={(e)=>{e.stopPropagation();onDeleteClient(c,c.eventos)}} className="px-5 bg-rose-50 text-rose-500 rounded-[16px] hover:bg-rose-100 transition-colors border border-rose-100"><Trash2 size={20} /></button></div>
       </div>)}
     </div>);
 });
@@ -593,7 +604,7 @@ export default function App() {
   const handleToggleProv = useCallback((id) => setExpandedProvId(prev => prev === id ? null : id), []);
   const [modalConfig, setModalConfig] = useState({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); 
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null }); 
-  const [clientEditModal, setClientEditModal] = useState({ isOpen: false, oldName: '' });
+  const [clientEditModal, setClientEditModal] = useState({ isOpen: false, oldName: '', clientKey: '' });
   const [toastAlert, setToastAlert] = useState({ isOpen: false, message: '', success: false }); 
   const [isModoOperativo, setIsModoOperativo] = useState(false); 
   const [isPrinting, setIsPrinting] = useState(false);
@@ -638,7 +649,7 @@ export default function App() {
         if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
         else if (s.isPrinting) { setIsPrinting(false); blocked = true; }
         else if (s.modalConfig?.isOpen) { setModalConfig(p => ({...p, isOpen: false})); blocked = true; }
-        else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '' }); blocked = true; }
+        else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); blocked = true; }
         else if (s.proveedorModal?.isOpen) { setProveedorModal({ isOpen: false, data: null }); blocked = true; }
         else if (s.isNotifOpen) { setIsNotifOpen(false); blocked = true; }
         else if (s.isModoOperativo) { setIsModoOperativo(false); blocked = true; }
@@ -756,7 +767,7 @@ export default function App() {
     }); return () => unsubscribe();
   }, [messaging, showAlert]);
 
-  const handleToggleClient = useCallback((nombre) => { setExpandedClientId(prev => prev === nombre ? null : nombre); }, []); 
+  const handleToggleClient = useCallback((clientKey) => { setExpandedClientId(prev => prev === clientKey ? null : clientKey); }, []); 
   const handleToggleFinance = useCallback((id) => { setExpandedFinanceId(prev => prev === id ? null : id); }, []);
   
   const todayObj = currentTime;
@@ -787,7 +798,7 @@ export default function App() {
     eventosActivos.forEach(ev => {
       const es = utils.normalizeText(ev.estado);
       if (es.includes('cotizaci') || es.includes('cot.')) return;
-      const key = utils.normalizeText(ev.cliente);
+      const key = getClientKey(ev);
       if (!key) return;
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(ev);
@@ -843,40 +854,69 @@ export default function App() {
   }, [eventosActivos, todayStr, tomorrowStr, weekStart, weekEnd, todayObj]);
 
   const clientsList = useMemo(() => {
-     const clientsMap = {}; 
-     eventosActivos.forEach(e => { 
-         const es = utils.normalizeText(e.estado); 
-         if(es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return; 
-         
-         const key = String(e.cliente || '').trim().toLowerCase(); 
-         if(!key) return; 
-         
-         if(!clientsMap[key]) clientsMap[key] = { nombre: e.cliente, telefono: e.telefono, email: e.email, totalGastado: 0, eventos: 0, ultimoEventoFecha: e.fecha, ultimoEstado: e.estado }; 
-         clientsMap[key].totalGastado += utils.safeNum(e.total); 
-         clientsMap[key].eventos += 1; 
-         
-         if (e.fecha && (!clientsMap[key].ultimoEventoFecha || e.fecha > clientsMap[key].ultimoEventoFecha)) { 
-             clientsMap[key].ultimoEventoFecha = e.fecha; 
-             clientsMap[key].ultimoEstado = e.estado; 
-         } 
-     }); 
-     return Object.values(clientsMap).filter(c => !hiddenClients.includes(c.nombre));
-  }, [eventosActivos, hiddenClients]);
+     const clientsMap = new Map();
+     eventosActivos.forEach(e => {
+         const es = utils.normalizeText(e.estado);
+         if(es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return;
 
-  const enrichedClients = useMemo(() => { 
-      return clientsList.map(c => { 
-          let daysSince = 0; 
-          if (c.ultimoEventoFecha) { 
-              const [y, m, d] = c.ultimoEventoFecha.split('-'); 
-              if (y && m && d) { 
-                  const lastDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime(); 
-                  daysSince = Math.floor((todayTime - lastDate) / (1000 * 60 * 60 * 24)); 
-              } 
-          } 
-          return { ...c, daysSince, isVIP: c.eventos >= 3 || c.totalGastado >= 300, isFrecuente: c.eventos === 2, isNuevo: c.eventos === 1 && daysSince <= 180, isInactivo: daysSince > 180, needsContact: daysSince > 60 && daysSince <= 365 }; 
-      }); 
-  }, [clientsList, todayTime]);
-  
+         const clientKey = getClientKey(e);
+         if(!clientKey) return;
+
+         if(!clientsMap.has(clientKey)) clientsMap.set(clientKey, {
+             clientKey, nombre: e.cliente || 'Cliente', telefono: e.telefono || '', email: e.email || '',
+             totalFacturado: 0, totalCobrado: 0, saldoPendiente: 0, eventos: 0, eventosCompletados: 0,
+             ultimoEventoFecha: '', ultimoEstado: '', ultimoRealizadoFecha: '', proximaReserva: null
+         });
+
+         const c = clientsMap.get(clientKey);
+         const total = utils.safeNum(e.total);
+         const cobrado = Math.max(0, Math.min(utils.safeNum(e.abono), total || utils.safeNum(e.abono)));
+         const saldo = Math.max(total - utils.safeNum(e.abono), 0);
+         c.totalFacturado += total;
+         c.totalCobrado += cobrado;
+         c.saldoPendiente += saldo;
+         c.eventos += 1;
+         if (es === 'completado') c.eventosCompletados += 1;
+
+         // Conserva los datos más recientes disponibles del cliente.
+         if (e.telefono) c.telefono = e.telefono;
+         if (e.email) c.email = e.email;
+         if (e.cliente) c.nombre = e.cliente;
+
+         if (e.fecha && (!c.ultimoEventoFecha || e.fecha > c.ultimoEventoFecha)) {
+             c.ultimoEventoFecha = e.fecha;
+             c.ultimoEstado = e.estado;
+         }
+         if (es === 'completado' && e.fecha && (!c.ultimoRealizadoFecha || e.fecha > c.ultimoRealizadoFecha)) c.ultimoRealizadoFecha = e.fecha;
+         if (e.fecha && e.fecha >= todayStr && es !== 'completado') {
+             if (!c.proximaReserva || `${e.fecha} ${e.hora || ''}` < `${c.proximaReserva.fecha} ${c.proximaReserva.hora || ''}`) c.proximaReserva = e;
+         }
+     });
+     return Array.from(clientsMap.values()).filter(c => !hiddenClients.includes(c.nombre) && !hiddenClients.includes(`key:${c.clientKey}`));
+  }, [eventosActivos, hiddenClients, todayStr]);
+
+  const enrichedClients = useMemo(() => {
+      return clientsList.map(c => {
+          let daysSince = 0;
+          const referenceDate = c.ultimoRealizadoFecha || (c.ultimoEventoFecha && c.ultimoEventoFecha < todayStr ? c.ultimoEventoFecha : '');
+          if (referenceDate) {
+              const [y, m, d] = referenceDate.split('-');
+              if (y && m && d) {
+                  const lastDate = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime();
+                  daysSince = Math.max(0, Math.floor((todayTime - lastDate) / (1000 * 60 * 60 * 24)));
+              }
+          }
+          const isVIP = c.eventosCompletados >= 3 || c.totalCobrado >= 300;
+          return {
+              ...c, totalGastado: c.totalFacturado, daysSince, isVIP,
+              isFrecuente: c.eventosCompletados === 2,
+              isNuevo: c.eventos === 1 && (!referenceDate || daysSince <= 180),
+              isInactivo: !!referenceDate && daysSince > 180 && !c.proximaReserva,
+              needsContact: !!referenceDate && daysSince > 60 && daysSince <= 365 && !c.proximaReserva
+          };
+      });
+  }, [clientsList, todayTime, todayStr]);
+
   const animatedGananciaHoy = useCountUp(stats.gananciaHoy);
   
   const agendaFiltrados = useMemo(() => { 
@@ -909,11 +949,11 @@ export default function App() {
       if (clientFilter === 'retomar' && !c.needsContact) return false; 
       if (!deferredSearchTerm) return true; 
       const s = deferredSearchTerm.toLowerCase(); 
-      return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s); 
+      return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s) || String(c.email || '').toLowerCase().includes(s); 
   }), [enrichedClients, deferredSearchTerm, clientFilter]);
 
   const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => { 
-      if (clientSort === 'gasto') return b.totalGastado - a.totalGastado; 
+      if (clientSort === 'gasto') return b.totalCobrado - a.totalCobrado; 
       if (clientSort === 'recientes') return new Date(b.ultimoEventoFecha || 0) - new Date(a.ultimoEventoFecha || 0); 
       return 0; 
   }), [filteredClients, clientSort]);
@@ -1121,7 +1161,7 @@ export default function App() {
           showAlert("No se pudo eliminar el registro. Intenta nuevamente.", false);
       }
   }), [closeModal, showConfirm, showAlert]);
-  const handleDeleteClient = useCallback((clientName, eventCount) => { const mensaje = eventCount > 0 ? `¿Seguro que deseas eliminar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas eliminar este cliente?`; showConfirm(mensaje, async () => { utils.triggerHaptic('light'); const newHidden = [...hiddenClients, clientName]; setHiddenClients(newHidden); if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true }); showAlert("Cliente eliminado exitosamente.", true); }); }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
+  const handleDeleteClient = useCallback((client, eventCount) => { const clientName = client?.nombre || 'Cliente'; const mensaje = eventCount > 0 ? `¿Seguro que deseas ocultar este cliente? Tiene ${eventCount} evento(s) asociado(s).` : `¿Seguro que deseas ocultar este cliente?`; showConfirm(mensaje, async () => { utils.triggerHaptic('light'); const marker = client?.clientKey ? `key:${client.clientKey}` : clientName; const newHidden = [...new Set([...hiddenClients, marker])]; setHiddenClients(newHidden); if (firebaseUser) await setDoc(getConfigRef('clientesOcultos'), { clients: newHidden }, { merge: true }); showAlert("Cliente ocultado del CRM. Sus eventos se conservan.", true); }); }, [hiddenClients, firebaseUser, showConfirm, showAlert]);
   const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => {
       utils.triggerHaptic('light');
       try {
@@ -1139,16 +1179,17 @@ export default function App() {
   }), [eventosActivos, showConfirm, showAlert]);
   const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); loadFullHistory(true); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert, loadFullHistory]);
   
-  const handleSaveClientName = useCallback(async (oldName, newName) => {
-      const oldKey = utils.normalizeText(oldName); const newKey = utils.normalizeText(newName);
-      if(!newName.trim() || oldKey === newKey) { setClientEditModal({ isOpen: false, oldName: '' }); return; }
-      const eventsToUpdate = eventosActivos.filter(e => utils.normalizeText(e.cliente) === oldKey);
+  const handleSaveClientName = useCallback(async (oldName, newName, clientKey) => {
+      const newKey = utils.normalizeText(newName);
+      if(!newName.trim() || utils.normalizeText(oldName) === newKey) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); return; }
+      const eventsToUpdate = eventosActivos.filter(e => clientKey ? getClientKey(e) === clientKey : utils.normalizeText(e.cliente) === utils.normalizeText(oldName));
       try {
           await Promise.all(eventsToUpdate.map(e => setDoc(getDocRef(e.id), { cliente: newName.trim() }, { merge: true })));
-          setEventos(prev => prev.map(e => utils.normalizeText(e.cliente) === oldKey ? { ...e, cliente: newName.trim() } : e));
+          const ids = new Set(eventsToUpdate.map(e => e.id));
+          setEventos(prev => prev.map(e => ids.has(e.id) ? { ...e, cliente: newName.trim() } : e));
           utils.triggerHaptic('success');
-          showAlert(`Cliente actualizado. Se unificaron ${eventsToUpdate.length} eventos.`, true);
-          setClientEditModal({ isOpen: false, oldName: '' });
+          showAlert(`Cliente actualizado en ${eventsToUpdate.length} evento(s).`, true);
+          setClientEditModal({ isOpen: false, oldName: '', clientKey: '' });
       } catch (err) {
           console.error("Error actualizando cliente:", err);
           showAlert("No se pudo actualizar el cliente en Firebase.", false);
@@ -1550,7 +1591,7 @@ export default function App() {
                          const phoneClean = String(c.telefono).replace(/\D/g,'');
                          const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`; 
                          return (
-                             <div key={`contact-${c.nombre}`} className={`snap-center shrink-0 w-80 ${UI.card} p-6 flex flex-col gap-5 animate-fadeInUp`} style={{ animationDelay: `${Math.min(idx * 50, 500)}ms` }}>
+                             <div key={`contact-${c.clientKey}`} className={`snap-center shrink-0 w-80 ${UI.card} p-6 flex flex-col gap-5 animate-fadeInUp`} style={{ animationDelay: `${Math.min(idx * 50, 500)}ms` }}>
                                  <div><p className="font-extrabold text-slate-900 truncate text-xl tracking-tight capitalize">{c.nombre}</p><Badge color="rose" className="mt-2"><Clock size={12}/> Sin compras hace {c.daysSince} días</Badge></div>
                                  <AppButton onClick={() => utils.openWhatsAppBusiness(phoneClean, msg)} variant="success" icon={MessageCircle} className="w-full text-[12px]">Enviar Promo</AppButton>
                              </div>
@@ -1559,13 +1600,13 @@ export default function App() {
                  </div>
              </div>
           )}
-          <div className="flex flex-col sm:flex-row gap-4"><div className={`${UI.card} p-2 flex-1 flex transition-all duration-300 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#2563FF] transition-colors" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-slate-400 text-slate-900" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-1.5 rounded-full hover:bg-slate-100 transition-all"><X size={16}/></button>)}</div></div><button type="button" onClick={() => setClientSort(clientSort === 'gasto' ? 'recientes' : 'gasto')} className={`${UI.card} px-8 py-3.5 flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-widest transition-all text-slate-600 hover:text-[#2563FF] hover:bg-white`}> <ArrowDownWideNarrow size={18}/> <span className="hidden sm:inline">Ordenar: </span><span className="text-[#2563FF]">{clientSort === 'gasto' ? 'Mayor Gasto' : 'Recientes'}</span></button></div>
+          <div className="flex flex-col sm:flex-row gap-4"><div className={`${UI.card} p-2 flex-1 flex transition-all duration-300 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#2563FF] transition-colors" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-slate-400 text-slate-900" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-1.5 rounded-full hover:bg-slate-100 transition-all"><X size={16}/></button>)}</div></div><button type="button" onClick={() => setClientSort(clientSort === 'gasto' ? 'recientes' : 'gasto')} className={`${UI.card} px-8 py-3.5 flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-widest transition-all text-slate-600 hover:text-[#2563FF] hover:bg-white`}> <ArrowDownWideNarrow size={18}/> <span className="hidden sm:inline">Ordenar: </span><span className="text-[#2563FF]">{clientSort === 'gasto' ? 'Mayor Cobrado' : 'Recientes'}</span></button></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
             {sortedFilteredClients.length === 0 ? (
                 <div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>
             ) : (
                 sortedFilteredClients.map((c, i) => (
-                    <ClientCardItem key={c.nombre} c={c} idx={i} isExpanded={expandedClientId === c.nombre} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(name) => setClientEditModal({ isOpen: true, oldName: name })} historial={historialClientesMap.get(utils.normalizeText(c.nombre)) || []}/>
+                    <ClientCardItem key={c.clientKey} c={c} idx={i} isExpanded={expandedClientId === c.clientKey} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(client) => setClientEditModal({ isOpen: true, oldName: client.nombre, clientKey: client.clientKey })} historial={historialClientesMap.get(c.clientKey) || []}/>
                 ))
             )}
           </div>
@@ -1761,7 +1802,7 @@ export default function App() {
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} openModal={openModal} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
-      <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} onClose={() => setClientEditModal({isOpen:false, oldName:''})} onSave={handleSaveClientName} />
+      <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
       
       {isPrinting && printData && (
