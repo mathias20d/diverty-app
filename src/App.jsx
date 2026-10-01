@@ -661,7 +661,15 @@ export default function App() {
 
   const handleTabChange = useCallback((tabId) => { 
       utils.triggerHaptic('light'); setActiveTab(tabId); setIsSidebarOpen(false); 
-      setTimeout(() => { const mainEl = document.getElementById('main-content'); if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' }); }, 50); 
+      // En móvil, cada sección debe abrir siempre desde su encabezado, sin heredar scroll previo.
+      requestAnimationFrame(() => {
+          const mainEl = document.getElementById('main-content');
+          if (mainEl) { mainEl.scrollTop = 0; mainEl.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }
+      });
+      setTimeout(() => {
+          const mainEl = document.getElementById('main-content');
+          if (mainEl) mainEl.scrollTop = 0;
+      }, 80);
   }, []);
   
   const updateSettings = useCallback((newSettings) => { 
@@ -1676,7 +1684,7 @@ export default function App() {
 
     return (
       <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
-        <div className="mb-10 flex flex-col gap-4 relative z-10">
+        <div className="pt-2 sm:pt-3 mb-10 flex flex-col gap-4 relative z-10">
             <div className={UI.flexBetween}><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-2"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-3xl sm:text-5xl font-black text-slate-950 tracking-[-0.03em]">Agenda</h2><p className="text-base font-medium text-slate-500 mt-2">Organiza tus eventos con precisión</p></div></div>
             <div className="flex flex-col lg:flex-row gap-5 mt-6">
                  <div className="relative flex-1 group"><div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none"><Search size={20} className="text-slate-400 group-focus-within:text-[#7657FF] transition-colors" /></div><input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-[16px] pl-12 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#8B5CF6]/50 focus:ring-4 focus:ring-[#7657FF]/10 transition-all duration-300 shadow-[0_10px_28px_rgba(15,23,42,.06)] placeholder:text-slate-400" />{globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-400 hover:text-slate-700 transition-colors"><X size={18}/></button>}</div>
@@ -1974,7 +1982,7 @@ export default function App() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0 relative z-10 h-[100dvh] overflow-hidden">
-          <header className="bg-[#071126]/96 backdrop-blur-2xl border-b border-white/10 px-4 sm:px-6 py-3 flex justify-between items-center z-40 sticky top-0 shadow-[0_10px_28px_rgba(2,6,23,0.18)]">
+          <header style={{backgroundColor:'rgba(7,17,38,0.985)'}} className="backdrop-blur-2xl border-b border-white/10 px-4 sm:px-6 py-3 flex justify-between items-center z-40 sticky top-0 shadow-[0_10px_28px_rgba(2,6,23,0.22)]">
              <div className="flex items-center gap-3"><div className="bg-white/[0.08] p-1.5 rounded-[13px] border border-white/10 shadow-sm ring-1 ring-white/[0.03]"><img src={LOGO_URL} alt="Logo" className="h-7 w-7 object-contain" /></div><h1 className="text-[19px] sm:text-xl font-black text-white tracking-[-0.025em] flex items-center gap-2">Diverty CRM {!isOnline && <Cloud size={18} className="text-amber-500 animate-pulse"/>}</h1></div>
              <button onClick={() => setIsNotifOpen(true)} className="relative p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-[14px] transition-all">
                 <BellRing size={22} />
