@@ -272,6 +272,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
     useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); } }, [isOpen]);
+    useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && selectedRequest) { setSelectedRequest(null); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest]);
     if (!isOpen) return null;
     const reqs = eventosActivos
         .filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa')
@@ -533,6 +534,7 @@ const TransactionItem = memo(function TransactionItem({ ev, isExpanded, onToggle
 
 const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir, onRegistrarAbono }) {
     const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false); const startX = useRef(0);
+    useEffect(() => { const closeOnAppBack = (e) => { if (isExpanded) { setIsExpanded(false); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeOnAppBack); return () => window.removeEventListener('diverty:back-layer', closeOnAppBack); }, [isExpanded]);
     const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []); const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]); const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
     const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo);
     const eventId = String(ev.id || '');
@@ -719,9 +721,9 @@ export default function App() {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal });
+  const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId });
   useEffect(() => { 
-      stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal }; 
+      stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId }; 
   });
   
   useEffect(() => {
@@ -736,17 +738,26 @@ export default function App() {
         else if (s.modalConfig?.isOpen) { setModalConfig(p => ({...p, isOpen: false})); blocked = true; }
         else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); blocked = true; }
         else if (s.proveedorModal?.isOpen) { setProveedorModal({ isOpen: false, data: null }); blocked = true; }
-        else if (s.isNotifOpen) { setIsNotifOpen(false); blocked = true; }
-        else if (s.isModoOperativo) { setIsModoOperativo(false); blocked = true; }
-        else if (tabHistoryRef.current.length > 1) {
-            // Regresa a la sección visitada anteriormente, no fuerza Inicio.
-            tabHistoryRef.current.pop();
-            const previousTab = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'inicio';
-            navigatingBackRef.current = true;
-            setActiveTab(previousTab);
-            setIsSidebarOpen(false);
-            blocked = true;
+        else {
+            // Las tarjetas de Agenda y el detalle de una Solicitud Web manejan primero su propio nivel abierto.
+            const detail = { handled: false };
+            window.dispatchEvent(new CustomEvent('diverty:back-layer', { detail }));
+            if (detail.handled) blocked = true;
+            else if (s.expandedClientId) { setExpandedClientId(null); blocked = true; }
+            else if (s.expandedProvId) { setExpandedProvId(null); blocked = true; }
+            else if (s.expandedFinanceId) { setExpandedFinanceId(null); blocked = true; }
+            else if (s.isNotifOpen) { setIsNotifOpen(false); blocked = true; }
+            else if (s.isModoOperativo) { setIsModoOperativo(false); blocked = true; }
+            else if (tabHistoryRef.current.length > 1) {
+                tabHistoryRef.current.pop();
+                const previousTab = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'inicio';
+                navigatingBackRef.current = true;
+                setActiveTab(previousTab);
+                setIsSidebarOpen(false);
+                blocked = true;
+            }
         }
+        /* handled above */ if (false) { setIsNotifOpen(false); blocked = true; }
         
         if (blocked) {
             window.history.pushState({ divertyApp: true }, '', window.location.href);
