@@ -343,13 +343,26 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {sA.map((s, i) => { 
-                                                const cant = Number(s.cantidad) || 1, precioUnitario = utils.safeNum(s.precio) / cant; 
+                                                const cant = Number(s.cantidad) || 1, precioUnitario = utils.safeNum(s.precio) / cant;
+                                                // Cantidad y duración NO son lo mismo. Para paquetes, la duración
+                                                // viene del propio plan (campo explícito o texto de descripción/incluye).
+                                                const textoDuracion = [s.duracion, s.duracionTexto, s.descripcion, ...(Array.isArray(s.incluye) ? s.incluye : [])].filter(Boolean).join(' ');
+                                                const matchDuracion = textoDuracion.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b/i);
+                                                const nombreNormalizado = utils.normalizeText(s.nombre || '');
+                                                const duracionFallback = nombreNormalizado.includes('plan recreativo') ? 2 : (nombreNormalizado.includes('plan diverty') ? 3 : 0);
+                                                const duracionHoras = utils.safeNum(s.duracionHoras) || (matchDuracion ? Number(String(matchDuracion[1]).replace(',', '.')) : 0) || duracionFallback;
+                                                const esPorHora = utils.normalizeText(s.tipoCobro || '') === 'hora' || s.isHourly === true;
+                                                const etiquetaServicio = esPorHora
+                                                    ? `${cant} ${cant === 1 ? 'Hora' : 'Horas'}`
+                                                    : (duracionHoras > 0
+                                                        ? `${duracionHoras} ${duracionHoras === 1 ? 'Hora' : 'Horas'}`
+                                                        : (cant > 1 ? `x${cant} unidades` : ''));
                                                 return (
                                                     <tr key={i} className="avoid-break hover:bg-slate-50/50 transition-colors">
                                                         <td className="py-5 px-5 text-center border-r border-slate-100 align-top">
                                                             <div className="flex justify-center mb-2.5 text-[#2563FF]"><Star size={24} className="fill-[#2563FF]/10" strokeWidth={1.8}/></div>
                                                             <p className="font-extrabold text-slate-900 text-[13px] leading-tight">{String(s.nombre)}</p>
-                                                            {cant > 0 && (<p className="font-bold text-[#7C3AED] text-[10px] mt-2 bg-[#7C3AED]/8 py-1 rounded-md inline-block px-2.5">{cant} {cant === 1 ? 'Hora' : 'Horas'}</p>)}
+                                                            {etiquetaServicio && (<p className="font-bold text-[#7C3AED] text-[10px] mt-2 bg-[#7C3AED]/8 py-1 rounded-md inline-block px-2.5">{etiquetaServicio}</p>)}
                                                         </td>
                                                         <td className="py-5 px-6 border-r border-slate-100 align-top">
                                                             <div className="text-slate-600 text-[11px] leading-relaxed space-y-2">
@@ -531,7 +544,22 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
     const filteredClientes = useMemo(() => { if (!deferredCliente || typeof deferredCliente !== 'string') return []; const search = utils.normalizeText(deferredCliente); return (clientesRegistrados || []).filter(c => utils.normalizeText(c.nombre).includes(search) || (c.telefono && utils.normalizeText(c.telefono).includes(search)) ).slice(0, 5); }, [deferredCliente, clientesRegistrados]);
     
     const deferredSearchTermService = useDeferredValue(searchTermService);
-    const filteredPaquetes = useMemo(() => { if(!deferredSearchTermService)return PAQUETES; const s=utils.normalizeText(deferredSearchTermService); return PAQUETES.filter(p=>utils.normalizeText(p.nombre).includes(s)||utils.normalizeText(p.short||'').includes(s)); }, [deferredSearchTermService, PAQUETES]);
+    // Catálogo limpio: un solo registro visible por nombre. Si existen duplicados antiguos,
+    // conservamos el más reciente (último en la lista) sin borrar nada de Firestore.
+    const paquetesUnicos = useMemo(() => {
+        const porNombre = new Map();
+        (Array.isArray(PAQUETES) ? PAQUETES : []).forEach((p) => {
+            const key = utils.normalizeText(p?.nombre || '').trim();
+            if (!key) return;
+            porNombre.set(key, p);
+        });
+        return Array.from(porNombre.values()).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+    }, [PAQUETES]);
+    const filteredPaquetes = useMemo(() => {
+        if (!deferredSearchTermService) return paquetesUnicos;
+        const s = utils.normalizeText(deferredSearchTermService);
+        return paquetesUnicos.filter(p => utils.normalizeText(p.nombre).includes(s) || utils.normalizeText(p.short || '').includes(s));
+    }, [deferredSearchTermService, paquetesUnicos]);
 
     const handleSelectClient = useCallback((client) => { utils.triggerHaptic('light'); setFormData(prev => ({ ...prev, cliente: client.nombre || '', telefono: client.telefono || '', email: client.email || prev.email || '' })); setShowClientDropdown(false); }, []);
     const procesarServicios = useCallback((prev, newSelected) => { const sumPrecios=newSelected.reduce((sum,s)=>sum+utils.safeNum(s.precio),0); const newTotal=sumPrecios+utils.safeNum(prev.transporte); const resumenServicios=newSelected.map(s=>s.cantidad>1?`${s.nombre} (x${s.cantidad})`:s.nombre).join(' + '); return{...prev,serviciosSeleccionados:newSelected,servicio:resumenServicios,total:newTotal>0?newTotal.toString():''}; }, []);
@@ -1090,8 +1118,15 @@ export default function App() {
   const proximasReservas = useMemo(() => [...stats.eventosHoy, ...stats.eventosManana].filter(e => utils.normalizeText(e.estado) !== 'completado'), [stats.eventosHoy, stats.eventosManana]);
 
   const handleAddCustomService = useCallback(async (nombre, precio) => { 
-      if (!nombre?.trim()) { showAlert("Ingresa un nombre para el servicio.", false); return null; } 
-      const newSrv = { id: 'c-'+Date.now(), nombre: nombre.trim(), precio: utils.safeNum(precio), short: nombre.substring(0,12)+'...', descripcion: 'Servicio personalizado.', isCustom: true }; 
+      if (!nombre?.trim()) { showAlert("Ingresa un nombre para el servicio.", false); return null; }
+      const nombreLimpio = nombre.trim();
+      const claveNombre = utils.normalizeText(nombreLimpio).trim();
+      const existente = [...(Array.isArray(catalogoPaquetes) ? catalogoPaquetes : [])].reverse().find(p => utils.normalizeText(p?.nombre || '').trim() === claveNombre);
+      if (existente) {
+          showAlert(`"${existente.nombre}" ya existe. Lo agregué sin crear otro duplicado.`, true);
+          return existente;
+      }
+      const newSrv = { id: 'c-'+Date.now(), nombre: nombreLimpio, precio: utils.safeNum(precio), short: nombreLimpio.substring(0,12)+'...', descripcion: 'Servicio personalizado.', isCustom: true }; 
       const nuevosPaquetes = [...catalogoPaquetes, newSrv]; 
       setCatalogoPaquetes(nuevosPaquetes); 
       if (firebaseUser) await setDoc(getConfigRef('serviciosCustom'), { paquetes: nuevosPaquetes }, { merge: true }); 
