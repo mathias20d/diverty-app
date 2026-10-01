@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 
@@ -563,6 +563,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('inicio'); 
   const [isDBReady, setIsDBReady] = useState(false); 
   const [eventos, setEventos] = useState([]); 
+  // Firestore optimizado: el historial completo se carga solo cuando una sección lo necesita.
+  const historyLoadedRef = useRef(false);
+  const historyLoadingRef = useRef(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [catalogoPaquetes, setCatalogoPaquetes] = useState([]); 
   const [hiddenClients, setHiddenClients] = useState([]); 
   const [filterDate, setFilterDate] = useState(''); 
@@ -702,6 +706,37 @@ export default function App() {
   const showConfirm = useCallback((message, onConfirm) => { 
       setConfirmModal({ isOpen: true, message: String(message), onConfirm: () => { onConfirm(); setConfirmModal({ isOpen: false, message: '', onConfirm: null }); } }); 
   }, []); 
+
+  const loadFullHistory = useCallback(async (silent = true) => {
+      if (!db || !appId || !firebaseUser || historyLoadedRef.current || historyLoadingRef.current) return;
+      historyLoadingRef.current = true;
+      setIsHistoryLoading(true);
+      try {
+          const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+          const snapshot = await getDocs(eventosRef);
+          const fullData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          setEventos(prev => {
+              const map = new Map(prev.map(e => [e.id, e]));
+              fullData.forEach(e => map.set(e.id, e));
+              return Array.from(map.values());
+          });
+          historyLoadedRef.current = true;
+      } catch (error) {
+          console.warn('No se pudo cargar el historial completo:', error);
+          if (!silent) showAlert('No se pudo cargar el historial completo. Revisa tu conexión.', false);
+      } finally {
+          historyLoadingRef.current = false;
+          setIsHistoryLoading(false);
+      }
+  }, [firebaseUser, showAlert]);
+
+  // Solo las vistas que realmente necesitan años de datos solicitan el historial completo.
+  useEffect(() => {
+      const needsHistory = activeTab === 'clientes' || activeTab === 'finanzas' || activeTab === 'proveedores' ||
+          (activeTab === 'eventos' && (viewMode === 'todas' || viewMode === 'pendientes' || !!deferredGlobalSearch || !!filterDate));
+      if (needsHistory) loadFullHistory(true);
+  }, [activeTab, viewMode, deferredGlobalSearch, filterDate, loadFullHistory]);
+
 
   useEffect(() => {
     if (!messaging) return;
@@ -843,6 +878,9 @@ export default function App() {
           if (filterDate && e.fecha !== filterDate) return false; 
           
           if (!filterDate && !deferredGlobalSearch) { 
+              // Una reserva completada sale de la operación diaria inmediatamente.
+              // Sigue disponible en "Todas", Clientes y Finanzas cuando se carga el historial.
+              if (viewMode !== 'todas' && es === 'completado') return false;
               if (viewMode === 'hoy') return e.fecha === todayStr; 
               let dt; 
               if (e.fecha) { const parts = String(e.fecha).split('-'); if (parts.length === 3) dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); } 
@@ -939,7 +977,7 @@ export default function App() {
   }, [eventosActivos, financePeriod, financeYear, financeMonth, todayTime]);
 
   const maxChartVal = useMemo(() => Math.max(...chartData.map(d => d.value), 100), [chartData]); 
-  const cotizacionesActivas = useMemo(() => eventosActivos.filter(e => utils.normalizeText(e.estado).includes('cotizaci') || utils.normalizeText(e.estado).includes('cot.')), [eventosActivos]); 
+  const cotizacionesActivas = useMemo(() => eventosActivos.filter(e => { const es = utils.normalizeText(e.estado); return es === 'cotizacion' || es === 'cot. aprobada'; }), [eventosActivos]); 
   const proximasReservas = useMemo(() => [...stats.eventosHoy, ...stats.eventosManana].filter(e => utils.normalizeText(e.estado) !== 'completado'), [stats.eventosHoy, stats.eventosManana]);
 
   const handleAddCustomService = useCallback(async (nombre, precio) => { 
@@ -1077,8 +1115,10 @@ export default function App() {
   const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => {
       utils.triggerHaptic('light');
       try {
-          // Limpieza real de documentos para que no sigan generando lecturas futuras.
-          await Promise.all(eventosActivos.map(e => deleteDoc(getDocRef(e.id))));
+          // Para una purga total sí se consulta explícitamente toda la colección.
+          const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+          await Promise.all(allSnap.docs.map(d => deleteDoc(getDocRef(d.id))));
+          historyLoadedRef.current = true;
           setEventos([]);
           utils.triggerHaptic('success');
           showAlert("Base de datos limpiada.", true);
@@ -1087,7 +1127,7 @@ export default function App() {
           showAlert("No se pudo completar la limpieza. Intenta nuevamente.", false);
       }
   }), [eventosActivos, showConfirm, showAlert]);
-  const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert]);
+  const handleViewDoc = useCallback((e, type) => { try { utils.triggerHaptic('light'); loadFullHistory(true); setPrintData(e); setPrintType(type); setIsPrinting(true); } catch (err) { showAlert("Error al procesar."); } }, [showAlert, loadFullHistory]);
   
   const handleSaveClientName = useCallback(async (oldName, newName) => {
       const oldKey = utils.normalizeText(oldName); const newKey = utils.normalizeText(newName);
@@ -1109,6 +1149,7 @@ export default function App() {
       const provId = data.id || `prov-${Date.now()}`; const payload = { ...data, id: provId };
       try {
           await setDoc(getProvRef(provId), payload);
+          setProveedores(prev => { const next = prev.filter(p => p.id !== provId); next.push(payload); return next; });
           utils.triggerHaptic('success');
           showAlert(data.id ? "Proveedor actualizado" : "Proveedor registrado", true);
           setProveedorModal({ isOpen: false, data: null });
@@ -1120,7 +1161,7 @@ export default function App() {
 
   const handleDeleteProveedor = useCallback((id) => { showConfirm("¿Eliminar este proveedor de la agenda?", async () => {
       utils.triggerHaptic('light');
-      try { await deleteDoc(getProvRef(id)); showAlert("Proveedor eliminado", true); }
+      try { await deleteDoc(getProvRef(id)); setProveedores(prev => prev.filter(p => p.id !== id)); showAlert("Proveedor eliminado", true); }
       catch (err) { console.error("Error eliminando proveedor:", err); showAlert("No se pudo eliminar el proveedor.", false); }
   }); }, [showConfirm, showAlert]);
   const sendWhatsAppCall = useCallback((e, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(e, type, empresaSettings || appSettings.empresa), phoneClean = String(e.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
@@ -1182,39 +1223,90 @@ export default function App() {
   }, [messaging, showAlert]);
 
   useEffect(() => {
-    if (!db || !appId || !firebaseUser) return; const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500); 
+    if (!db || !appId || !firebaseUser) return; historyLoadedRef.current = false; const timeoutId = setTimeout(() => { setIsDBReady(true); }, 3500); 
     const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
     const provRef = collection(db, 'artifacts', appId, 'public', 'data', 'proveedores');
 
-    // IMPORTANTE: mantener UNA sola suscripción de eventos. Esta escucha es la que
-    // permite que una reserva creada desde la web aparezca en el CRM en tiempo real.
-    const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => { 
-        clearTimeout(timeoutId); 
-        const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+    // TIEMPO REAL OPERATIVO: Diverty trabaja con HOY + reservas futuras.
+    // Las reservas completadas/pasadas quedan en segundo plano y el historial completo
+    // solo se carga cuando el usuario entra a Clientes, Finanzas, Proveedores o Historial.
+    const hoyOperativo = new Date();
+    hoyOperativo.setHours(0, 0, 0, 0);
+    const hoyOperativoStr = utils.getLocalYYYYMMDD(hoyOperativo);
+    const eventosOperativosQuery = query(eventosRef, where('fecha', '>=', hoyOperativoStr));
+    // Cotizaciones activas deben seguir visibles aunque su fecha haya pasado.
+    // Es una consulta pequeña por estado; no descarga el historial de cotizaciones rechazadas/completadas.
+    const cotizacionesActivasQuery = query(eventosRef, where('estado', 'in', ['Cotización', 'Cot. Aprobada']));
+
+    // Reutilizar historial que ya exista en IndexedDB sin generar lecturas facturables.
+    getDocsFromCache(eventosRef).then(cacheSnap => {
+        if (cacheSnap.empty) return;
+        const cached = cacheSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setEventos(prev => {
+            const map = new Map(prev.map(e => [e.id, e]));
+            cached.forEach(e => map.set(e.id, e));
+            return Array.from(map.values());
+        });
+    }).catch(() => {});
+
+    const unsubscribeEventos = onSnapshot(eventosOperativosQuery, (snapshot) => { 
+        clearTimeout(timeoutId);
         snapshot.docChanges().forEach((change) => { 
             if (change.type === "added") { 
-                const data = change.doc.data(); 
-                if (data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) { 
+                const data = change.doc.data();
+                const estadoNormal = utils.normalizeText(data.estado);
+                const esCotizacion = estadoNormal.includes('cotizaci') || estadoNormal.includes('cot.');
+                if (!esCotizacion && data.createdAt && (Date.now() - new Date(data.createdAt).getTime() < 15000)) { 
                     utils.triggerHaptic('success'); 
                     showAlert(`🔥 ¡Alerta de Sistema! Entró nueva reserva: ${data.cliente}`, true); 
                 } 
             } 
-        }); 
-        // Firestore es la fuente de verdad: cada snapshot actualiza TODOS los campos
-        // de las reservas (cliente, fecha, hora, dirección, servicios, pagos, estado, etc.).
-        const syncedEvents = [...fbData].sort((a,b) => String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')));
-        setEventos(syncedEvents); 
+        });
+
+        setEventos(prev => {
+            const map = new Map(prev.map(e => [e.id, e]));
+            snapshot.docChanges().forEach(change => {
+                const id = change.doc.id;
+                if (change.type === 'removed') {
+                    map.delete(id);
+                } else {
+                    map.set(id, { id, ...change.doc.data() });
+                }
+            });
+            return Array.from(map.values());
+        });
         setIsDBReady(true); 
     }, (error) => { 
         console.warn("Firestore offline:", error); clearTimeout(timeoutId); setIsDBReady(true); 
     });
+
+    // TIEMPO REAL DE COTIZACIONES ACTIVAS: mantiene pendientes/aprobadas visibles
+    // incluso si la fecha del evento ya pasó. Al rechazarlas dejan de ser operativas.
+    const unsubscribeCotizaciones = onSnapshot(cotizacionesActivasQuery, (snapshot) => {
+        setEventos(prev => {
+            const map = new Map(prev.map(e => [e.id, e]));
+            snapshot.docChanges().forEach(change => {
+                if (change.type !== 'removed') {
+                    const id = change.doc.id;
+                    map.set(id, { id, ...change.doc.data() });
+                }
+                // No borramos aquí un 'removed': puede haberse convertido en reserva
+                // y el listener de reservas futuras pasa a ser su fuente en tiempo real.
+            });
+            return Array.from(map.values());
+        });
+    }, (error) => console.warn('No se pudieron sincronizar cotizaciones activas:', error));
     
-    const unsubscribeProv = onSnapshot(provRef, (snapshot) => { setProveedores(snapshot.docs.map(d => ({id: d.id, ...d.data()}))); });
+    // Proveedores cambian desde esta misma app: una lectura inicial es suficiente.
+    // Guardar/eliminar actualiza el estado local, evitando otro listener permanente.
+    getDocs(provRef).then((snapshot) => {
+        setProveedores(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+    }).catch(error => console.warn('No se pudieron cargar proveedores:', error));
 
     getDoc(getConfigRef('serviciosCustom')).then((docSnap) => { if (docSnap.exists()) { setCatalogoPaquetes(docSnap.data().paquetes || []); } }); 
     getDoc(getConfigRef('clientesOcultos')).then((docSnap) => { if (docSnap.exists()) { setHiddenClients(docSnap.data().clients || []); } }); 
     
-    return () => { unsubscribeEventos(); unsubscribeProv(); clearTimeout(timeoutId); };
+    return () => { unsubscribeEventos(); unsubscribeCotizaciones(); clearTimeout(timeoutId); };
   }, [db, appId, firebaseUser, showAlert]);
 
   const renderInicio = () => {
