@@ -1754,6 +1754,16 @@ export default function App() {
           </div>
         );
      }
+     const reservasSemanaCount = eventosActivos.filter(e => {
+        const estado = utils.normalizeText(e.estado);
+        if (!e.fecha || estado === 'cancelado' || estado === 'completado' || estado.includes('cotizaci') || estado.includes('cot.')) return false;
+        const key = String(e.fecha).trim().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+        const [y,m,d] = key.split('-').map(Number);
+        const fecha = new Date(y, m - 1, d, 12, 0, 0, 0);
+        return fecha >= weekStart && fecha <= weekEnd;
+     }).length;
+
      return (
        <div className="animate-fadeIn min-h-full px-3.5 pt-3.5 md:p-6 lg:p-10 max-w-6xl mx-auto space-y-4 pb-32 md:pb-10 relative z-10">
           <div className="absolute inset-x-0 top-0 h-[340px] -z-10 pointer-events-none overflow-hidden">
@@ -1778,28 +1788,28 @@ export default function App() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <button type="button" className="text-left group" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
-                 <div className="h-full min-h-[132px] rounded-[24px] p-4 sm:p-5 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(118,87,255,.14)] relative overflow-hidden">
+                 <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(118,87,255,.14)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-[#7657FF]/60 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center"><Calendar size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-[#7657FF] transition-colors"/></div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Eventos Hoy</p><p className="text-[34px] sm:text-[40px] leading-none font-black text-slate-950 tracking-[-0.05em] mt-1.5">{stats.eventosHoy.length}</p>
                  </div>
               </button>
               <button type="button" className="text-left group" onClick={() => handleTabChange('finanzas')}>
-                 <div className="h-full min-h-[132px] rounded-[24px] p-4 sm:p-5 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(16,185,129,.12)] relative overflow-hidden">
+                 <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(16,185,129,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/10 flex items-center justify-center"><DollarSign size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors"/></div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Ingresos Mes</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-emerald-500 tracking-[-0.05em] mt-2">${stats.ingresosEsteMes.toFixed(0)}</p>
                  </div>
               </button>
               <button type="button" className="text-left group" onClick={() => handleTabChange('clientes')}>
-                 <div className="h-full min-h-[132px] rounded-[24px] p-4 sm:p-5 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(245,158,11,.12)] relative overflow-hidden">
+                 <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(245,158,11,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-amber-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><Users size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-amber-500 transition-colors"/></div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Clientes Activos</p><p className="text-[34px] sm:text-[40px] leading-none font-black text-slate-950 tracking-[-0.05em] mt-1.5">{clientsList.length}</p>
                  </div>
               </button>
               <button type="button" className="text-left group" onClick={openCuentasPorCobrar}>
-                 <div className="h-full min-h-[132px] rounded-[24px] p-4 sm:p-5 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
+                 <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-rose-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-rose-500/10 text-rose-500 border border-rose-500/10 flex items-center justify-center"><TrendingUp size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-rose-500 transition-colors"/></div>
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Por Cobrar</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
@@ -1821,6 +1831,21 @@ export default function App() {
                 <RefreshCw size={21} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" />
             </button>
           </div>
+
+          <div className="grid grid-cols-3 overflow-hidden rounded-[22px] bg-white/85 backdrop-blur-2xl border border-white shadow-[0_14px_34px_rgba(15,23,42,.07)]">
+             <button type="button" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }} className="px-2.5 py-3.5 flex items-center justify-center gap-2 border-r border-slate-200/70 active:bg-violet-50 transition-colors">
+                <div className="w-8 h-8 rounded-[11px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center shrink-0"><CalendarDays size={16}/></div>
+                <div className="text-left min-w-0"><p className="text-[8px] font-black tracking-[0.14em] text-slate-400 uppercase">Hoy</p><p className="text-[12px] sm:text-sm font-black text-slate-950 whitespace-nowrap">{stats.eventosHoy.length} {stats.eventosHoy.length === 1 ? 'evento' : 'eventos'}</p></div>
+             </button>
+             <button type="button" onClick={() => handleTabChange('eventos')} className="px-2.5 py-3.5 flex items-center justify-center gap-2 border-r border-slate-200/70 active:bg-rose-50 transition-colors">
+                <div className="w-8 h-8 rounded-[11px] bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0"><CalendarDays size={16}/></div>
+                <div className="text-left min-w-0"><p className="text-[8px] font-black tracking-[0.14em] text-slate-400 uppercase">Mañana</p><p className="text-[12px] sm:text-sm font-black text-slate-950 whitespace-nowrap">{stats.eventosManana.length} {stats.eventosManana.length === 1 ? 'evento' : 'eventos'}</p></div>
+             </button>
+             <button type="button" onClick={() => handleTabChange('eventos')} className="px-2.5 py-3.5 flex items-center justify-center gap-2 active:bg-emerald-50 transition-colors">
+                <div className="w-8 h-8 rounded-[11px] bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0"><CalendarDays size={16}/></div>
+                <div className="text-left min-w-0"><p className="text-[8px] font-black tracking-[0.14em] text-slate-400 uppercase">Semana</p><p className="text-[12px] sm:text-sm font-black text-slate-950 whitespace-nowrap">{reservasSemanaCount} {reservasSemanaCount === 1 ? 'evento' : 'eventos'}</p></div>
+             </button>
+          </div>
           
           {stats.alertasOperativas.length > 0 && (
              <div className="animate-slideDown mt-9">
@@ -1839,16 +1864,16 @@ export default function App() {
           )}
           
           {cotizacionesActivas.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-slate-200/70 relative">
-                  <div className="flex items-center gap-3 mb-5"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
+              <div className="mt-6 pt-5 border-t border-slate-200/70 relative">
+                  <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
                   </div>
               </div>
           )}
           
-          <div className="mt-8 pt-6 border-t border-slate-200/70 relative">
-              <div className={UI.flexBetween + " mb-5 gap-3"}>
+          <div className="mt-6 pt-5 border-t border-slate-200/70 relative">
+              <div className={UI.flexBetween + " mb-4 gap-3"}>
                   <div className="flex items-center gap-3 min-w-0"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center shrink-0"><CalendarDays size={20}/></div><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Agenda</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em] truncate">Próximas Reservas</h3></div></div>
                   <button type="button" onClick={() => handleTabChange('eventos')} className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 hover:text-[#7657FF] transition-colors shrink-0 bg-white/70 border border-white px-3 py-2 rounded-xl shadow-sm">Ver Todas <ChevronRight size={13} className="inline"/></button>
               </div>
