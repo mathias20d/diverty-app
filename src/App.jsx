@@ -1103,8 +1103,8 @@ export default function App() {
           utils.triggerHaptic('light'); 
           let initial = { ...defaultFormData, fecha: filterDate || todayStr }; 
           if (e && typeof e === 'object' && 'id' in e && typeof e.preventDefault !== 'function') { 
-              let srvs = Array.isArray(e.serviciosSeleccionados) ? [...e.serviciosSeleccionados] : []; 
-              if (!srvs.length && e.servicio) { srvs.push({ nombre: e.servicio, precio: utils.safeNum(e.total), cantidad: 1, precioOriginal: utils.safeNum(e.total) }); } 
+              let srvs = Array.isArray(e.serviciosSeleccionados) ? e.serviciosSeleccionados.map((srv) => { const incluye = Array.isArray(srv?.incluye) ? srv.incluye.map(x => String(x || '').trim()).filter(Boolean) : []; const descripcionActual = String(srv?.descripcion || '').trim(); const descripcionSincronizada = descripcionActual || (incluye.length ? `Todo lo que incluye:\n${incluye.map(x => `• ${x}`).join('\n')}` : ''); return { ...srv, descripcion: descripcionSincronizada, incluye }; }) : []; 
+              if (!srvs.length && e.servicio) { srvs.push({ nombre: e.servicio, precio: utils.safeNum(e.total), cantidad: 1, precioOriginal: utils.safeNum(e.total), descripcion: String(e.descripcionEvento || '').trim() }); } 
               initial = { ...defaultFormData, ...e, serviciosSeleccionados: srvs }; 
           } else if (!isCot) { 
               const draftStr = utils.getSafeLocal('diverty_form_draft'); 
