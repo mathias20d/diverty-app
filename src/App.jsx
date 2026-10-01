@@ -661,7 +661,7 @@ export default function App() {
       try {
           const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
           const snapshot = await getDocs(eventosRef);
-          const fullData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          const fullData = snapshot.docs.filter(d => !d.data()?._system).map(d => ({ id: d.id, ...d.data() }));
           setEventos(prev => {
               const map = new Map(prev.map(e => [e.id, e]));
               fullData.forEach(e => map.set(e.id, e));
@@ -1069,9 +1069,10 @@ export default function App() {
       }
   }, [showAlert, publishSync]);
 
-  // DOCUMENTOS PRO 3.0: consecutivos permanentes e independientes por tipo.
-  // El contador se guarda en Firestore y usa transacción, por lo que varios dispositivos
-  // no pueden tomar el mismo número. El número queda guardado en la reserva/cotización.
+  // DOCUMENTOS PRO 3.2: consecutivos permanentes e independientes por tipo.
+  // Compatibilidad: el contador central vive dentro de la colección `eventos`, donde
+  // esta app ya tiene permisos de escritura. Es un documento de sistema invisible.
+  // La transacción bloquea el contador compartido y evita números duplicados entre dispositivos.
   const ensureDocumentNumber = useCallback(async (eventData, type) => {
       if (!eventData?.id || type === 'contrato_proveedor') return eventData;
       const config = {
@@ -1081,51 +1082,58 @@ export default function App() {
       }[type];
       if (!config || eventData[config.field]) return eventData;
       try {
-          // Solo al inicializar una secuencia antigua se usa el tamaño actual como piso,
-          // para no retroceder desde numeraciones que ya se mostraban en documentos previos.
-          // COMPATIBILIDAD 3.1: usamos el documento serviciosCustom, que ya forma parte
-          // de la configuración autorizada de esta app. Los consecutivos viven en un mapa
-          // independiente y el merge conserva intacto el catálogo de servicios.
-          const counterRef = getConfigRef('serviciosCustom');
+          const systemCounterId = '__document_sequences__';
+          const counterRef = getDocRef(systemCounterId);
+
+          // Solo si aún no existe el contador, calculamos un piso desde los números ya emitidos.
+          // Abrir documentos después de esto ya requiere únicamente la transacción de 2 documentos.
           const counterSnap = await getDoc(counterRef);
           let seed = 0;
-          const storedSequences = counterSnap.exists() ? (counterSnap.data()?._secuenciasDocumentos || {}) : {};
-          if (!utils.safeNum(storedSequences?.[config.counter])) {
+          if (!counterSnap.exists() || !utils.safeNum(counterSnap.data()?.[config.counter])) {
               const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-              seed = allSnap.docs.filter(d => {
-                  const data = d.data() || {};
-                  const est = utils.normalizeText(data?.estado || '');
-                  const q = est.includes('cotizaci') || est.includes('cot.');
-                  return config.isQuote ? q : !q;
-              }).length;
+              const re = new RegExp(`^${config.prefix}-(\\d+)$`, 'i');
+              allSnap.docs.forEach(d => {
+                  if (d.id === systemCounterId) return;
+                  const value = String(d.data()?.[config.field] || '');
+                  const match = value.match(re);
+                  if (match) seed = Math.max(seed, Number(match[1]) || 0);
+              });
           }
+
           const numbered = await runTransaction(db, async (tx) => {
               const evRef = getDocRef(eventData.id);
+              // Firestore exige hacer todas las lecturas antes de las escrituras.
               const evSnap = await tx.get(evRef);
-              if (!evSnap.exists()) throw new Error('EVENT_NOT_FOUND');
-              const remote = evSnap.data();
-              if (remote[config.field]) return { id: eventData.id, ...remote };
               const seqSnap = await tx.get(counterRef);
-              const sequences = seqSnap.exists() ? (seqSnap.data()?._secuenciasDocumentos || {}) : {};
+              if (!evSnap.exists()) throw new Error('EVENT_NOT_FOUND');
+              const remote = evSnap.data() || {};
+              if (remote[config.field]) return { id: eventData.id, ...remote };
+
+              const sequences = seqSnap.exists() ? (seqSnap.data() || {}) : {};
               const current = utils.safeNum(sequences?.[config.counter]);
               const next = Math.max(current, seed) + 1;
               const number = `${config.prefix}-${String(next).padStart(5, '0')}`;
+              const nowIso = new Date().toISOString();
+
               tx.set(counterRef, {
-                  _secuenciasDocumentos: { ...sequences, [config.counter]: next },
-                  secuenciasUpdatedAt: new Date().toISOString()
+                  _system: true,
+                  tipo: 'secuencias_documentos',
+                  [config.counter]: next,
+                  updatedAt: nowIso
               }, { merge: true });
-              tx.set(evRef, { [config.field]: number, updatedAt: new Date().toISOString() }, { merge: true });
-              return { id: eventData.id, ...remote, [config.field]: number };
+              tx.set(evRef, { [config.field]: number, updatedAt: nowIso }, { merge: true });
+              return { id: eventData.id, ...remote, [config.field]: number, updatedAt: nowIso };
           });
-          setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: numbered[config.field] } : ev));
+
+          setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: numbered[config.field], updatedAt: numbered.updatedAt } : ev));
+          try { await publishSync('evento', eventData.id, 'update'); } catch (_) {}
           return numbered;
       } catch (err) {
           console.error('Error asignando consecutivo:', err);
-          showAlert('No se pudo asignar el número del documento. Cierra el documento e inténtalo nuevamente.', false);
+          showAlert('No se pudo asignar el número del documento. Revisa la conexión e inténtalo nuevamente.', false);
           throw err;
       }
-  }, [showAlert]);
-
+  }, [showAlert, publishSync]);
 
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
@@ -1217,7 +1225,7 @@ export default function App() {
       try {
           // Para una purga total sí se consulta explícitamente toda la colección.
           const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-          await Promise.all(allSnap.docs.map(d => deleteDoc(getDocRef(d.id))));
+          await Promise.all(allSnap.docs.filter(d => !d.data()?._system).map(d => deleteDoc(getDocRef(d.id))));
           historyLoadedRef.current = true;
           setEventos([]);
           utils.triggerHaptic('success');
@@ -1352,7 +1360,7 @@ export default function App() {
     // Reutilizar historial que ya exista en IndexedDB sin generar lecturas facturables.
     getDocsFromCache(eventosRef).then(cacheSnap => {
         if (cacheSnap.empty) return;
-        const cached = cacheSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const cached = cacheSnap.docs.filter(d => !d.data()?._system).map(d => ({ id: d.id, ...d.data() }));
         setEventos(prev => {
             const map = new Map(prev.map(e => [e.id, e]));
             cached.forEach(e => map.set(e.id, e));
