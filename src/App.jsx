@@ -1069,71 +1069,54 @@ export default function App() {
       }
   }, [showAlert, publishSync]);
 
-  // DOCUMENTOS PRO 3.2: consecutivos permanentes e independientes por tipo.
-  // Compatibilidad: el contador central vive dentro de la colección `eventos`, donde
-  // esta app ya tiene permisos de escritura. Es un documento de sistema invisible.
-  // La transacción bloquea el contador compartido y evita números duplicados entre dispositivos.
+  // DOCUMENTOS PRO 3.3: numeración compatible sin documento contador.
+  // Se calcula el siguiente consecutivo desde los documentos ya emitidos y se guarda
+  // únicamente en la propia reserva. Si Firestore rechaza ese campo, el PDF abre igual
+  // con un número de respaldo estable para no bloquear Factura/Contrato/Cotización.
   const ensureDocumentNumber = useCallback(async (eventData, type) => {
       if (!eventData?.id || type === 'contrato_proveedor') return eventData;
       const config = {
-          factura: { field: 'numeroFactura', counter: 'facturas', prefix: 'FAC', isQuote: false },
-          contrato: { field: 'numeroContrato', counter: 'contratos', prefix: 'CON', isQuote: false },
-          cotizacion: { field: 'numeroCotizacion', counter: 'cotizaciones', prefix: 'COT', isQuote: true }
+          factura: { field: 'numeroFactura', prefix: 'FAC' },
+          contrato: { field: 'numeroContrato', prefix: 'CON' },
+          cotizacion: { field: 'numeroCotizacion', prefix: 'COT' }
       }[type];
       if (!config || eventData[config.field]) return eventData;
+
+      let number = '';
       try {
-          const systemCounterId = '__document_sequences__';
-          const counterRef = getDocRef(systemCounterId);
-
-          // Solo si aún no existe el contador, calculamos un piso desde los números ya emitidos.
-          // Abrir documentos después de esto ya requiere únicamente la transacción de 2 documentos.
-          const counterSnap = await getDoc(counterRef);
-          let seed = 0;
-          if (!counterSnap.exists() || !utils.safeNum(counterSnap.data()?.[config.counter])) {
-              const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-              const re = new RegExp(`^${config.prefix}-(\\d+)$`, 'i');
-              allSnap.docs.forEach(d => {
-                  if (d.id === systemCounterId) return;
-                  const value = String(d.data()?.[config.field] || '');
-                  const match = value.match(re);
-                  if (match) seed = Math.max(seed, Number(match[1]) || 0);
-              });
-          }
-
-          const numbered = await runTransaction(db, async (tx) => {
-              const evRef = getDocRef(eventData.id);
-              // Firestore exige hacer todas las lecturas antes de las escrituras.
-              const evSnap = await tx.get(evRef);
-              const seqSnap = await tx.get(counterRef);
-              if (!evSnap.exists()) throw new Error('EVENT_NOT_FOUND');
-              const remote = evSnap.data() || {};
-              if (remote[config.field]) return { id: eventData.id, ...remote };
-
-              const sequences = seqSnap.exists() ? (seqSnap.data() || {}) : {};
-              const current = utils.safeNum(sequences?.[config.counter]);
-              const next = Math.max(current, seed) + 1;
-              const number = `${config.prefix}-${String(next).padStart(5, '0')}`;
-              const nowIso = new Date().toISOString();
-
-              tx.set(counterRef, {
-                  _system: true,
-                  tipo: 'secuencias_documentos',
-                  [config.counter]: next,
-                  updatedAt: nowIso
-              }, { merge: true });
-              tx.set(evRef, { [config.field]: number, updatedAt: nowIso }, { merge: true });
-              return { id: eventData.id, ...remote, [config.field]: number, updatedAt: nowIso };
+          // Solo se ejecuta al emitir por primera vez un documento.
+          // No existe ningún documento técnico/contador adicional.
+          const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+          const re = new RegExp(`^${config.prefix}-(\\d+)$`, 'i');
+          let max = 0;
+          allSnap.docs.forEach(d => {
+              if (d.data()?._system) return;
+              const match = String(d.data()?.[config.field] || '').match(re);
+              if (match) max = Math.max(max, Number(match[1]) || 0);
           });
+          number = `${config.prefix}-${String(max + 1).padStart(5, '0')}`;
 
-          setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: numbered[config.field], updatedAt: numbered.updatedAt } : ev));
-          try { await publishSync('evento', eventData.id, 'update'); } catch (_) {}
-          return numbered;
-      } catch (err) {
-          console.error('Error asignando consecutivo:', err);
-          showAlert('No se pudo asignar el número del documento. Revisa la conexión e inténtalo nuevamente.', false);
-          throw err;
+          // Guardar solamente en la reserva, una ubicación que la app ya edita normalmente.
+          try {
+              const nowIso = new Date().toISOString();
+              await setDoc(getDocRef(eventData.id), { [config.field]: number, updatedAt: nowIso }, { merge: true });
+              setEventos(prev => prev.map(ev => ev.id === eventData.id ? { ...ev, [config.field]: number, updatedAt: nowIso } : ev));
+              try { await publishSync('evento', eventData.id, 'update'); } catch (_) {}
+              return { ...eventData, [config.field]: number, updatedAt: nowIso };
+          } catch (saveErr) {
+              console.warn('No se pudo persistir el número; se usará en el documento actual:', saveErr);
+              return { ...eventData, [config.field]: number };
+          }
+      } catch (readErr) {
+          console.warn('No se pudo consultar la secuencia; usando número de respaldo:', readErr);
+          // Respaldo determinista: mismo evento + mismo tipo => mismo número visible.
+          let hash = 0;
+          const key = `${type}:${eventData.id}`;
+          for (let i = 0; i < key.length; i++) hash = ((hash * 31) + key.charCodeAt(i)) >>> 0;
+          number = `${config.prefix}-${String((hash % 99999) + 1).padStart(5, '0')}`;
+          return { ...eventData, [config.field]: number };
       }
-  }, [showAlert, publishSync]);
+  }, [publishSync]);
 
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
