@@ -1062,8 +1062,10 @@ export default function App() {
   const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => {
       utils.triggerHaptic('light');
       try {
-          await setDoc(getDocRef(id), { deletedLocally: true }, { merge: true });
-          setEventos(prev => prev.map(e => e.id === id ? { ...e, deletedLocally: true } : e));
+          // Eliminación real: evita que registros borrados sigan ocupando la colección
+          // y vuelvan a descargarse en futuras sincronizaciones de Firestore.
+          await deleteDoc(getDocRef(id));
+          setEventos(prev => prev.filter(e => e.id !== id));
           closeModal();
           showAlert("Registro eliminado.", true);
       } catch (err) {
@@ -1075,8 +1077,9 @@ export default function App() {
   const handleWipeAll = useCallback(() => showConfirm("⚠️ ¿Limpiar toda la base de datos?", async () => {
       utils.triggerHaptic('light');
       try {
-          await Promise.all(eventosActivos.map(e => setDoc(getDocRef(e.id), { deletedLocally: true }, { merge: true })));
-          setEventos(prev => prev.map(e => ({ ...e, deletedLocally: true })));
+          // Limpieza real de documentos para que no sigan generando lecturas futuras.
+          await Promise.all(eventosActivos.map(e => deleteDoc(getDocRef(e.id))));
+          setEventos([]);
           utils.triggerHaptic('success');
           showAlert("Base de datos limpiada.", true);
       } catch (err) {
@@ -1183,6 +1186,8 @@ export default function App() {
     const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
     const provRef = collection(db, 'artifacts', appId, 'public', 'data', 'proveedores');
 
+    // IMPORTANTE: mantener UNA sola suscripción de eventos. Esta escucha es la que
+    // permite que una reserva creada desde la web aparezca en el CRM en tiempo real.
     const unsubscribeEventos = onSnapshot(eventosRef, (snapshot) => { 
         clearTimeout(timeoutId); 
         const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
