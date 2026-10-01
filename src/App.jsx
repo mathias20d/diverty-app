@@ -268,36 +268,81 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, openModal }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest }) {
+    const [selectedRequest, setSelectedRequest] = useState(null);
+    const [confirming, setConfirming] = useState(false);
+    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); } }, [isOpen]);
     if (!isOpen) return null;
-    const reqs = eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente').sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+    const reqs = eventosActivos
+        .filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa')
+        .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+    const money = v => `$${utils.safeNum(v).toFixed(2)}`;
+    const confirmSelected = async () => {
+        if (!selectedRequest || confirming) return;
+        setConfirming(true);
+        const ok = await onConfirmWebRequest(selectedRequest);
+        setConfirming(false);
+        if (ok) setSelectedRequest(null);
+    };
     return (
         <div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex justify-end animate-fadeIn">
             <div className="w-full sm:w-96 bg-slate-50 h-full flex flex-col shadow-2xl animate-slideLeft">
                 <div className="p-6 bg-white border-b border-slate-200 flex justify-between items-center shadow-sm relative z-10">
-                    <h3 className="font-black text-xl flex items-center gap-3 text-slate-900"><BellRing className="text-[#7657FF]"/> Alertas Web</h3>
+                    <div className="flex items-center gap-3">
+                        {selectedRequest && <button onClick={()=>setSelectedRequest(null)} className="p-2 -ml-2 hover:bg-slate-100 rounded-xl"><ChevronLeft size={20}/></button>}
+                        <h3 className="font-black text-xl flex items-center gap-3 text-slate-900"><BellRing className="text-[#7657FF]"/> {selectedRequest ? 'Solicitud Web' : 'Alertas Web'}</h3>
+                    </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><X size={20} className="text-slate-500"/></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {reqs.length === 0 ? (
-                        <div className="text-center mt-12 opacity-60">
-                            <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-4"/>
-                            <p className="font-bold text-slate-500 text-sm">Todo al día. No hay nuevas solicitudes.</p>
-                        </div>
-                    ) : (
-                        reqs.map(e => (
-                            <div key={e.id} onClick={()=>{openModal(e); onClose();}} className="bg-white p-5 rounded-[20px] shadow-sm border border-slate-200 cursor-pointer hover:border-[#7657FF]/50 hover:shadow-md transition-all active:scale-[0.98] group">
+                {!selectedRequest ? (
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {reqs.length === 0 ? (
+                            <div className="text-center mt-12 opacity-60">
+                                <CheckCircle2 size={48} className="mx-auto text-emerald-500 mb-4"/>
+                                <p className="font-bold text-slate-500 text-sm">Todo al día. No hay nuevas solicitudes web.</p>
+                            </div>
+                        ) : reqs.map(e => (
+                            <div key={e.id} onClick={()=>setSelectedRequest(e)} className="bg-white p-5 rounded-[20px] shadow-sm border border-slate-200 cursor-pointer hover:border-[#7657FF]/50 hover:shadow-md transition-all active:scale-[0.98] group">
                                 <div className="flex justify-between items-start mb-3">
-                                    <Badge color="amber"><Zap size={10}/> Nueva Solicitud</Badge>
+                                    <Badge color="amber"><Zap size={10}/> Reserva Web</Badge>
                                     <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">{e.fecha?.split('-').reverse().join('/')}</span>
                                 </div>
                                 <h4 className="font-extrabold text-slate-900 text-lg mb-1">{e.cliente}</h4>
                                 <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Clock size={12} className="text-[#7657FF]"/> {utils.formatTime12h(e.hora)} &nbsp; <MapPin size={12} className="text-rose-500"/> {e.ubicacion}</p>
-                                <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] font-bold text-[#7657FF] flex justify-between items-center group-hover:translate-x-1 transition-transform">Ver detalles <ChevronRight size={14}/></div>
+                                <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] font-bold text-[#7657FF] flex justify-between items-center group-hover:translate-x-1 transition-transform">Ver solicitud <ChevronRight size={14}/></div>
                             </div>
-                        ))
-                    )}
-                </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex-1 overflow-y-auto p-4 pb-32">
+                        <div className="bg-white rounded-[24px] border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="p-5 bg-gradient-to-br from-[#7657FF]/10 to-[#2563FF]/5 border-b border-slate-100">
+                                <Badge color="amber"><Zap size={10}/> Reserva Web</Badge>
+                                <h4 className="font-black text-2xl text-slate-900 mt-3">{selectedRequest.cliente}</h4>
+                                <p className="text-xs font-bold text-slate-500 mt-1">Solicitud recibida directamente desde la página web</p>
+                            </div>
+                            <div className="p-5 space-y-4 text-sm">
+                                <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Teléfono</p><p className="font-bold text-slate-800">{selectedRequest.telefono || 'No indicado'}</p></div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Fecha</p><p className="font-bold text-slate-800">{selectedRequest.fecha?.split('-').reverse().join('/') || '—'}</p></div>
+                                    <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Hora</p><p className="font-bold text-slate-800">{utils.formatTime12h(selectedRequest.hora)}</p></div>
+                                </div>
+                                <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Ubicación</p><p className="font-bold text-slate-800">{selectedRequest.ubicacion || '—'}</p></div>
+                                <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Dirección</p><p className="font-semibold text-slate-700 whitespace-pre-wrap">{selectedRequest.direccion || 'No indicada'}</p></div>
+                                <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Servicio</p><p className="font-bold text-slate-800 whitespace-pre-wrap">{selectedRequest.servicio || '—'}</p></div>
+                                {selectedRequest.descripcionEvento && <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Detalle del servicio</p><p className="font-semibold text-slate-700 whitespace-pre-wrap">{selectedRequest.descripcionEvento}</p></div>}
+                                {selectedRequest.comentarios && <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Comentarios</p><p className="font-semibold text-slate-700 whitespace-pre-wrap">{selectedRequest.comentarios}</p></div>}
+                                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                    <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Transporte</p><p className="font-bold text-slate-800">{money(selectedRequest.transporte)}</p></div>
+                                    <div><p className="text-[10px] uppercase tracking-widest font-black text-slate-400">Descuento</p><p className="font-bold text-slate-800">{money(selectedRequest.descuento)}</p></div>
+                                </div>
+                                <div className="pt-3 border-t border-slate-100 flex justify-between items-end"><span className="font-black text-slate-500 uppercase text-xs tracking-widest">Total</span><span className="font-black text-2xl text-slate-900">{money(selectedRequest.total)}</span></div>
+                            </div>
+                        </div>
+                        <button disabled={confirming} onClick={confirmSelected} className="w-full mt-4 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-black shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : 'Confirmar reserva'}</button>
+                        <p className="text-center text-[11px] text-slate-400 font-semibold mt-3">Al confirmar, dejará de aparecer en Alertas Web y quedará como reserva confirmada en la app.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -672,13 +717,16 @@ export default function App() {
       return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); }; 
   }, []);
 
+  const tabHistoryRef = useRef(['inicio']);
+  const navigatingBackRef = useRef(false);
   const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal });
   useEffect(() => { 
       stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal }; 
   });
   
   useEffect(() => {
-    window.history.pushState(null, '', window.location.href);
+    // Entrada centinela: el botón Atrás primero navega dentro de Diverty antes de abandonar la app.
+    window.history.pushState({ divertyApp: true }, '', window.location.href);
     const handleBack = () => {
         const s = stateRef.current;
         let blocked = false;
@@ -690,10 +738,18 @@ export default function App() {
         else if (s.proveedorModal?.isOpen) { setProveedorModal({ isOpen: false, data: null }); blocked = true; }
         else if (s.isNotifOpen) { setIsNotifOpen(false); blocked = true; }
         else if (s.isModoOperativo) { setIsModoOperativo(false); blocked = true; }
-        else if (s.activeTab !== 'inicio') { setActiveTab('inicio'); blocked = true; }
+        else if (tabHistoryRef.current.length > 1) {
+            // Regresa a la sección visitada anteriormente, no fuerza Inicio.
+            tabHistoryRef.current.pop();
+            const previousTab = tabHistoryRef.current[tabHistoryRef.current.length - 1] || 'inicio';
+            navigatingBackRef.current = true;
+            setActiveTab(previousTab);
+            setIsSidebarOpen(false);
+            blocked = true;
+        }
         
         if (blocked) {
-            window.history.pushState(null, '', window.location.href);
+            window.history.pushState({ divertyApp: true }, '', window.location.href);
         }
     };
     window.addEventListener('popstate', handleBack);
@@ -743,7 +799,17 @@ export default function App() {
   }, [isPrinting]);
 
   const handleTabChange = useCallback((tabId) => { 
-      utils.triggerHaptic('light'); setActiveTab(tabId); setIsSidebarOpen(false); 
+      utils.triggerHaptic('light');
+      const currentTab = stateRef.current.activeTab;
+      if (tabId !== currentTab) {
+          if (navigatingBackRef.current) navigatingBackRef.current = false;
+          else {
+              const history = tabHistoryRef.current;
+              if (history[history.length - 1] !== currentTab) history.push(currentTab);
+              if (history[history.length - 1] !== tabId) history.push(tabId);
+          }
+      }
+      setActiveTab(tabId); setIsSidebarOpen(false); 
       // En móvil, cada sección debe abrir siempre desde su encabezado, sin heredar scroll previo.
       requestAnimationFrame(() => {
           const mainEl = document.getElementById('main-content');
@@ -1243,6 +1309,33 @@ export default function App() {
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
   }, [showAlert]);
+
+  const handleConfirmWebRequest = useCallback(async (event) => {
+      if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return false;
+      try {
+          utils.triggerHaptic('light');
+          let confirmedData = null;
+          await runTransaction(db, async tx => {
+              const ref = getDocRef(event.id);
+              const snap = await tx.get(ref);
+              if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+              const remote = snap.data();
+              if (utils.normalizeText(remote.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
+              if (utils.normalizeText(remote.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
+              confirmedData = { ...remote, estado: 'Confirmada', _rev: (Number(remote._rev) || 0) + 1, updatedAt: new Date().toISOString() };
+              tx.set(ref, confirmedData);
+          });
+          await publishSync('evento', event.id, 'update');
+          setEventos(prev => prev.map(ev => ev.id === event.id ? confirmedData : ev));
+          showAlert('¡Reserva web confirmada!', true);
+          return true;
+      } catch (err) {
+          console.error('Error confirmando solicitud web:', err);
+          if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
+          else showAlert('No se pudo confirmar la reserva. Revisa la conexión e intenta nuevamente.', false);
+          return false;
+      }
+  }, [publishSync, showAlert]);
 
   const handleSaveFromModal = useCallback(async (formDataToSave, isCotizacionMode) => {
     if (!formDataToSave.cliente?.trim()) return showAlert("Por favor, ingresa el nombre del cliente."); 
@@ -2043,7 +2136,7 @@ export default function App() {
     <div className="font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.3s ease-out forwards;} .animate-slideLeft{animation:slideLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-slideUp{animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-fadeInUp{animation:fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards;} @keyframes pulse-slow{0%,100%{opacity:0.04;transform:scale(1);}50%{opacity:0.06;transform:scale(1.05);}} .animate-pulse-slow{animation:pulse-slow 10s ease-in-out infinite;} @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin-slow{animation:spin-slow 15s linear infinite;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;} .pb-safe{padding-bottom: env(safe-area-inset-bottom);} button{-webkit-tap-highlight-color:transparent;} @media(max-width:640px){#main-content{background:radial-gradient(circle at 85% 8%,rgba(255,62,165,.055),transparent 24%),radial-gradient(circle at 10% 28%,rgba(118,87,255,.06),transparent 28%),linear-gradient(180deg,#F5F6FB 0%,#FAFAFD 48%,#F4F6FB 100%);} #main-content>div{padding-left:14px;padding-right:14px;} input,select,textarea{font-size:16px!important;} button{touch-action:manipulation;} }`}</style>
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} openModal={openModal} />
+      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
