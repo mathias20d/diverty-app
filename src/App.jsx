@@ -1476,9 +1476,13 @@ export default function App() {
 
     const renderListView = () => {
         const grouped = agendaFiltrados.reduce((acc, ev) => { if(!acc[ev.fecha]) acc[ev.fecha] = []; acc[ev.fecha].push(ev); return acc; }, {});
+        const fechasOrdenadas = Object.keys(grouped).sort((a, b) => viewMode === 'completadas' ? String(b).localeCompare(String(a)) : String(a).localeCompare(String(b)));
+        if (viewMode === 'completadas') {
+            Object.values(grouped).forEach(items => items.sort((a, b) => String(b.hora || '').localeCompare(String(a.hora || ''))));
+        }
         return (
             <div className="mt-8 space-y-10 relative z-10">
-                {Object.keys(grouped).sort().map(fecha => (
+                {fechasOrdenadas.map(fecha => (
                     <div key={fecha} className="flex flex-col">
                         <div className="flex items-center gap-4 mb-6"><div className="bg-white/90 backdrop-blur-sm text-slate-900 px-6 py-3.5 rounded-xl font-bold text-sm flex items-center gap-3 shadow-sm border border-slate-200/80"><CalendarDays size={18} className="text-[#2563FF]" strokeWidth={2.5}/> {fecha ? String(fecha).split('-').reverse().join('/') : 'Sin Fecha'}</div><div className="flex-1 h-px bg-slate-200/80"></div></div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{grouped[fecha].map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}</div>
