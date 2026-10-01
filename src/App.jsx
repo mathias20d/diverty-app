@@ -1518,67 +1518,86 @@ export default function App() {
         );
      }
      return (
-       <div className="animate-fadeIn p-4 md:p-6 lg:p-10 max-w-5xl mx-auto space-y-8 pb-32 md:pb-10 relative z-10">
-          <div className="bg-[#071126] rounded-[32px] p-7 sm:p-12 shadow-[0_22px_55px_rgba(2,6,23,0.24)] relative overflow-hidden group border border-white/10">
-             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.1] mix-blend-overlay pointer-events-none"></div>
-             <div className="absolute -top-24 -right-24 w-96 h-96 bg-[radial-gradient(circle,rgba(255,255,255,0.3)_0%,transparent_60%)] pointer-events-none blur-2xl group-hover:scale-110 transition-transform duration-1000"></div>
-             <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-[radial-gradient(circle,rgba(255,255,255,0.2)_0%,transparent_60%)] pointer-events-none blur-2xl"></div>
-             <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6">
-                 <div className="text-center sm:text-left">
-                     <h1 className="text-4xl sm:text-6xl font-black mb-4 flex items-center justify-center sm:justify-start gap-3 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white to-white/80 drop-shadow-md">Hola Diverty 👋</h1>
-                     <p className="text-white/90 font-semibold text-sm sm:text-lg tracking-wide max-w-md drop-shadow-sm">Gestiona tus reservas, contratos y finanzas al instante.</p>
+       <div className="animate-fadeIn min-h-full px-4 pt-5 md:p-6 lg:p-10 max-w-5xl mx-auto space-y-7 pb-32 md:pb-10 relative z-10">
+          <div className="absolute inset-x-0 top-0 h-[420px] -z-10 pointer-events-none overflow-hidden">
+             <div className="absolute -top-24 left-[-18%] w-[72%] h-[360px] rounded-full bg-[#7657FF]/15 blur-[90px]"></div>
+             <div className="absolute top-8 right-[-22%] w-[68%] h-[330px] rounded-full bg-[#FF3EA5]/12 blur-[100px]"></div>
+          </div>
+
+          <div className="bg-[linear-gradient(145deg,#0B1730_0%,#101A38_48%,#17142E_100%)] rounded-[30px] p-6 sm:p-10 shadow-[0_28px_70px_rgba(2,6,23,0.28)] relative overflow-hidden group border border-white/10">
+             <div className="absolute inset-0 opacity-60 bg-[radial-gradient(circle_at_12%_0%,rgba(118,87,255,.34),transparent_38%),radial-gradient(circle_at_100%_100%,rgba(255,62,165,.22),transparent_42%)] pointer-events-none"></div>
+             <div className="absolute inset-[1px] rounded-[29px] border border-white/[0.04] pointer-events-none"></div>
+             <div className="absolute top-0 left-[12%] right-[12%] h-px bg-gradient-to-r from-transparent via-white/45 to-transparent"></div>
+             <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-7">
+                 <div className="text-left max-w-xl">
+                     <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 mb-4 shadow-inner">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]"></span>
+                        <span className="text-[9px] font-black uppercase tracking-[0.22em] text-white/60">Diverty CRM</span>
+                     </div>
+                     <h1 className="text-[38px] leading-[0.98] sm:text-6xl font-black mb-4 tracking-[-0.045em] text-white">Hola Diverty <span className="inline-block">👋</span></h1>
+                     <p className="text-slate-300 font-semibold text-sm sm:text-base leading-relaxed max-w-md">Gestiona tus reservas, contratos y finanzas al instante.</p>
                  </div>
-                 <div className="w-full sm:w-auto relative z-10 mt-4 sm:mt-0 flex shrink-0">
-                     <AppButton onClick={() => openModal()} variant="primary" icon={Plus} className="w-full sm:w-auto py-4 px-8 text-[15px]">Nueva Reserva</AppButton>
+                 <div className="w-full sm:w-auto relative z-10 sm:self-center flex shrink-0">
+                     <AppButton onClick={() => openModal()} variant="primary" icon={Plus} className="w-full sm:w-auto py-4 px-7 text-[14px] rounded-[18px] shadow-[0_14px_34px_rgba(184,61,255,.34)]">Nueva Reserva</AppButton>
                  </div>
              </div>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-              <div className="cursor-pointer" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
-                 <AppCard title="Eventos Hoy" icon={Calendar} iconColor="primary"><p className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tighter drop-shadow-sm">{stats.eventosHoy.length}</p></AppCard>
-              </div>
-              <div className="cursor-pointer" onClick={() => handleTabChange('finanzas')}>
-                 <AppCard title="Ingresos Mes" icon={DollarSign} iconColor="success"><p className="text-5xl sm:text-6xl font-black text-emerald-500 tracking-tighter drop-shadow-sm">${stats.ingresosEsteMes.toFixed(0)}</p></AppCard>
-              </div>
-              <div className="cursor-pointer" onClick={() => handleTabChange('clientes')}>
-                 <AppCard title="Clientes Activos" icon={Users} iconColor="warning"><p className="text-5xl sm:text-6xl font-black text-slate-900 tracking-tighter drop-shadow-sm">{clientsList.length}</p></AppCard>
-              </div>
-              <div className="cursor-pointer" onClick={() => handleTabChange('finanzas')}>
-                 <AppCard title="Por Cobrar" icon={TrendingUp} iconColor="danger"><p className="text-5xl sm:text-6xl font-black text-rose-500 tracking-tighter drop-shadow-sm">${stats.deudaTotal.toFixed(0)}</p></AppCard>
-              </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+              <button type="button" className="text-left group" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
+                 <div className="h-full min-h-[148px] rounded-[24px] p-4 sm:p-5 bg-white/[0.92] backdrop-blur-xl border border-white shadow-[0_14px_35px_rgba(15,23,42,.08)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(118,87,255,.14)] relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-[#7657FF]/60 to-transparent"></div>
+                    <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center"><Calendar size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-[#7657FF] transition-colors"/></div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-4">Eventos Hoy</p><p className="text-[38px] sm:text-[44px] leading-none font-black text-slate-950 tracking-[-0.05em] mt-1.5">{stats.eventosHoy.length}</p>
+                 </div>
+              </button>
+              <button type="button" className="text-left group" onClick={() => handleTabChange('finanzas')}>
+                 <div className="h-full min-h-[148px] rounded-[24px] p-4 sm:p-5 bg-white/[0.92] backdrop-blur-xl border border-white shadow-[0_14px_35px_rgba(15,23,42,.08)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(16,185,129,.12)] relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent"></div>
+                    <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/10 flex items-center justify-center"><DollarSign size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-emerald-500 transition-colors"/></div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-4">Ingresos Mes</p><p className="text-[32px] sm:text-[38px] leading-none font-black text-emerald-500 tracking-[-0.05em] mt-2">${stats.ingresosEsteMes.toFixed(0)}</p>
+                 </div>
+              </button>
+              <button type="button" className="text-left group" onClick={() => handleTabChange('clientes')}>
+                 <div className="h-full min-h-[148px] rounded-[24px] p-4 sm:p-5 bg-white/[0.92] backdrop-blur-xl border border-white shadow-[0_14px_35px_rgba(15,23,42,.08)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(245,158,11,.12)] relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-amber-400/70 to-transparent"></div>
+                    <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><Users size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-amber-500 transition-colors"/></div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-4">Clientes Activos</p><p className="text-[38px] sm:text-[44px] leading-none font-black text-slate-950 tracking-[-0.05em] mt-1.5">{clientsList.length}</p>
+                 </div>
+              </button>
+              <button type="button" className="text-left group" onClick={() => handleTabChange('finanzas')}>
+                 <div className="h-full min-h-[148px] rounded-[24px] p-4 sm:p-5 bg-white/[0.92] backdrop-blur-xl border border-white shadow-[0_14px_35px_rgba(15,23,42,.08)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-rose-400/70 to-transparent"></div>
+                    <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-rose-500/10 text-rose-500 border border-rose-500/10 flex items-center justify-center"><TrendingUp size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-rose-500 transition-colors"/></div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-4">Por Cobrar</p><p className="text-[32px] sm:text-[38px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
+                 </div>
+              </button>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-4 mt-8">
-            <button type="button" onClick={() => openModal(null, true)} className="flex-1 bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-slate-800 rounded-[24px] py-5 font-black flex items-center justify-center gap-3 hover:bg-white hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all group">
-                <div className="bg-amber-500/10 p-2 rounded-xl text-amber-500"><FileText size={22} strokeWidth={2.5}/></div> 
-                <span className="hidden sm:inline tracking-wide">Crear Cotización</span>
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-3">
+            <button type="button" onClick={() => openModal(null, true)} className="min-w-0 bg-white/90 backdrop-blur-xl border border-white shadow-[0_10px_28px_rgba(15,23,42,.07)] text-slate-800 rounded-[20px] py-4 px-3 sm:px-5 font-black flex items-center justify-center gap-2.5 hover:bg-white hover:-translate-y-0.5 transition-all group">
+                <div className="bg-amber-500/10 p-2 rounded-[12px] text-amber-500 shrink-0"><FileText size={19} strokeWidth={2.5}/></div> 
+                <span className="hidden sm:inline tracking-wide text-sm">Crear Cotización</span><span className="sm:hidden text-[10px] uppercase tracking-wide">Cotización</span>
             </button>
-            <button type="button" onClick={() => {utils.triggerHaptic('light'); setIsModoOperativo(true); window.scrollTo(0,0);}} className="flex-1 bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white rounded-[24px] py-5 font-black flex items-center justify-center gap-3 transition-all shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:shadow-[0_15px_30px_rgba(124,58,237,0.35)] hover:-translate-y-1 relative overflow-hidden group">
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                <div className="bg-white/20 p-2 rounded-xl text-white relative z-10"><Zap size={22} strokeWidth={2.5} className="fill-white"/></div> 
-                <span className="hidden sm:inline relative z-10 tracking-wide">Modo Operativo</span>
+            <button type="button" onClick={() => {utils.triggerHaptic('light'); setIsModoOperativo(true); window.scrollTo(0,0);}} className="min-w-0 bg-[linear-gradient(135deg,#7657FF,#9B4DFF_52%,#FF3EA5)] text-white rounded-[20px] py-4 px-3 sm:px-5 font-black flex items-center justify-center gap-2.5 transition-all shadow-[0_12px_28px_rgba(118,87,255,.25)] hover:-translate-y-0.5 relative overflow-hidden group border border-white/20">
+                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                <div className="bg-white/15 p-2 rounded-[12px] text-white relative z-10 shrink-0"><Zap size={19} strokeWidth={2.5} className="fill-white"/></div> 
+                <span className="hidden sm:inline relative z-10 tracking-wide text-sm">Modo Operativo</span><span className="sm:hidden relative z-10 text-[10px] uppercase tracking-wide">Operativo</span>
             </button>
-            <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/70 backdrop-blur-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-[#7657FF] rounded-[24px] py-5 px-6 flex items-center justify-center hover:bg-white transition-all hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 group" title="Refrescar vista">
-                <div className="bg-[#7657FF]/10 p-2 rounded-xl"><RefreshCw size={24} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" /></div>
+            <button type="button" onClick={() => { window.location.reload(); }} className="bg-white/90 backdrop-blur-xl border border-white shadow-[0_10px_28px_rgba(15,23,42,.07)] text-[#7657FF] rounded-[20px] py-4 px-4 flex items-center justify-center hover:bg-white transition-all hover:-translate-y-0.5 group" title="Refrescar vista">
+                <RefreshCw size={21} strokeWidth={2.5} className="group-hover:rotate-180 transition-transform duration-500" />
             </button>
           </div>
           
           {stats.alertasOperativas.length > 0 && (
-             <div className="animate-slideDown mt-10">
-                <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400 flex items-center gap-2 mb-5">
-                   <AlertTriangle size={16} className="text-rose-500 animate-pulse"/> Urgencias ({stats.alertasOperativas.length})
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+             <div className="animate-slideDown mt-9">
+                <div className="flex items-center justify-between mb-4 px-1"><h3 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 flex items-center gap-2"><span className="w-7 h-7 rounded-[10px] bg-rose-500/10 text-rose-500 flex items-center justify-center"><AlertTriangle size={14}/></span> Urgencias ({stats.alertasOperativas.length})</h3></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                    {stats.alertasOperativas.map((al, i) => { 
                       const AlIcon = al.icon; 
                       return (
-                         <div key={al.id} onClick={() => openModal(al.e)} className={`p-5 sm:p-6 rounded-[24px] border border-slate-200/60 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-500 ease-out bg-white/90 backdrop-blur-md hover:border-rose-300 shadow-sm hover:shadow-lg`} style={{animationDelay: `${i*100}ms`}}>
-                            <div className="flex items-center gap-4">
-                               <div className={`p-3.5 rounded-xl ${al.b}`}><AlIcon size={24} strokeWidth={2.5}/></div>
-                               <div className="flex flex-col items-start"><p className={`text-[15px] font-bold text-slate-900 leading-tight capitalize`}>{al.txt}</p><p className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mt-1.5">{al.t}</p></div>
-                            </div>
-                            <ChevronRight size={20} className="text-slate-300" />
+                         <div key={al.id} onClick={() => openModal(al.e)} className="p-4 sm:p-5 rounded-[22px] border border-white flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-300 bg-white/90 backdrop-blur-xl hover:border-rose-200 shadow-[0_10px_30px_rgba(15,23,42,.07)] hover:shadow-[0_16px_36px_rgba(244,63,94,.10)]" style={{animationDelay: `${i*100}ms`}}>
+                            <div className="flex items-center gap-3.5 min-w-0"><div className={`p-3 rounded-[14px] shrink-0 ${al.b}`}><AlIcon size={21} strokeWidth={2.5}/></div><div className="flex flex-col items-start min-w-0"><p className="text-[14px] font-extrabold text-slate-900 leading-tight capitalize truncate max-w-full">{al.txt}</p><p className="text-[9px] font-black uppercase tracking-[0.14em] text-rose-500 mt-1.5">{al.t}</p></div></div><ChevronRight size={18} className="text-slate-300 shrink-0" />
                          </div>
                       );
                    })}
@@ -1587,21 +1606,21 @@ export default function App() {
           )}
           
           {cotizacionesActivas.length > 0 && (
-              <div className="mt-14 pt-10 border-t border-slate-200/50 relative">
-                  <h3 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3 mb-6 tracking-tight"><FileText className="text-amber-500" size={24} /> Cotizaciones Activas</h3>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="mt-12 pt-8 border-t border-slate-200/70 relative">
+                  <div className="flex items-center gap-3 mb-5"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
                   </div>
               </div>
           )}
           
-          <div className="mt-14 pt-10 border-t border-slate-200/50 relative">
-              <div className={UI.flexBetween + " mb-6"}>
-                  <h3 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3 tracking-tight"><CalendarDays className="text-[#7657FF]" size={24} /> Próximas Reservas</h3>
-                  <button type="button" onClick={() => handleTabChange('eventos')} className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 hover:text-[#7657FF] transition-colors">Ver Todas <ChevronRight size={14} className="inline"/></button>
+          <div className="mt-12 pt-8 border-t border-slate-200/70 relative">
+              <div className={UI.flexBetween + " mb-5 gap-3"}>
+                  <div className="flex items-center gap-3 min-w-0"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center shrink-0"><CalendarDays size={20}/></div><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Agenda</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em] truncate">Próximas Reservas</h3></div></div>
+                  <button type="button" onClick={() => handleTabChange('eventos')} className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 hover:text-[#7657FF] transition-colors shrink-0 bg-white/70 border border-white px-3 py-2 rounded-xl shadow-sm">Ver Todas <ChevronRight size={13} className="inline"/></button>
               </div>
               {proximasReservas.length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {proximasReservas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
                   </div>
               ) : (
