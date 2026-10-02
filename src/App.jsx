@@ -1514,6 +1514,25 @@ export default function App() {
                 await setDoc(getDocRef(id), savedData);
             }
             await publishSync('evento', id, 'update');
+
+            // NOTIFICACIONES PUSH: avisar solo al crear una reserva nueva.
+            // No bloquea ni revierte el guardado si el servicio de notificaciones falla.
+            const isNewReservation = !isExisting && !isCotizacionMode;
+            if (isNewReservation) {
+                try {
+                    const notifyResponse = await fetch('https://diverty-notificaciones.divertypty.workers.dev', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reservationId: id })
+                    });
+                    if (!notifyResponse.ok) {
+                        console.warn('Reserva guardada, pero el Worker de notificaciones respondió:', notifyResponse.status);
+                    }
+                } catch (notifyErr) {
+                    console.warn('Reserva guardada, pero no se pudo enviar la notificación push:', notifyErr);
+                }
+            }
+
             setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=savedData; else arr.push(savedData); return arr; });
             closeModal();
             utils.setSafeLocal('diverty_form_draft', '');
