@@ -646,6 +646,8 @@ export default function App() {
   const [proveedores, setProveedores] = useState([]); 
   const [proveedorModal, setProveedorModal] = useState({ isOpen: false, data: null }); 
   const [expandedProvId, setExpandedProvId] = useState(null);
+  const [providerFilter, setProviderFilter] = useState('todos');
+  const [providerCategory, setProviderCategory] = useState('');
   
   const handleToggleProv = useCallback((id) => setExpandedProvId(prev => prev === id ? null : id), []);
   const [modalConfig, setModalConfig] = useState({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); 
@@ -2031,41 +2033,64 @@ export default function App() {
   };
 
   const renderProveedores = () => {
-      const term = deferredSearchTerm?.toLowerCase() || '';
-      const provFiltered = term ? proveedores.filter(p => String(p.nombre || '').toLowerCase().includes(term) || String(p.especialidad || '').toLowerCase().includes(term)) : proveedores;
-      const provConTelefono = proveedores.filter(p => String(p.telefono || '').replace(/\D/g, '').length >= 7).length;
-      const provAsignados = proveedores.filter(p => eventosActivos.some(ev => Array.isArray(ev.subcontratos) && ev.subcontratos.some(sc => sc.proveedorId === p.id) && !['completado','cancelado'].includes(utils.normalizeText(ev.estado)))).length;
-      const provCostoBase = proveedores.reduce((sum,p) => sum + utils.safeNum(p.costoBase), 0);
-
+      const term = (deferredSearchTerm || '').trim().toLowerCase();
+      const providerIsActive = (p) => {
+          const raw = utils.normalizeText(p?.estado || '');
+          if (p?.activo === false || p?.inactivo === true || raw === 'inactivo' || raw === 'inactiva') return false;
+          return true;
+      };
+      const categorias = [...new Set(proveedores.map(p => String(p.especialidad || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+      const activosCount = proveedores.filter(providerIsActive).length;
+      const inactivosCount = proveedores.length - activosCount;
+      const asignadosCount = proveedores.filter(p => eventosActivos.some(ev => Array.isArray(ev.subcontratos) && ev.subcontratos.some(sc => sc.proveedorId === p.id))).length;
+      const provFiltered = proveedores.filter(p => {
+          const matchesTerm = !term || String(p.nombre || '').toLowerCase().includes(term) || String(p.especialidad || '').toLowerCase().includes(term) || String(p.telefono || '').toLowerCase().includes(term);
+          const active = providerIsActive(p);
+          const matchesStatus = providerFilter === 'todos' || (providerFilter === 'activos' && active) || (providerFilter === 'inactivos' && !active) || providerFilter === 'categoria';
+          const matchesCategory = providerFilter !== 'categoria' || !providerCategory || String(p.especialidad || '').trim() === providerCategory;
+          return matchesTerm && matchesStatus && matchesCategory;
+      });
+      const filterBtn = (id, label, Icon) => (
+          <button type="button" onClick={()=>{ setProviderFilter(id); if(id !== 'categoria') setProviderCategory(''); }} className={`shrink-0 h-[52px] px-5 rounded-[17px] border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[.11em] transition-all ${providerFilter===id ? 'bg-gradient-to-r from-[#FF2A9D] via-[#D72BD8] to-[#7657FF] text-white border-transparent shadow-[0_12px_25px_rgba(118,87,255,.22)]' : 'bg-white/95 text-slate-500 border-slate-200/80 shadow-[0_7px_18px_rgba(15,23,42,.05)]'}`}>
+              {Icon && <Icon size={16}/>} {label}
+          </button>
+      );
       return (
-        <div className="animate-fadeIn px-4 pt-7 md:p-8 lg:p-10 max-w-5xl mx-auto pb-32 relative z-10">
-          <div className="mb-7">
-            <div className="flex items-center gap-2 text-[#7657FF] mb-3"><Sparkles size={18}/><span className="text-[11px] font-black uppercase tracking-[.24em]">Red de operaciones</span></div>
-            <h2 className="text-[38px] sm:text-5xl font-black tracking-[-.045em] text-slate-950 leading-none flex items-center gap-3"><Truck size={42} className="text-[#7657FF]"/> Proveedores</h2>
-            <p className="text-slate-500 text-[16px] sm:text-lg mt-4 font-medium">Gestiona subcontratos, contactos y acuerdos de servicio.</p>
-          </div>
+        <div className="animate-fadeIn px-4 pt-8 md:p-8 lg:p-10 max-w-7xl mx-auto pb-32 relative z-10">
+           <div className="mb-7">
+             <div className="flex items-center gap-3 mb-2"><Truck size={34} className="text-[#7657FF]"/><h2 className="text-[38px] leading-none font-black tracking-[-.045em] text-slate-950">Proveedores</h2></div>
+             <p className="text-slate-500 text-[15px] font-medium">Gestiona subcontratos, contactos y acuerdos de servicio.</p>
+           </div>
 
-          <button type="button" onClick={() => setProveedorModal({ isOpen: true, data: null })} className="w-full h-[74px] rounded-[22px] bg-gradient-to-r from-[#ff2da0] via-[#d52ee8] to-[#7657FF] text-white font-black text-[16px] tracking-wide flex items-center justify-center gap-3 shadow-[0_18px_40px_rgba(196,45,220,.22)] active:scale-[.99] transition-transform mb-6"><Plus size={26} strokeWidth={3}/> Nuevo Proveedor</button>
+           <button type="button" onClick={() => setProveedorModal({ isOpen: true, data: null })} className="w-full h-[64px] rounded-[22px] bg-gradient-to-r from-[#FF2A9D] via-[#D72BD8] to-[#7657FF] text-white font-black text-[16px] flex items-center justify-center gap-3 shadow-[0_16px_32px_rgba(215,43,216,.22)] active:scale-[.99] mb-7"><Plus size={23}/> Nuevo Proveedor</button>
 
-          <div className="grid grid-cols-3 gap-3 mb-7">
-            <div className="rounded-[22px] bg-white/95 border border-[#7657FF]/15 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center mb-3"><Truck size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{proveedores.length}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Total</p></div>
-            <div className="rounded-[22px] bg-white/95 border border-emerald-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-emerald-50 text-emerald-500 flex items-center justify-center mb-3"><Smartphone size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{provConTelefono}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Contacto</p></div>
-            <div className="rounded-[22px] bg-white/95 border border-fuchsia-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-fuchsia-50 text-fuchsia-500 flex items-center justify-center mb-3"><CalendarDays size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{provAsignados}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Asignados</p></div>
-          </div>
+           <div className="grid grid-cols-3 gap-3 mb-7">
+             <div className="rounded-[24px] bg-white/95 border border-[#7657FF]/10 p-4 shadow-[0_12px_30px_rgba(15,23,42,.05)]"><div className="w-10 h-10 rounded-2xl bg-violet-50 text-[#7657FF] flex items-center justify-center mb-4"><Truck size={19}/></div><p className="text-3xl font-black text-slate-950">{proveedores.length}</p><p className="text-[9px] font-black uppercase tracking-[.15em] text-slate-400 mt-1">Total</p></div>
+             <div className="rounded-[24px] bg-white/95 border border-emerald-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.05)]"><div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mb-4"><Smartphone size={19}/></div><p className="text-3xl font-black text-slate-950">{activosCount}</p><p className="text-[9px] font-black uppercase tracking-[.15em] text-slate-400 mt-1">Activos</p></div>
+             <div className="rounded-[24px] bg-white/95 border border-fuchsia-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.05)]"><div className="w-10 h-10 rounded-2xl bg-fuchsia-50 text-fuchsia-500 flex items-center justify-center mb-4"><CalendarDays size={19}/></div><p className="text-3xl font-black text-slate-950">{asignadosCount}</p><p className="text-[9px] font-black uppercase tracking-[.15em] text-slate-400 mt-1">Asignados</p></div>
+           </div>
 
-          <div className="bg-white/95 rounded-[24px] border border-white shadow-[0_16px_38px_rgba(15,23,42,.07)] p-2 mb-6">
-            <div className="flex flex-1 relative group"><Search size={23} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#7657FF]"/><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar proveedor o servicio..." className="w-full bg-transparent py-4 pl-14 pr-11 font-bold outline-none text-[15px] placeholder-slate-400 text-slate-900"/>{searchTerm && <button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 p-2"><X size={17}/></button>}</div>
-          </div>
+           <div className="rounded-[24px] bg-white/95 border border-slate-200/70 shadow-[0_12px_30px_rgba(15,23,42,.05)] h-[68px] flex items-center relative mb-4"><Search size={25} className="absolute left-6 text-[#7657FF]"/><input type="text" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar proveedor o servicio..." className="w-full h-full bg-transparent pl-16 pr-12 outline-none font-bold text-slate-900 placeholder:text-slate-400"/>{searchTerm && <button type="button" onClick={()=>setSearchTerm('')} className="absolute right-5 text-slate-400"><X size={18}/></button>}</div>
 
-          {proveedores.length > 0 && <div className="flex items-center justify-between mb-4 px-1"><div><p className="text-[10px] font-black uppercase tracking-[.22em] text-[#7657FF]">Directorio</p><h3 className="text-xl font-black text-slate-950 mt-1">Equipo de apoyo</h3></div><div className="text-right"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Costo base</p><p className="text-[15px] font-black text-slate-800">${provCostoBase.toFixed(0)}</p></div></div>}
+           <div className="flex gap-2.5 overflow-x-auto pb-3 scrollbar-hide mb-2">
+             {filterBtn('todos','Todos',Users)}
+             {filterBtn('activos','Activos',CheckCircle2)}
+             {filterBtn('inactivos','Inactivos',Clock)}
+             {filterBtn('categoria','Categoría',Briefcase)}
+           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {provFiltered.length === 0 ? (
-              <div className="col-span-full rounded-[30px] bg-white/90 border border-dashed border-slate-200 p-8 text-center shadow-[0_16px_38px_rgba(15,23,42,.05)]"><div className="w-20 h-20 mx-auto rounded-[24px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center mb-5"><Truck size={38}/></div><h3 className="text-2xl font-black text-slate-950">{proveedores.length ? 'Sin resultados' : 'Sin Proveedores'}</h3><p className="text-slate-500 mt-2 font-medium">{proveedores.length ? 'No encontramos proveedores con esa búsqueda.' : 'Registra a tu equipo de apoyo para subcontratarlo fácilmente en tus eventos.'}</p>{!proveedores.length && <button type="button" onClick={()=>setProveedorModal({isOpen:true,data:null})} className="mt-6 px-7 py-4 rounded-2xl bg-gradient-to-r from-[#ff2da0] to-[#7657FF] text-white font-black"><Plus size={18} className="inline mr-2"/> Registrar Ahora</button>}</div>
-            ) : provFiltered.map((p, idx) => (
-              <ProveedorCardItem key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} onEdit={(data) => setProveedorModal({isOpen: true, data})} onWhatsApp={utils.openWhatsAppBusiness} onContrato={(prov) => { setPrintData(prov); setPrintType('contrato_proveedor'); setIsPrinting(true); }} eventosActivos={eventosActivos}/>
-            ))}
-          </div>
+           {providerFilter === 'categoria' && <div className="mb-5"><select value={providerCategory} onChange={e=>setProviderCategory(e.target.value)} className="w-full h-[54px] rounded-[18px] bg-white border border-[#7657FF]/15 px-5 text-sm font-bold text-slate-700 outline-none shadow-sm"><option value="">Todas las categorías</option>{categorias.map(cat=><option key={cat} value={cat}>{cat}</option>)}</select></div>}
+
+           <div className="flex items-center justify-between mt-5 mb-4"><p className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Directorio de proveedores</p><span className="text-[10px] font-black text-[#7657FF] bg-violet-50 px-3 py-1.5 rounded-full">{provFiltered.length} {provFiltered.length===1?'proveedor':'proveedores'}</span></div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+               {provFiltered.length === 0 ? (
+                   <div className="col-span-full rounded-[30px] bg-white/95 border border-dashed border-slate-300 p-10 text-center shadow-sm"><div className="w-20 h-20 rounded-[24px] bg-violet-50 text-[#7657FF] flex items-center justify-center mx-auto mb-5"><Truck size={36}/></div><h3 className="text-2xl font-black text-slate-950">Sin Proveedores</h3><p className="text-slate-500 font-medium mt-2">No hay proveedores para este filtro.</p><button type="button" onClick={()=>setProveedorModal({isOpen:true,data:null})} className="mt-6 h-[54px] px-8 rounded-[18px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] text-white font-black"><Plus size={18} className="inline mr-2"/> Registrar Ahora</button></div>
+               ) : provFiltered.map((p, idx) => (
+                   <ProveedorCardItem key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} onEdit={(data)=>setProveedorModal({isOpen:true,data})} onWhatsApp={utils.openWhatsAppBusiness} onContrato={(prov)=>{setPrintData(prov);setPrintType('contrato_proveedor');setIsPrinting(true);}} eventosActivos={eventosActivos}/>
+               ))}
+           </div>
+           {providerFilter === 'inactivos' && inactivosCount === 0 && proveedores.length > 0 && <p className="text-center text-[10px] font-bold text-slate-400 mt-4">No hay proveedores marcados como inactivos.</p>}
         </div>
       );
   };
