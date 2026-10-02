@@ -127,14 +127,16 @@ export const utils = {
   openWhatsAppBusiness: (phone, msg) => { const clean = String(phone || '').replace(/\D/g, ''); const text = encodeURIComponent(msg || ''); const fallback = `https://api.whatsapp.com/send?phone=${clean}&text=${text}`; const isAndroid = /Android/i.test(navigator.userAgent || ''); if (isAndroid) { const intent = `intent://send?phone=${clean}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=${encodeURIComponent(fallback)};end`; window.location.href = intent; return; } const link = document.createElement('a'); link.href = fallback; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 };
 
-// CRM Clientes 2.0: el teléfono normalizado es el identificador principal.
-// Si una reserva antigua no tiene teléfono, se usa el nombre como respaldo.
+// CRM Clientes 2.1: agrupa el historial por nombre normalizado.
+// El teléfono se conserva como dato de contacto, pero no separa al mismo cliente
+// cuando aparece con números diferentes en reservas distintas.
 const normalizeClientPhone = (phone) => String(phone || '').replace(/\D/g, '');
+const normalizeClientName = (name) => utils.normalizeText(name || '').replace(/\s+/g, ' ').trim();
 const getClientKey = (obj) => {
+  const name = normalizeClientName(obj?.cliente || obj?.nombre);
+  if (name) return `nom:${name}`;
   const phone = normalizeClientPhone(obj?.telefono);
-  if (phone) return `tel:${phone}`;
-  const name = utils.normalizeText(obj?.cliente || obj?.nombre).trim();
-  return name ? `nom:${name}` : '';
+  return phone ? `tel:${phone}` : '';
 };
 
 // Finanzas 3.0: separa gastos internos de costos de proveedores.
