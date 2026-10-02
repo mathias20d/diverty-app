@@ -118,40 +118,98 @@ const deleteDoc = async ref => {
 };
 let preparationPromise = null;
 let preparationComplete = false;
+async function repairPublicAvailabilityOnce() {
+  if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
+  const marker = getConfigRef('reparacion_disponibilidad_v2');
+  if ((await getDoc(marker)).exists()) return {alreadyDone:true};
+
+  const eventsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+  const availabilityCollection = collection(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web');
+  const oldAvailabilitySnap = await getDocs(availabilityCollection);
+
+  let capacidad = 3;
+  try {
+    const capacitySnap = await getDoc(doc(db,'artifacts',appId,'public','data','config_web','global'));
+    const configured = Number(capacitySnap.exists() ? capacitySnap.data()?.capacidadSimultanea : 3);
+    if (Number.isInteger(configured) && configured >= 1 && configured <= 100) capacidad = configured;
+  } catch (_) {}
+
+  const validEvents = [];
+  const slotGroups = new Map();
+  for (const row of eventsSnap.docs) {
+    const ev = row.data() || {};
+    if (ev._system) continue;
+    const slot = publicSlot(ev);
+    if (!slot) continue;
+    validEvents.push({id:row.id, slot});
+    const key = `${slot.fecha}_${String(slot.hora || '').replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+    const group = slotGroups.get(key) || {fecha:slot.fecha, hora:slot.hora, ids:[]};
+    group.ids.push(row.id);
+    slotGroups.set(key, group);
+  }
+
+  const operations = [];
+  oldAvailabilitySnap.docs.forEach(d => operations.push({type:'delete', ref:d.ref}));
+  validEvents.forEach(({id,slot}) => operations.push({type:'set', ref:availabilityRef(id), value:slot}));
+  for (const [key,group] of slotGroups) {
+    operations.push({type:'set', ref:doc(db,'artifacts',appId,'public','data','disponibilidad_web',`slot_${key}`), value:{
+      fecha:group.fecha,
+      hora:group.hora,
+      count:group.ids.length,
+      capacity:capacidad,
+      reservationIds:group.ids,
+      updatedAt:new Date().toISOString()
+    }});
+  }
+
+  for (let i=0; i<operations.length; i+=400) {
+    const batch = writeBatch(db);
+    for (const op of operations.slice(i,i+400)) {
+      if (op.type === 'delete') batch.delete(op.ref);
+      else batch.set(op.ref, op.value);
+    }
+    await batch.commit();
+  }
+  await rawSetDoc(marker, {completada:true, fecha:new Date().toISOString(), eventosValidos:validEvents.length, slots:slotGroups.size});
+  return {alreadyDone:false, eventosValidos:validEvents.length, slots:slotGroups.size};
+}
+
 async function prepareDivertyData() {
-  if (preparationComplete) return;
+  if (preparationComplete) return repairPublicAvailabilityOnce();
   if (preparationPromise) return preparationPromise;
   preparationPromise = (async () => {
     if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
     const marker = getConfigRef('migracion_segura_v1');
-    if ((await getDoc(marker)).exists()) {preparationComplete=true; return;}
-    // One intentional migration read, never executed by public visitors.
-    const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-    const max = {factura: 0, contrato: 0, cotizacion: 0};
-    const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
-    const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
-    let batch = writeBatch(db), size = 0;
-    for (const row of snap.docs) {
-      const ev = row.data();
-      for (const type of Object.keys(fields)) {
-        const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
-        if (match) max[type] = Math.max(max[type], Number(match[1]));
+    if (!(await getDoc(marker)).exists()) {
+      // One intentional migration read, never executed by public visitors.
+      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+      const max = {factura: 0, contrato: 0, cotizacion: 0};
+      const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
+      const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
+      let batch = writeBatch(db), size = 0;
+      for (const row of snap.docs) {
+        const ev = row.data();
+        for (const type of Object.keys(fields)) {
+          const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
+          if (match) max[type] = Math.max(max[type], Number(match[1]));
+        }
+        if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
+        if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
       }
-      if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
-      if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
+      if (size) await batch.commit();
+      await rawRunTransaction(db, async tx => {
+        const types = Object.keys(max);
+        const refs = types.map(type => getConfigRef('contador_' + type));
+        const values = [];
+        for (const ref of refs) values.push(await tx.get(ref));
+        refs.forEach((ref, i) => tx.set(ref, {ultimo: Math.max(max[types[i]], Number(values[i].data()?.ultimo) || 0)}));
+        tx.set(marker, {completada: true, fecha: new Date().toISOString()});
+        tx.set(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'disponibilidad'), {lista: true});
+      });
     }
-    if (size) await batch.commit();
-    await rawRunTransaction(db, async tx => {
-      const types = Object.keys(max);
-      const refs = types.map(type => getConfigRef('contador_' + type));
-      const values = [];
-      for (const ref of refs) values.push(await tx.get(ref));
-      refs.forEach((ref, i) => tx.set(ref, {ultimo: Math.max(max[types[i]], Number(values[i].data()?.ultimo) || 0)}));
-      tx.set(marker, {completada: true, fecha: new Date().toISOString()});
-      tx.set(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'disponibilidad'), {lista: true});
-    });
+    return repairPublicAvailabilityOnce();
   })();
-  try { await preparationPromise; preparationComplete=true; } finally { preparationPromise = null; }
+  try { const result = await preparationPromise; preparationComplete=true; return result; } finally { preparationPromise = null; }
 }
 
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
@@ -2467,7 +2525,7 @@ export default function App() {
 
     if (configView === 'tools') return sectionShell(<>
       {subHeader('Herramientas del sistema','Funciones administrativas de uso ocasional.',Settings,'text-[#7657FF]')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Disponibilidad web reparada correctamente.',true);}catch(err){console.error(err);showAlert('No se pudo reparar la disponibilidad. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Reparar disponibilidad web</button></div></div>
     </>);
 
     if (configView === 'security') return sectionShell(<>
