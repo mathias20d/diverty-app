@@ -669,7 +669,8 @@ export default function App() {
   const [expandedClientId, setExpandedClientId] = useState(null); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const [messaging, setMessaging] = useState(null);
-  const [clientFilter, setClientFilter] = useState('todos'); 
+  const [clientFilter, setClientFilter] = useState('todos');
+  const [clientVisibleCount, setClientVisibleCount] = useState(10);
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [financeFocus, setFinanceFocus] = useState(null);
@@ -1143,11 +1144,14 @@ export default function App() {
       return String(c.nombre).toLowerCase().includes(s) || String(c.telefono).includes(s) || String(c.email || '').toLowerCase().includes(s); 
   }), [enrichedClients, deferredSearchTerm, clientFilter]);
 
-  const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => { 
-      if (clientSort === 'gasto') return b.totalCobrado - a.totalCobrado; 
-      if (clientSort === 'recientes') return new Date(b.ultimoEventoFecha || 0) - new Date(a.ultimoEventoFecha || 0); 
-      return 0; 
-  }), [filteredClients, clientSort]);
+  const sortedFilteredClients = useMemo(() => [...filteredClients].sort((a, b) => {
+      if (clientFilter === 'recientes' || clientSort === 'recientes') return new Date(b.ultimoEventoFecha || 0) - new Date(a.ultimoEventoFecha || 0);
+      if (clientSort === 'gasto') return b.totalCobrado - a.totalCobrado;
+      return 0;
+  }), [filteredClients, clientSort, clientFilter]);
+
+  useEffect(() => { setClientVisibleCount(10); }, [clientFilter, deferredSearchTerm, clientSort]);
+  const visibleClients = useMemo(() => sortedFilteredClients.slice(0, clientVisibleCount), [sortedFilteredClients, clientVisibleCount]);
   
   const contactCandidates = useMemo(() => enrichedClients.filter(c => c.needsContact).slice(0, 5), [enrichedClients]);
   const financeYear = useMemo(() => financePeriod === 'mes' ? todayObj.getFullYear() : selectedFinanceYear, [financePeriod, todayObj, selectedFinanceYear]);
@@ -1976,53 +1980,52 @@ export default function App() {
      const totalClientes = enrichedClients.length;
      const totalVip = enrichedClients.filter(c => c.isVIP).length;
      const totalRetomar = enrichedClients.filter(c => c.needsContact).length;
+     const filterButton = (id, label, Icon, accent='violet') => {
+        const active = clientFilter === id;
+        const activeClass = 'bg-gradient-to-r from-[#FF3EA5] via-[#C13BFF] to-[#7657FF] text-white border-transparent shadow-[0_10px_24px_rgba(184,61,255,.24)]';
+        return <button type="button" onClick={()=>{utils.triggerHaptic('light');setClientFilter(id);if(id==='recientes')setClientSort('recientes');}} className={`shrink-0 px-4 py-3 rounded-[15px] border flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.08em] transition-all active:scale-[.97] ${active?activeClass:'bg-white/90 border-slate-200/80 text-slate-500 shadow-sm'}`}><Icon size={16}/>{label}</button>;
+     };
 
      return (
-       <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative z-10">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4"><div><h2 className={UI.title}><Users size={36} className="text-[#7657FF] inline mr-2 drop-shadow-sm" /> CRM Ventas</h2><p className="text-slate-500 text-sm mt-2 font-medium">Fideliza y administra a tus clientes.</p></div></div>
-          
-          <div className="grid grid-cols-3 gap-4 md:gap-6 mb-10 animate-fadeInUp">
-              <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('todos')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'todos' ? 'ring-2 ring-[#7657FF] border-transparent shadow-lg' : ''}`}>
-                  <div className="flex items-center gap-2.5 mb-3"><IconBox icon={Users} color="blue" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Total</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{totalClientes}</p>
-              </div>
-              <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('vip')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'vip' ? 'ring-2 ring-amber-400 border-transparent shadow-lg' : ''}`}>
-                  <div className="flex items-center gap-2.5 mb-3"><IconBox icon={Award} color="amber" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">VIPs</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-slate-900">{totalVip}</p>
-              </div>
-              <div onClick={() => {utils.triggerHaptic('light'); setClientFilter('retomar')}} className={`${UI.card} p-5 sm:p-8 flex flex-col justify-center cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] ${clientFilter === 'retomar' ? 'ring-2 ring-rose-400 border-transparent shadow-lg' : ''}`}>
-                  <div className="flex items-center gap-2.5 mb-3"><IconBox icon={BellRing} color="rose" className="border-0"/><span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Retomar</span></div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-rose-500">{totalRetomar}</p>
-              </div>
+       <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto pb-32 relative z-10 text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
+          <div className="pt-2 sm:pt-3 mb-6">
+             <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Users size={15}/> CRM de clientes</div>
+             <h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Clientes</h2>
+             <p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Fideliza y administra a tus clientes.</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mb-8 rounded-[28px] bg-white/80 backdrop-blur-xl border border-white p-2.5 shadow-[0_14px_38px_rgba(15,23,42,.06)]">
+              <button type="button" onClick={()=>setClientFilter('todos')} className={`rounded-[22px] px-3 py-4 text-left transition-all ${clientFilter==='todos'?'bg-[#F2EEFF] ring-1 ring-[#7657FF]/20':'bg-white'}`}><div className="w-10 h-10 rounded-[14px] bg-[#EEE9FF] flex items-center justify-center mb-3"><Users size={20} className="text-[#7657FF]"/></div><p className="text-2xl font-black text-slate-950">{totalClientes}</p><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400 mt-1">Clientes</p></button>
+              <button type="button" onClick={()=>setClientFilter('vip')} className={`rounded-[22px] px-3 py-4 text-left transition-all ${clientFilter==='vip'?'bg-amber-50 ring-1 ring-amber-300/50':'bg-white'}`}><div className="w-10 h-10 rounded-[14px] bg-amber-50 flex items-center justify-center mb-3"><Award size={20} className="text-amber-500"/></div><p className="text-2xl font-black text-slate-950">{totalVip}</p><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400 mt-1">VIP</p></button>
+              <button type="button" onClick={()=>setClientFilter('retomar')} className={`rounded-[22px] px-3 py-4 text-left transition-all ${clientFilter==='retomar'?'bg-rose-50 ring-1 ring-rose-300/50':'bg-white'}`}><div className="w-10 h-10 rounded-[14px] bg-rose-50 flex items-center justify-center mb-3"><BellRing size={20} className="text-[#FF3EA5]"/></div><p className="text-2xl font-black text-[#F43F67]">{totalRetomar}</p><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400 mt-1">Por retomar</p></button>
           </div>
 
           {contactCandidates.length > 0 && !deferredSearchTerm && clientFilter === 'todos' && (
-             <div className="mb-12 animate-slideDown">
-                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2"><Zap size={18} className="text-amber-500 fill-amber-500"/> Oportunidades de Venta</h3>
-                 <div className="flex gap-5 overflow-x-auto pb-6 scrollbar-hide snap-x">
-                     {contactCandidates.map((c, idx) => { 
+             <div className="mb-8 animate-slideDown">
+                 <div className="flex items-center justify-between mb-4"><h3 className="text-[11px] font-black text-[#7657FF] uppercase tracking-[0.18em] flex items-center gap-2"><Zap size={18} className="text-amber-500 fill-amber-500"/> Oportunidades de venta</h3><span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Desliza →</span></div>
+                 <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
+                     {contactCandidates.map((c, idx) => {
                          const phoneClean = String(c.telefono).replace(/\D/g,'');
-                         const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`; 
-                         return (
-                             <div key={`contact-${c.clientKey}`} className={`snap-center shrink-0 w-80 ${UI.card} p-6 flex flex-col gap-5 animate-fadeInUp`} style={{ animationDelay: `${Math.min(idx * 50, 500)}ms` }}>
-                                 <div><p className="font-extrabold text-slate-900 truncate text-xl tracking-tight capitalize">{c.nombre}</p><Badge color="rose" className="mt-2"><Clock size={12}/> Sin compras hace {c.daysSince} días</Badge></div>
-                                 <AppButton onClick={() => utils.openWhatsAppBusiness(phoneClean, msg)} variant="success" icon={MessageCircle} className="w-full text-[12px]">Enviar Promo</AppButton>
-                             </div>
-                         );
+                         const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`;
+                         return <div key={`contact-${c.clientKey}`} className="snap-center shrink-0 w-[84%] sm:w-80 rounded-[26px] bg-white/95 border border-rose-100 p-5 shadow-[0_14px_34px_rgba(15,23,42,.07)]"><div className="flex items-center gap-3 mb-4"><div className="w-12 h-12 rounded-[16px] bg-gradient-to-br from-[#7657FF] to-[#D62CFF] text-white flex items-center justify-center font-black">{String(c.nombre||'?').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()}</div><div className="min-w-0 flex-1"><p className="font-black text-slate-950 text-lg truncate">{c.nombre}</p><span className="inline-flex mt-1 items-center gap-1 text-[9px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-full"><Clock size={11}/> Sin compras hace {c.daysSince} días</span></div></div><button type="button" onClick={()=>utils.openWhatsAppBusiness(phoneClean,msg)} className="w-full py-3.5 rounded-[16px] bg-gradient-to-r from-emerald-500 to-teal-400 text-white font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(16,185,129,.20)]"><MessageCircle size={17}/> Enviar promo</button></div>;
                      })}
                  </div>
              </div>
           )}
-          <div className="flex flex-col sm:flex-row gap-4"><div className={`${UI.card} p-2 flex-1 flex transition-all duration-300 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#7657FF] transition-colors" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-slate-400 text-slate-900" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-1.5 rounded-full hover:bg-slate-100 transition-all"><X size={16}/></button>)}</div></div><button type="button" onClick={() => setClientSort(clientSort === 'gasto' ? 'recientes' : 'gasto')} className={`${UI.card} px-8 py-3.5 flex items-center justify-center gap-2.5 font-bold text-xs uppercase tracking-widest transition-all text-slate-600 hover:text-[#7657FF] hover:bg-white`}> <ArrowDownWideNarrow size={18}/> <span className="hidden sm:inline">Ordenar: </span><span className="text-[#7657FF]">{clientSort === 'gasto' ? 'Mayor Cobrado' : 'Recientes'}</span></button></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
-            {sortedFilteredClients.length === 0 ? (
-                <div className="col-span-full"><EmptyState icon={Users} title="Bóveda de Clientes Vacía" message="Registra tu primer evento o ajusta los filtros para ver a tus clientes aquí." actionBtn={null} /></div>
-            ) : (
-                sortedFilteredClients.map((c, i) => (
-                    <ClientCardItem key={c.clientKey} c={c} idx={i} isExpanded={expandedClientId === c.clientKey} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(client) => setClientEditModal({ isOpen: true, oldName: client.nombre, clientKey: client.clientKey })} historial={historialClientesMap.get(c.clientKey) || []}/>
-                ))
-            )}
+
+          <div className="relative mb-3"><Search size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#7657FF]"/><input type="text" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar cliente..." className="w-full h-[62px] rounded-[22px] bg-white/95 border border-white pl-14 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:ring-4 focus:ring-[#7657FF]/10 shadow-[0_12px_32px_rgba(15,23,42,.06)] placeholder:text-slate-400"/>{searchTerm&&<button type="button" onClick={()=>setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-400"><X size={17}/></button>}</div>
+
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide py-2 mb-5">
+             {filterButton('todos','Todos',Users)}{filterButton('vip','VIP',Award)}{filterButton('retomar','Por retomar',BellRing)}{filterButton('recientes','Recientes',Clock)}
+             <button type="button" onClick={()=>setClientSort(clientSort==='gasto'?'recientes':'gasto')} className="shrink-0 px-4 py-3 rounded-[15px] border border-slate-200/80 bg-white/90 text-slate-500 shadow-sm flex items-center gap-2 text-[10px] font-black uppercase tracking-[.08em]"><ArrowDownWideNarrow size={16}/>{clientSort==='gasto'?'Mayor cobrado':'Más recientes'}</button>
           </div>
+
+          <div className="space-y-4">
+            {sortedFilteredClients.length === 0 ? <div className="rounded-[26px] bg-white/90 border border-slate-200/70 p-6 text-center shadow-sm"><Users size={28} className="text-[#7657FF] mx-auto mb-2"/><p className="font-black text-slate-950">Sin clientes para este filtro</p><p className="text-sm font-medium text-slate-400 mt-1">Prueba otra búsqueda o categoría.</p></div> : visibleClients.map((c,i)=><ClientCardItem key={c.clientKey} c={c} idx={i} isExpanded={expandedClientId===c.clientKey} onToggleExpand={handleToggleClient} utils={utils} openModal={openModal} onDeleteClient={handleDeleteClient} onEditClient={(client)=>setClientEditModal({isOpen:true,oldName:client.nombre,clientKey:client.clientKey})} historial={historialClientesMap.get(c.clientKey)||[]}/>) }
+          </div>
+
+          {visibleClients.length < sortedFilteredClients.length && <button type="button" onClick={()=>setClientVisibleCount(v=>v+10)} className="mt-6 w-full h-[58px] rounded-[20px] bg-white/95 border border-[#7657FF]/15 text-[#7657FF] font-black uppercase tracking-[.12em] text-[10px] shadow-[0_12px_30px_rgba(15,23,42,.06)] active:scale-[.99]">Cargar 10 más · {sortedFilteredClients.length-visibleClients.length} restantes</button>}
+          {sortedFilteredClients.length>0 && <p className="text-center text-[10px] font-bold text-slate-400 mt-4">Mostrando {visibleClients.length} de {sortedFilteredClients.length} clientes</p>}
        </div>
      );
   };
