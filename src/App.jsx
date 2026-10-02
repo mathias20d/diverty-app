@@ -1864,16 +1864,16 @@ export default function App() {
           )}
           
           {cotizacionesActivas.length > 0 && (
-              <div className="mt-6 pt-5 border-t border-slate-200/70 relative">
-                  <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-[14px] bg-amber-500/10 text-amber-500 border border-amber-500/10 flex items-center justify-center"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
+              <div className="mt-5 pt-5 border-t border-slate-200/60 relative">
+                  <div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-amber-400/15 to-orange-500/10 text-amber-500 border border-amber-400/15 flex items-center justify-center shadow-sm"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                       {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
                   </div>
               </div>
           )}
           
-          <div className="mt-6 pt-5 border-t border-slate-200/70 relative">
-              <div className={UI.flexBetween + " mb-4 gap-3"}>
+          <div className="mt-5 pt-5 border-t border-slate-200/60 relative">
+              <div className={UI.flexBetween + " mb-3 gap-3"}>
                   <div className="flex items-center gap-3 min-w-0"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center shrink-0"><CalendarDays size={20}/></div><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Agenda</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em] truncate">Próximas Reservas</h3></div></div>
                   <button type="button" onClick={() => handleTabChange('eventos')} className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 hover:text-[#7657FF] transition-colors shrink-0 bg-white/70 border border-white px-3 py-2 rounded-xl shadow-sm">Ver Todas <ChevronRight size={13} className="inline"/></button>
               </div>
@@ -1882,11 +1882,16 @@ export default function App() {
                       {proximasReservas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} />)}
                   </div>
               ) : (
-                  <div className="rounded-[22px] border border-dashed border-slate-200 bg-white/75 backdrop-blur-xl px-5 py-6 text-center shadow-[0_10px_28px_rgba(15,23,42,.05)]">
-                     <div className="w-12 h-12 mx-auto rounded-[16px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center mb-3"><CalendarDays size={23}/></div>
-                     <h4 className="font-black text-lg text-slate-950 tracking-tight">Agenda Despejada</h4>
-                     <p className="text-slate-500 text-xs sm:text-sm font-medium mt-1.5">No tienes reservas programadas para hoy ni mañana.</p>
-                     <AppButton onClick={()=>openModal()} variant="primary" icon={Plus} className="mt-4 px-6 py-3 shadow-md text-xs">Crear Reserva</AppButton>
+                  <div className="relative overflow-hidden rounded-[24px] border border-white/90 bg-white/90 backdrop-blur-2xl px-4 py-4 shadow-[0_16px_40px_rgba(15,23,42,.07)]">
+                     <div className="absolute -right-10 -top-12 w-32 h-32 rounded-full bg-[#7657FF]/10 blur-3xl pointer-events-none"></div>
+                     <div className="relative flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-[17px] bg-gradient-to-br from-[#7657FF]/15 to-[#C62FFF]/10 text-[#7657FF] border border-[#7657FF]/10 flex items-center justify-center shrink-0 shadow-sm"><CalendarDays size={23}/></div>
+                        <div className="min-w-0 flex-1 text-left">
+                           <h4 className="font-black text-[16px] text-slate-950 tracking-tight">Agenda Despejada</h4>
+                           <p className="text-slate-500 text-[11px] sm:text-xs font-semibold mt-0.5 leading-snug">Sin reservas para hoy ni mañana.</p>
+                        </div>
+                        <button type="button" onClick={()=>openModal()} className="shrink-0 h-11 px-4 rounded-[15px] bg-gradient-to-r from-[#FF2F92] via-[#D72DD8] to-[#8A3FFC] text-white font-black text-[10px] uppercase tracking-[0.08em] shadow-[0_10px_24px_rgba(214,45,216,.24)] active:scale-[.97] transition-transform flex items-center gap-1.5"><Plus size={16}/> Crear</button>
+                     </div>
                   </div>
               )}
           </div>
