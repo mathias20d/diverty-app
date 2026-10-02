@@ -465,6 +465,12 @@ const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, 
 
 const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient, historial = [] }) {
     const [showHistory, setShowHistory] = useState(false);
+    const [showPending, setShowPending] = useState(false);
+    const pendingHistory = useMemo(() => historial.filter(ev => {
+      const est = utils.normalizeText(ev.estado);
+      if (est === 'completado' || est === 'cobrado' || est === 'pagado' || est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.')) return false;
+      return Math.max(utils.safeNum(ev.total) - utils.safeNum(ev.abono), 0) > 0;
+    }), [historial, utils]);
     const phoneClean=String(c.telefono).replace(/\D/g,'');
     const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
     const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#7657FF] to-[#8B5CF6]';
@@ -480,9 +486,19 @@ const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onTogg
             <p className="text-[9px] uppercase tracking-widest font-black text-[#7657FF] mb-1 flex items-center gap-1">Eventos <ChevronDown size={12} className={`transition-transform ${showHistory?'rotate-180':''}`}/></p><p className="font-black text-xl text-slate-900">{c.eventos}</p><p className="text-[9px] font-bold text-slate-400 mt-1">{c.eventosCompletados} completados</p>
           </button>
           <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Facturado</p><p className="font-black text-xl text-slate-900">${c.totalFacturado.toFixed(0)}</p><p className="text-[9px] font-bold text-emerald-500 mt-1">Cobrado ${c.totalCobrado.toFixed(0)}</p></div>
-          <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Pendiente</p><p className={`font-black text-xl ${c.saldoPendiente>0?'text-rose-500':'text-emerald-500'}`}>${c.saldoPendiente.toFixed(0)}</p><p className="text-[9px] font-bold text-slate-400 mt-1">Saldo por cobrar</p></div>
+          <button type="button" onClick={(e)=>{e.stopPropagation();utils.triggerHaptic('light');setShowPending(v=>!v);}} className="text-left bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm hover:bg-rose-50/40 transition-colors"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1 flex items-center gap-1">Pendiente <ChevronDown size={12} className={`transition-transform ${showPending?'rotate-180':''}`}/></p><p className={`font-black text-xl ${c.saldoPendiente>0?'text-rose-500':'text-emerald-500'}`}>${c.saldoPendiente.toFixed(0)}</p><p className="text-[9px] font-bold text-slate-400 mt-1">{c.saldoPendiente>0?'Toca para ver saldos':'Todo cobrado'}</p></button>
           <div className="bg-white/90 rounded-[16px] p-4 border border-slate-200/60 shadow-sm"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400 mb-1">Próxima reserva</p><p className="font-black text-sm text-slate-900">{c.proximaReserva?.fecha?String(c.proximaReserva.fecha).split('-').reverse().join('/'):'Sin reserva'}</p><p className="text-[9px] font-bold text-slate-400 mt-1 truncate">{c.proximaReserva?.servicio || '—'}</p></div>
         </div>
+
+        {showPending && (<div className="mb-5 animate-fadeIn bg-white rounded-[18px] border border-rose-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-rose-50 flex items-center justify-between"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-rose-500">Saldos pendientes</p><p className="text-[10px] font-semibold text-slate-400 mt-0.5">Solo reservas realmente pendientes de cobro</p></div><DollarSign size={18} className="text-rose-500"/></div>
+          <div className="max-h-[320px] overflow-y-auto divide-y divide-slate-100">
+            {pendingHistory.length === 0 ? <div className="p-5 text-center"><CheckCircle2 size={24} className="text-emerald-500 mx-auto mb-2"/><p className="text-xs font-black text-emerald-600">Todo está cobrado</p><p className="text-[10px] font-semibold text-slate-400 mt-1">No hay reservas con saldo pendiente.</p></div> : pendingHistory.map(ev => {
+              const total=utils.safeNum(ev.total); const abono=utils.safeNum(ev.abono); const saldo=Math.max(total-abono,0);
+              return <button type="button" key={`pending-${ev.id}`} onClick={(e)=>{e.stopPropagation();utils.triggerHaptic('light');openModal(ev,false);}} className="w-full text-left p-4 hover:bg-rose-50/40 transition-colors"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-black text-slate-900 text-sm">{ev.fecha?String(ev.fecha).split('-').reverse().join('/'):'Sin fecha'}</p><p className="text-[11px] font-semibold text-slate-500 truncate mt-1">{String(ev.servicio||ev.tipoEvento||'Evento')}</p><p className="text-[9px] font-bold text-slate-400 mt-1">Total ${total.toFixed(0)} · Cobrado ${abono.toFixed(0)}</p></div><div className="text-right shrink-0"><p className="text-[9px] font-black uppercase tracking-wider text-rose-400">Falta</p><p className="font-black text-rose-500 text-base">${saldo.toFixed(0)}</p></div></div></button>;
+            })}
+          </div>
+        </div>)}
 
         {showHistory && (<div className="mb-5 animate-fadeIn bg-white rounded-[18px] border border-slate-200/70 shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between"><div><p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7657FF]">Historial de eventos</p><p className="text-[10px] font-semibold text-slate-400 mt-0.5">Más reciente → más antiguo</p></div><CalendarDays size={18} className="text-[#7657FF]"/></div>
@@ -709,6 +725,12 @@ export default function App() {
       return saved;
   }, [publishSync]);
 
+  useEffect(() => {
+      // Si la app corre dentro de un contenedor Android/Capacitor, libera el splash nativo
+      // apenas React ya montó. En navegador/PWA no hace nada.
+      try { window?.Capacitor?.Plugins?.SplashScreen?.hide?.(); } catch (e) {}
+  }, []);
+
   useEffect(() => { 
       const handleOnline = () => setIsOnline(true); 
       const handleOffline = () => setIsOnline(false); 
@@ -790,7 +812,7 @@ export default function App() {
   }, []);
   
   useEffect(() => {
-    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 500); 
+    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 8000); 
     const unsubscribe = onAuthStateChanged(auth, (user) => { 
         clearTimeout(fallbackTimer); 
         if (user?.uid === ADMIN_UID) { setFirebaseUser(user); setIsAuthenticated(true); } 
@@ -1058,8 +1080,12 @@ export default function App() {
 
          const c = clientsMap.get(clientKey);
          const total = utils.safeNum(e.total);
-         const cobrado = Math.max(0, Math.min(utils.safeNum(e.abono), total || utils.safeNum(e.abono)));
-         const saldo = Math.max(total - utils.safeNum(e.abono), 0);
+         // En Clientes, una reserva marcada como Completada/Cobrada se considera liquidada.
+         // Esto evita arrastrar saldos antiguos cuando el evento ya fue cerrado como cobrado.
+         const liquidado = es === 'completado' || es === 'cobrado' || es === 'pagado';
+         const abonoGuardado = utils.safeNum(e.abono);
+         const cobrado = liquidado ? total : Math.max(0, Math.min(abonoGuardado, total || abonoGuardado));
+         const saldo = liquidado ? 0 : Math.max(total - abonoGuardado, 0);
          c.totalFacturado += total;
          c.totalCobrado += cobrado;
          c.saldoPendiente += saldo;
