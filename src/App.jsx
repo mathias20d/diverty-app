@@ -22,9 +22,43 @@ const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
 const isEventRef = ref => ref.path.startsWith(`artifacts/${appId}/public/data/eventos/`);
 const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', id);
 const publicSlot = value => {
-  const state = String(value.estado || '').toLowerCase();
-  if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
+  const state = String(value?.estado || '').toLowerCase();
+  if (!value?.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
   return { fecha: String(value.fecha), hora: String(value.hora || '') };
+};
+const slotDocRef = value => {
+  const slot = publicSlot(value);
+  if (!slot) return null;
+  const safeSlot = `${slot.fecha}_${String(slot.hora || '').replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+  return doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', `slot_${safeSlot}`);
+};
+const samePublicSlot = (a,b) => {
+  const x=publicSlot(a), y=publicSlot(b);
+  return Boolean(x && y && x.fecha===y.fecha && x.hora===y.hora);
+};
+const writeSlotMembership = (writer, ref, snap, eventId, direction, eventValue) => {
+  if (!ref) return;
+  const current = snap?.exists() ? (snap.data() || {}) : {};
+  let ids = Array.isArray(current.reservationIds) ? current.reservationIds.map(String) : [];
+  let count = Math.max(Number(current.count || 0), ids.length);
+  if (direction < 0) {
+    const hadId = ids.includes(String(eventId));
+    ids = ids.filter(x => x !== String(eventId));
+    // Los slots antiguos podían tener count sin todos los IDs. Al borrar una reserva
+    // del horario igualmente se libera exactamente un cupo.
+    count = Math.max(0, count - 1);
+    if (!hadId) count = Math.max(count, ids.length);
+  } else if (!ids.includes(String(eventId))) {
+    ids.push(String(eventId));
+    count = Math.max(count + 1, ids.length);
+  }
+  if (count <= 0 && ids.length === 0) { writer.delete(ref); return; }
+  const slot = publicSlot(eventValue) || {fecha:String(current.fecha||''),hora:String(current.hora||'')};
+  writer.set(ref, {
+    fecha: slot.fecha, hora: slot.hora, count,
+    capacity: Math.max(1, Number(current.capacity || 3)),
+    reservationIds: ids, updatedAt: new Date().toISOString()
+  });
 };
 const clientStatusRef = id => doc(db,'artifacts',appId,'public','data','reservas_cliente',id);
 const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono','fecha','hora','estado','servicio','total','abono'].map(key => [key,String(value[key] ?? '')]));
@@ -53,14 +87,34 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
 });
 const setDoc = async (ref, value, options) => {
   if (!isEventRef(ref)) return options ? rawSetDoc(ref, value, options) : rawSetDoc(ref, value);
-  return runTransaction(db, async tx => {
-    if (options?.merge) await tx.get(ref);
-    tx.set(ref, value, options);
+  return rawRunTransaction(db, async tx => {
+    const currentSnap = await tx.get(ref);
+    const current = currentSnap.exists() ? currentSnap.data() : {};
+    const next = options?.merge ? {...current, ...value} : value;
+    const oldSlotRef = slotDocRef(current);
+    const newSlotRef = slotDocRef(next);
+    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
+    const newSlotSnap = newSlotRef && (!oldSlotRef || newSlotRef.path !== oldSlotRef.path) ? await tx.get(newSlotRef) : oldSlotSnap;
+    if (options) tx.set(ref, value, options); else tx.set(ref, value);
+    projectEvent(tx, ref, next);
+    if (!samePublicSlot(current, next)) {
+      if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, ref.id, -1, current);
+      if (newSlotRef) writeSlotMembership(tx, newSlotRef, newSlotSnap, ref.id, 1, next);
+    }
   });
 };
 const deleteDoc = async ref => {
   if (!isEventRef(ref)) return rawDeleteDoc(ref);
-  const batch = writeBatch(db); batch.delete(ref); batch.delete(availabilityRef(ref.id)); batch.delete(clientStatusRef(ref.id)); await batch.commit();
+  return rawRunTransaction(db, async tx => {
+    const currentSnap = await tx.get(ref);
+    const current = currentSnap.exists() ? currentSnap.data() : {};
+    const oldSlotRef = slotDocRef(current);
+    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
+    tx.delete(ref);
+    tx.delete(availabilityRef(ref.id));
+    tx.delete(clientStatusRef(ref.id));
+    if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, ref.id, -1, current);
+  });
 };
 let preparationPromise = null;
 let preparationComplete = false;
@@ -1507,7 +1561,15 @@ export default function App() {
                     const openedRev = Number(modalConfig.initialData?._rev) || 0;
                     if (remoteRev !== openedRev) throw new Error('EDIT_CONFLICT');
                     savedData = { ...dataToSave, _rev: remoteRev + 1, updatedAt: new Date().toISOString() };
+                    const oldSlotRef = slotDocRef(remote);
+                    const newSlotRef = slotDocRef(savedData);
+                    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
+                    const newSlotSnap = newSlotRef && (!oldSlotRef || newSlotRef.path !== oldSlotRef.path) ? await tx.get(newSlotRef) : oldSlotSnap;
                     tx.set(ref, savedData);
+                    if (!samePublicSlot(remote, savedData)) {
+                        if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, id, -1, remote);
+                        if (newSlotRef) writeSlotMembership(tx, newSlotRef, newSlotSnap, id, 1, savedData);
+                    }
                 });
             } else {
                 savedData = { ...dataToSave, _rev: 1, updatedAt: new Date().toISOString() };
