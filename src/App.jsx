@@ -2091,6 +2091,8 @@ export default function App() {
   const renderFinanzas = () => {
       const deudasPendientes = evtCalculoBase.filter(e => (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0);
       const tieneDeudas = deudasPendientes.length > 0;
+      const ingresosRecibidos = evtCalculoBase.filter(e => Math.min(utils.safeNum(e.abono), utils.safeNum(e.total)) > 0).sort((a,b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+      const tieneIngresos = ingresosRecibidos.length > 0;
       const totalGanancia = chartData.reduce((s,d) => s + d.value, 0);
 
       return (
@@ -2180,15 +2182,23 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-5 animate-fadeInUp" style={{animationDelay: '400ms'}}>
-                  <div className="flex justify-between items-center px-2">
-                      <h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-500"/> Detalle de Eventos <span className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">({financePeriod === 'todos' ? 'Todos' : financePeriod === 'anio' ? `Año ${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}`})</span></h4>
+                  <div className="flex justify-between items-center px-2 gap-3">
+                      <div><h4 className="font-extrabold text-xl text-slate-900 flex items-center gap-3 tracking-tight"><FileSpreadsheet size={22} className="text-emerald-500"/> Ingresos del período</h4><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mt-1.5">Solo dinero realmente recibido</p></div>
+                      <div className="text-right shrink-0"><p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Cobrado</p><p className="text-xl font-black text-emerald-500">${finanzasData.cobrado.toFixed(2)}</p></div>
                   </div>
                   <div className={`${UI.card} overflow-hidden flex flex-col h-[400px] p-0`}>
-                      {evtCalculoBase.length === 0 ? (
-                          <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60"><Info size={48} className="text-slate-300 mb-4"/><p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">No hay transacciones registradas.</p></div>
+                      {!tieneIngresos ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mb-4"><FileSpreadsheet size={28}/></div><p className="font-extrabold text-slate-900">Aún no hay cobros recibidos</p><p className="text-[11px] font-medium text-slate-400 mt-2 max-w-[240px]">Cuando registres un abono o marques una reserva como cobrada, aparecerá aquí.</p></div>
                       ) : (
                           <div className="overflow-y-auto flex-1 scrollbar-hide p-4 space-y-2">
-                              {evtCalculoBase.map((e) => <TransactionItem key={e.id} ev={e} isExpanded={expandedFinanceId===e.id} onToggleExpand={handleToggleFinance} utils={utils}/>)}
+                              {ingresosRecibidos.map((e) => {
+                                const recibido = Math.min(utils.safeNum(e.abono), utils.safeNum(e.total));
+                                const pendiente = Math.max(utils.safeNum(e.total) - recibido, 0);
+                                return <button type="button" key={e.id} onClick={() => openModal(e, false)} className="w-full text-left p-4 rounded-[20px] bg-white/80 hover:bg-white active:scale-[0.99] transition-all border border-slate-200/60">
+                                  <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-extrabold text-[15px] text-slate-900 truncate capitalize">{String(e.cliente || 'Cliente')}</p><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mt-1">{e.fecha ? String(e.fecha).split('-').reverse().join('/') : 'Sin fecha'} · {String(e.servicio || 'Reserva')}</p></div><p className="font-black text-xl text-emerald-500 shrink-0">+${recibido.toFixed(2)}</p></div>
+                                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100"><span className="text-[10px] font-bold text-slate-400">Total reserva: ${utils.safeNum(e.total).toFixed(2)}</span><span className={`text-[10px] font-black uppercase tracking-wider ${pendiente > 0 ? 'text-rose-500' : 'text-emerald-600'}`}>{pendiente > 0 ? `Pendiente $${pendiente.toFixed(2)}` : 'Pagado'}</span></div>
+                                </button>;
+                              })}
                           </div>
                       )}
                   </div>
