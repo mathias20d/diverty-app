@@ -616,7 +616,8 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [firebaseUser, setFirebaseUser] = useState(null); 
   
-  const [activeTab, setActiveTab] = useState('inicio'); 
+  const [activeTab, setActiveTab] = useState('inicio');
+  const [configView, setConfigView] = useState('home'); 
   const [isDBReady, setIsDBReady] = useState(false); 
   const [eventos, setEventos] = useState([]); 
   // Firestore optimizado: el historial completo se carga solo cuando una sección lo necesita.
@@ -2221,19 +2222,109 @@ export default function App() {
   };
 
   const renderConfig = () => {
-    return (
-      <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-6 pb-32 relative z-10">
-          <div className="mb-8"><h2 className={UI.title}>Ajustes</h2><p className="text-base font-medium text-slate-500 mt-2">Centro de Mando Diverty</p></div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-              <div className="col-span-1 lg:col-span-2 bg-white/90 backdrop-blur-xl rounded-[32px] p-8 sm:p-10 shadow-sm relative overflow-hidden flex flex-col justify-between border border-slate-200/80 animate-fadeInUp"><div className="absolute -top-32 -right-32 w-64 h-64 bg-[radial-gradient(circle,rgba(37,99,235,0.06)_0%,transparent_60%)] pointer-events-none transform-gpu"></div><div className="absolute -bottom-32 -left-32 w-64 h-64 bg-[radial-gradient(circle,rgba(124,58,237,0.06)_0%,transparent_60%)] pointer-events-none transform-gpu"></div><div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-6"><div className="w-24 h-24 rounded-[24px] bg-gradient-to-tr from-[#7657FF] to-[#8B5CF6] p-[3px] shadow-lg shrink-0"><img src={LOGO_URL} className="w-full h-full object-contain rounded-[21px] bg-white p-3" alt="Diverty Profile" crossOrigin="anonymous"/></div><div><h3 className="text-3xl font-extrabold text-slate-900 tracking-tight">Administrador Global</h3><p className={`text-sm font-bold tracking-[0.25em] uppercase mt-2 flex items-center gap-2.5 ${isOnline ? 'text-[#7657FF]' : 'text-amber-500'}`}><Cloud size={16} className={isOnline ? 'text-emerald-500' : 'text-amber-500 animate-pulse'}/> {isOnline ? 'En Línea con Firebase' : 'Trabajando Offline'}</p></div></div><div className="relative z-10 mt-10 flex flex-col sm:flex-row gap-5 border-t border-slate-200/60 pt-8"><button type="button" onClick={activarNotificaciones} className="flex-1 flex items-center justify-center gap-2.5 bg-[#7657FF]/10 hover:bg-[#7657FF]/20 text-[#7657FF] py-4 rounded-[16px] transition-all border border-[#7657FF]/20 font-bold text-sm shadow-sm"><BellRing size={20}/> Obtener Token Push</button><button type="button" onClick={handleLogout} className="flex-1 flex items-center justify-center gap-2.5 bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-500 py-4 rounded-[16px] transition-all border border-slate-200/80 hover:border-rose-200 font-bold text-sm"><Lock size={20}/> Cerrar Sesión</button></div></div>
-              <div className={`${UI.card} p-8 sm:p-10 flex flex-col relative overflow-hidden animate-fadeInUp`} style={{animationDelay:'100ms'}}><div className="absolute -top-10 -right-10 w-32 h-32 bg-[radial-gradient(circle,rgba(251,191,36,0.1)_0%,transparent_60%)] pointer-events-none transform-gpu"></div><h4 className="font-extrabold text-slate-900 flex items-center gap-3 mb-6 text-xl tracking-tight relative z-10"><Award size={26} className="text-amber-500"/> Meta Mensual</h4><div className="relative z-10 flex-1 flex flex-col"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2.5 block">Objetivo de ventas ($)</label><div className="relative mb-5"><span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 font-extrabold text-xl">$</span><input type="number" value={appSettings.metaMensual} onChange={e => updateSettings({...appSettings, metaMensual: utils.safeNum(e.target.value)})} className="w-full bg-slate-50/80 backdrop-blur-sm border border-slate-200/80 rounded-[16px] py-4 pl-10 pr-5 text-2xl font-extrabold text-slate-900 outline-none focus:border-[#7657FF]/50 focus:ring-4 focus:ring-[#7657FF]/10 transition-all shadow-sm" /></div><p className="text-[11px] text-slate-500 font-medium mt-auto bg-slate-50/50 backdrop-blur-sm p-4 rounded-[16px] border border-slate-100/80 leading-relaxed shadow-sm">Al actualizar este valor, las raíces de rentabilidad se recalcularán automáticamente.</p></div></div>
-              <div className={`col-span-1 lg:col-span-3 ${UI.card} p-8 sm:p-10 animate-fadeInUp`} style={{animationDelay:'200ms'}}><div className="flex justify-between items-center mb-8 border-b border-slate-200/60 pb-6"><h4 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3 tracking-tight"><Briefcase size={28} className="text-[#7657FF]"/> Facturación y Banco</h4><Badge color="blue"><Save size={14}/> Autoguardado</Badge></div><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">{[ { key: 'nombreTitular', label: 'Nombre del Titular o Empresa' }, { key: 'ruc', label: 'RUC / Identificación' }, { key: 'banco', label: 'Entidad Bancaria' }, { key: 'tipoCuenta', label: 'Tipo de Cuenta' }, { key: 'numeroCuenta', label: 'Número de Cuenta' }, { key: 'telefono', label: 'Teléfono (Yappy / Contacto)' } ].map(f => (<Field key={f.key} label={f.label} value={appSettings.empresa[f.key]} onChange={e => updateSettings({...appSettings, empresa: {...appSettings.empresa, [f.key]: e.target.value}})} />))}</div><div className="mt-8 bg-blue-50/80 backdrop-blur-sm p-5 rounded-[16px] border border-blue-100 flex items-start gap-4 shadow-sm"><Info size={20} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-[11px] font-medium text-slate-700 leading-relaxed">Estos datos se insertarán automáticamente en todos los PDFs de contratos, facturas y en los mensajes de WhatsApp que envíes a tus clientes.</p></div></div>
-              <div className="col-span-1 lg:col-span-3 bg-rose-50/80 backdrop-blur-sm border border-dashed border-rose-200 rounded-[32px] p-8 sm:p-10 mt-4 animate-fadeInUp flex flex-col sm:flex-row items-center justify-between gap-6 transition-all hover:bg-rose-100" style={{animationDelay:'300ms'}}><div><h4 className="font-extrabold text-rose-600 text-2xl flex items-center gap-3 tracking-tight"><AlertTriangle size={28}/> Zona de Peligro</h4><p className="text-[15px] font-medium text-rose-500 mt-3 max-w-xl leading-relaxed">Esta acción purgará toda la base de datos local y en la nube. Se eliminarán todas las reservas, el historial de clientes y los registros financieros de forma permanente.</p></div><button type="button" onClick={handleWipeAll} className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold py-5 px-8 rounded-[16px] shadow-lg transition-all uppercase tracking-[0.2em] text-[13px] flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98]"><Trash2 size={20}/> Purgar Sistema</button></div>
-          </div>
+    const meta = Math.max(utils.safeNum(appSettings.metaMensual), 0);
+    const mesActual = eventosActivos.filter(e => {
+      const d = String(e.fecha || '');
+      const estado = utils.normalizeText(e.estado || '');
+      return d.startsWith(todayStr.slice(0,7)) && !/cancelado|rechazada|cot/.test(estado) && e.deletedLocally !== true;
+    });
+    const facturadoMes = mesActual.reduce((s,e)=>s+utils.safeNum(e.total),0);
+    const avanceMeta = meta > 0 ? Math.min((facturadoMes/meta)*100,100) : 0;
+    const empresa = appSettings.empresa || {};
+    const go = (view) => { utils.triggerHaptic('light'); setConfigView(view); };
+    const back = () => { utils.triggerHaptic('light'); setConfigView('home'); };
+    const sectionShell = (children) => (
+      <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-4xl mx-auto pb-32 relative z-10 text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
+        {children}
       </div>
     );
-  };
+    const subHeader = (title, subtitle, Icon, accent='text-[#7657FF]') => (
+      <div className="mb-6">
+        <button type="button" onClick={back} className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500 bg-white/90 border border-white px-3 py-2 rounded-[13px] shadow-sm active:scale-[.97]"><ChevronLeft size={16}/> Ajustes</button>
+        <div className="flex items-center gap-3 mt-5"><div className="w-12 h-12 rounded-[17px] bg-white border border-white shadow-[0_10px_28px_rgba(15,23,42,.07)] flex items-center justify-center"><Icon size={23} className={accent}/></div><div><h2 className="text-2xl sm:text-3xl font-black tracking-[-.035em] text-slate-950">{title}</h2><p className="text-sm font-medium text-slate-500 mt-1">{subtitle}</p></div></div>
+      </div>
+    );
+    const menuItem = (view, Icon, title, desc, iconClass, iconBg, extra=null, danger=false) => (
+      <button type="button" onClick={()=>go(view)} className={`w-full text-left rounded-[23px] p-4 flex items-center gap-3 border shadow-[0_10px_28px_rgba(15,23,42,.055)] active:scale-[.985] transition-all ${danger?'bg-rose-50/90 border-rose-200':'bg-white/95 border-white'}`}>
+        <div className={`w-12 h-12 shrink-0 rounded-[16px] flex items-center justify-center ${iconBg}`}><Icon size={22} className={iconClass}/></div>
+        <div className="min-w-0 flex-1"><p className={`font-black text-[16px] tracking-tight ${danger?'text-rose-600':'text-slate-950'}`}>{title}</p><p className={`text-[11px] font-medium mt-0.5 leading-snug ${danger?'text-rose-400':'text-slate-500'}`}>{desc}</p>{extra}</div>
+        <ChevronRight size={20} className={danger?'text-rose-500':'text-slate-400'}/>
+      </button>
+    );
 
+    if (configView === 'business') return sectionShell(<>
+      {subHeader('Mi negocio','Información general de tu empresa.',Briefcase,'text-[#FF3EA5]')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
+        <div className="flex items-center gap-4 pb-6 border-b border-slate-100"><div className="w-24 h-24 rounded-[25px] bg-gradient-to-br from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-[3px] shadow-[0_14px_32px_rgba(184,61,255,.22)]"><img src={LOGO_URL} alt="Diverty" className="w-full h-full object-contain bg-white rounded-[22px] p-3"/></div><div><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Identidad</p><h3 className="text-2xl font-black text-slate-950 mt-1">Diverty Eventos</h3><p className={`inline-flex items-center gap-1.5 mt-2 text-[10px] font-black uppercase tracking-wider ${isOnline?'text-emerald-500':'text-amber-500'}`}><Cloud size={14}/>{isOnline?'Firebase conectado':'Modo offline'}</p></div></div>
+        <div className="mt-6 rounded-[20px] bg-gradient-to-r from-[#F6F2FF] to-[#FFF1F8] border border-[#7657FF]/10 p-4"><p className="text-[10px] uppercase tracking-[.15em] font-black text-[#7657FF]">Administrador</p><p className="font-black text-slate-900 mt-1">Administrador Global</p><p className="text-xs text-slate-500 mt-1">La identidad visual actual se utiliza en el CRM y documentos.</p></div>
+      </div>
+    </>);
+
+    if (configView === 'billing') return sectionShell(<>
+      {subHeader('Facturación y Banco','Datos usados en contratos, facturas y WhatsApp.',Briefcase)}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
+        <div className="mb-6 rounded-[18px] bg-emerald-50 border border-emerald-100 p-4 flex gap-3"><Save size={20} className="text-emerald-500 shrink-0"/><div><p className="font-black text-emerald-700">Datos autoguardados</p><p className="text-xs font-medium text-emerald-600/80 mt-1">Los cambios se guardan automáticamente.</p></div></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">{[
+          ['nombreTitular','Nombre del titular o empresa'],['ruc','RUC / Identificación'],['banco','Entidad bancaria'],['tipoCuenta','Tipo de cuenta'],['numeroCuenta','Número de cuenta'],['telefono','Teléfono (Yappy / Contacto)']
+        ].map(([key,label])=><Field key={key} label={label} value={empresa[key]||''} onChange={e=>updateSettings({...appSettings,empresa:{...empresa,[key]:e.target.value}})}/>)}</div>
+        <div className="mt-6 bg-blue-50/80 p-4 rounded-[18px] border border-blue-100 flex items-start gap-3"><Info size={19} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-xs font-medium text-slate-600 leading-relaxed">Estos datos se insertan automáticamente en contratos, facturas y mensajes de WhatsApp.</p></div>
+      </div>
+    </>);
+
+    if (configView === 'goal') return sectionShell(<>
+      {subHeader('Meta mensual','Define tu objetivo de ventas mensual.',Award,'text-amber-500')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] overflow-hidden">
+        <div className="p-6 bg-gradient-to-r from-[#7657FF] via-[#A33CFF] to-[#FF3EA5] text-white"><p className="text-[10px] font-black uppercase tracking-[.18em] text-white/75">Meta actual</p><div className="flex items-end gap-2 mt-2"><span className="text-4xl font-black">${meta.toFixed(0)}</span><span className="text-white/70 font-bold mb-1">mensual</span></div></div>
+        <div className="p-5 sm:p-6"><div className="flex justify-between text-xs font-black"><span className="text-[#7657FF]">{avanceMeta.toFixed(0)}% alcanzado</span><span className="text-slate-500">${facturadoMes.toFixed(0)} / ${meta.toFixed(0)}</span></div><div className="h-3 bg-slate-100 rounded-full overflow-hidden mt-3"><div className="h-full rounded-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5]" style={{width:`${avanceMeta}%`}}></div></div>
+          <div className="mt-6"><label className="text-[10px] font-black text-slate-400 uppercase tracking-[.18em]">Editar objetivo ($)</label><input type="number" value={appSettings.metaMensual} onChange={e=>updateSettings({...appSettings,metaMensual:utils.safeNum(e.target.value)})} className="mt-2 w-full h-16 rounded-[19px] border border-slate-200 bg-slate-50 px-5 text-2xl font-black outline-none focus:ring-4 focus:ring-[#7657FF]/10 focus:border-[#7657FF]/40"/></div>
+        </div>
+      </div>
+    </>);
+
+    if (configView === 'notifications') return sectionShell(<>
+      {subHeader('Notificaciones','Alertas importantes y token Push.',BellRing,'text-[#FF3EA5]')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5">
+        <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-emerald-50 flex items-center justify-center"><BellRing size={22} className="text-emerald-500"/></div><div className="flex-1"><p className="font-black text-slate-950">Notificaciones Push</p><p className="text-xs text-slate-500 mt-1">Obtén o renueva el token de este dispositivo.</p></div></div>
+        <button type="button" onClick={activarNotificaciones} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.13em] shadow-[0_12px_28px_rgba(184,61,255,.25)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><BellRing size={18}/> Obtener Token Push</span></button>
+        <div className="mt-4 rounded-[18px] bg-blue-50 border border-blue-100 p-4 flex gap-3"><Info size={18} className="text-[#7657FF] shrink-0"/><p className="text-xs font-medium text-slate-600 leading-relaxed">Las alertas web de reservas continúan apareciendo en la campana superior del CRM.</p></div>
+      </div>
+    </>);
+
+    if (configView === 'documents') return sectionShell(<>
+      {subHeader('Documentos','Información utilizada en contratos y facturas.',FileSpreadsheet,'text-blue-500')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[20px] bg-gradient-to-br from-blue-50 to-[#F4F0FF] border border-blue-100 p-5"><FileSpreadsheet size={28} className="text-[#7657FF]"/><h3 className="font-black text-xl text-slate-950 mt-4">Datos centralizados</h3><p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">Los contratos y facturas toman automáticamente la información guardada en Facturación y Banco.</p><button type="button" onClick={()=>go('billing')} className="mt-5 px-4 py-3 rounded-[15px] bg-white text-[#7657FF] border border-[#7657FF]/15 font-black text-[10px] uppercase tracking-wider shadow-sm">Revisar datos</button></div></div>
+    </>);
+
+    if (configView === 'tools') return sectionShell(<>
+      {subHeader('Herramientas del sistema','Funciones administrativas de uso ocasional.',Settings,'text-[#7657FF]')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
+    </>);
+
+    if (configView === 'security') return sectionShell(<>
+      {subHeader('Seguridad y sesión','Control de acceso a este dispositivo.',Lock,'text-emerald-500')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-emerald-50 flex items-center justify-center"><Lock size={22} className="text-emerald-500"/></div><div><p className="font-black text-slate-950">Sesión del administrador</p><p className="text-xs text-slate-500 mt-1">Cierra la sesión actual de Diverty CRM.</p></div></div><button type="button" onClick={handleLogout} className="mt-5 w-full h-14 rounded-[18px] bg-slate-950 text-white font-black text-[11px] uppercase tracking-[.13em] active:scale-[.98]">Cerrar sesión</button></div>
+    </>);
+
+    if (configView === 'danger') return sectionShell(<>
+      {subHeader('Zona de peligro','Acciones avanzadas del sistema.',AlertTriangle,'text-rose-500')}
+      <div className="rounded-[30px] bg-rose-50/90 border border-rose-200 shadow-[0_18px_48px_rgba(244,63,94,.08)] p-5 sm:p-6"><div className="flex gap-4"><div className="w-12 h-12 rounded-[16px] bg-white flex items-center justify-center shrink-0"><Trash2 size={22} className="text-rose-500"/></div><div><h3 className="font-black text-xl text-rose-600">Purgar sistema</h3><p className="text-sm font-medium text-rose-500/85 mt-2 leading-relaxed">Eliminará permanentemente reservas, historial de clientes y registros financieros locales y en la nube.</p></div></div><button type="button" onClick={handleWipeAll} className="mt-6 w-full h-14 rounded-[18px] bg-rose-600 text-white font-black text-[11px] uppercase tracking-[.15em] shadow-[0_12px_28px_rgba(225,29,72,.20)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><Trash2 size={18}/> Purgar sistema</span></button></div>
+    </>);
+
+    return sectionShell(<>
+      <div className="pt-2 mb-6"><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.22em] text-[#7657FF]"><Settings size={15}/> Centro de control</div><h2 className="text-4xl sm:text-5xl font-black tracking-[-.045em] text-slate-950 mt-2">Ajustes</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Configura tu negocio y personaliza tu sistema.</p></div>
+      <div className="rounded-[30px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-[1px] shadow-[0_18px_44px_rgba(184,61,255,.24)] mb-6"><div className="rounded-[29px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-5 text-white flex items-center gap-4"><div className="w-20 h-20 rounded-[22px] bg-white p-2.5 shadow-lg shrink-0"><img src={LOGO_URL} alt="Diverty" className="w-full h-full object-contain"/></div><div className="min-w-0 flex-1"><p className="text-xl font-black">Diverty Eventos</p><p className="text-sm font-medium text-white/85 mt-1">Administrador Global</p><span className={`inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider ${isOnline?'bg-emerald-400/20 text-emerald-50':'bg-amber-400/20 text-amber-50'}`}><Cloud size={12}/>{isOnline?'En línea con Firebase':'Modo offline'}</span></div><ChevronRight size={22} className="text-white/75"/></div></div>
+      <div className="space-y-3">
+        {menuItem('business',Briefcase,'Mi negocio','Logo, identidad e información general.','text-[#FF3EA5]','bg-rose-50')}
+        {menuItem('billing',FileSpreadsheet,'Facturación y banco','Datos fiscales y cuenta bancaria para documentos.','text-[#7657FF]','bg-[#F2EEFF]',<span className="inline-flex mt-2 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-wider">Completo</span>)}
+        {menuItem('goal',Award,'Meta mensual','Objetivo de ventas y seguimiento.','text-amber-500','bg-amber-50',<div className="mt-2 flex items-center gap-2"><div className="h-1.5 flex-1 max-w-[140px] bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] rounded-full" style={{width:`${avanceMeta}%`}}></div></div><span className="text-[9px] font-black text-slate-400">{avanceMeta.toFixed(0)}%</span></div>)}
+        {menuItem('notifications',BellRing,'Notificaciones','Push, alertas web y permisos.','text-[#FF3EA5]','bg-rose-50')}
+        {menuItem('documents',FileSpreadsheet,'Documentos','Información para contratos y facturas.','text-blue-500','bg-blue-50')}
+        {menuItem('tools',Settings,'Herramientas del sistema','Mantenimiento y numeración.','text-[#7657FF]','bg-[#F2EEFF]')}
+        {menuItem('security',Lock,'Seguridad y sesión','Cerrar sesión y gestión de acceso.','text-emerald-500','bg-emerald-50')}
+        {menuItem('danger',AlertTriangle,'Zona de peligro','Acciones avanzadas del sistema.','text-rose-500','bg-rose-100',null,true)}
+      </div>
+    </>);
+  };
   if (isAuthLoading) return (<div className="font-outfit min-h-[100dvh] flex flex-col items-center justify-center bg-[#F4F6FB]"><div className="w-12 h-12 border-4 border-[#7657FF]/20 border-t-[#7657FF] rounded-full animate-spin mb-4 shadow-sm"></div><p className="text-slate-400 text-sm font-bold uppercase tracking-[0.2em] animate-pulse">Iniciando</p></div>);
   
   if (!isAuthenticated) return (
@@ -2307,7 +2398,6 @@ export default function App() {
             {activeTab === 'clientes' && renderClientes()}
             {activeTab === 'proveedores' && renderProveedores()}
             {activeTab === 'finanzas' && (financeLoading || isHistoryLoading ? <p className="p-6">Actualizando período…</p> : financeLoadError ? <p className="p-6 text-red-600">{financeLoadError}</p> : renderFinanzas())}
-            {activeTab === 'config' && <div className="m-4 p-4 rounded-xl bg-violet-50 border border-violet-200"><p className="text-sm mb-2">Preparación de disponibilidad pública y numeración: ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button className="px-4 py-2 rounded-lg bg-violet-600 text-white" onClick={async e => { const button=e.currentTarget; button.disabled=true; try { await prepareDivertyData(); showAlert('Preparación completada.',true); } catch(err) {console.error(err); showAlert('Preparación incompleta. Reintenta con conexión.',false);} finally {button.disabled=false;} }}>Preparar actualización</button></div>}
             {activeTab === 'config' && renderConfig()}
           </main>
       </div>
