@@ -2032,35 +2032,40 @@ export default function App() {
 
   const renderProveedores = () => {
       const term = deferredSearchTerm?.toLowerCase() || '';
-      const provFiltered = term ? proveedores.filter(p => p.nombre.toLowerCase().includes(term) || p.especialidad.toLowerCase().includes(term)) : proveedores;
-      
-      return (
-        <div className="animate-fadeIn p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative z-10">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4">
-               <div><h2 className={UI.title}><Truck size={36} className="text-[#7657FF] inline mr-2 drop-shadow-sm" /> Proveedores</h2><p className="text-slate-500 text-sm mt-2 font-medium">Gestiona subcontratos, contactos y acuerdos de servicio.</p></div>
-               <AppButton onClick={() => setProveedorModal({ isOpen: true, data: null })} variant="primary" icon={Plus} className="w-full sm:w-auto">Nuevo Proveedor</AppButton>
-           </div>
-           
-           <div className="flex flex-col sm:flex-row gap-4 mb-8">
-               <div className={`${UI.card} p-2 flex-1 flex transition-all duration-300 ease-out`}><div className="flex flex-1 relative group"><Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#7657FF] transition-colors" /><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar proveedor por nombre o servicio..." className="w-full bg-transparent py-3 pl-14 pr-10 font-semibold outline-none text-[15px] placeholder-slate-400 text-slate-900" />{searchTerm && (<button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 p-1.5 rounded-full hover:bg-slate-100 transition-all"><X size={16}/></button>)}</div></div>
-           </div>
+      const provFiltered = term ? proveedores.filter(p => String(p.nombre || '').toLowerCase().includes(term) || String(p.especialidad || '').toLowerCase().includes(term)) : proveedores;
+      const provConTelefono = proveedores.filter(p => String(p.telefono || '').replace(/\D/g, '').length >= 7).length;
+      const provAsignados = proveedores.filter(p => eventosActivos.some(ev => Array.isArray(ev.subcontratos) && ev.subcontratos.some(sc => sc.proveedorId === p.id) && !['completado','cancelado'].includes(utils.normalizeText(ev.estado)))).length;
+      const provCostoBase = proveedores.reduce((sum,p) => sum + utils.safeNum(p.costoBase), 0);
 
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {provFiltered.length === 0 ? (
-                   <div className="col-span-full"><EmptyState icon={Truck} title="Sin Proveedores" message="Registra a tu equipo de apoyo para subcontratarlos fácilmente en tus eventos." actionBtn={<AppButton onClick={()=>setProveedorModal({isOpen:true, data: null})} variant="primary" icon={Plus} className="mt-4 px-8 py-4 shadow-md">Registrar Ahora</AppButton>} /></div>
-               ) : (
-                   provFiltered.map((p, idx) => (
-                       <ProveedorCardItem 
-                            key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} 
-                            onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} 
-                            onEdit={(data) => setProveedorModal({isOpen: true, data})} 
-                            onWhatsApp={utils.openWhatsAppBusiness} 
-                            onContrato={(prov) => { setPrintData(prov); setPrintType('contrato_proveedor'); setIsPrinting(true); }} 
-                            eventosActivos={eventosActivos} 
-                        />
-                   ))
-               )}
-           </div>
+      return (
+        <div className="animate-fadeIn px-4 pt-7 md:p-8 lg:p-10 max-w-5xl mx-auto pb-32 relative z-10">
+          <div className="mb-7">
+            <div className="flex items-center gap-2 text-[#7657FF] mb-3"><Sparkles size={18}/><span className="text-[11px] font-black uppercase tracking-[.24em]">Red de operaciones</span></div>
+            <h2 className="text-[38px] sm:text-5xl font-black tracking-[-.045em] text-slate-950 leading-none flex items-center gap-3"><Truck size={42} className="text-[#7657FF]"/> Proveedores</h2>
+            <p className="text-slate-500 text-[16px] sm:text-lg mt-4 font-medium">Gestiona subcontratos, contactos y acuerdos de servicio.</p>
+          </div>
+
+          <button type="button" onClick={() => setProveedorModal({ isOpen: true, data: null })} className="w-full h-[74px] rounded-[22px] bg-gradient-to-r from-[#ff2da0] via-[#d52ee8] to-[#7657FF] text-white font-black text-[16px] tracking-wide flex items-center justify-center gap-3 shadow-[0_18px_40px_rgba(196,45,220,.22)] active:scale-[.99] transition-transform mb-6"><Plus size={26} strokeWidth={3}/> Nuevo Proveedor</button>
+
+          <div className="grid grid-cols-3 gap-3 mb-7">
+            <div className="rounded-[22px] bg-white/95 border border-[#7657FF]/15 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center mb-3"><Truck size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{proveedores.length}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Total</p></div>
+            <div className="rounded-[22px] bg-white/95 border border-emerald-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-emerald-50 text-emerald-500 flex items-center justify-center mb-3"><Smartphone size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{provConTelefono}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Contacto</p></div>
+            <div className="rounded-[22px] bg-white/95 border border-fuchsia-100 p-4 shadow-[0_12px_30px_rgba(15,23,42,.06)]"><div className="w-10 h-10 rounded-[14px] bg-fuchsia-50 text-fuchsia-500 flex items-center justify-center mb-3"><CalendarDays size={19}/></div><p className="text-2xl font-black text-slate-950 leading-none">{provAsignados}</p><p className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] mt-2">Asignados</p></div>
+          </div>
+
+          <div className="bg-white/95 rounded-[24px] border border-white shadow-[0_16px_38px_rgba(15,23,42,.07)] p-2 mb-6">
+            <div className="flex flex-1 relative group"><Search size={23} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#7657FF]"/><input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar proveedor o servicio..." className="w-full bg-transparent py-4 pl-14 pr-11 font-bold outline-none text-[15px] placeholder-slate-400 text-slate-900"/>{searchTerm && <button type="button" onClick={() => setSearchTerm('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 p-2"><X size={17}/></button>}</div>
+          </div>
+
+          {proveedores.length > 0 && <div className="flex items-center justify-between mb-4 px-1"><div><p className="text-[10px] font-black uppercase tracking-[.22em] text-[#7657FF]">Directorio</p><h3 className="text-xl font-black text-slate-950 mt-1">Equipo de apoyo</h3></div><div className="text-right"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Costo base</p><p className="text-[15px] font-black text-slate-800">${provCostoBase.toFixed(0)}</p></div></div>}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {provFiltered.length === 0 ? (
+              <div className="col-span-full rounded-[30px] bg-white/90 border border-dashed border-slate-200 p-8 text-center shadow-[0_16px_38px_rgba(15,23,42,.05)]"><div className="w-20 h-20 mx-auto rounded-[24px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center mb-5"><Truck size={38}/></div><h3 className="text-2xl font-black text-slate-950">{proveedores.length ? 'Sin resultados' : 'Sin Proveedores'}</h3><p className="text-slate-500 mt-2 font-medium">{proveedores.length ? 'No encontramos proveedores con esa búsqueda.' : 'Registra a tu equipo de apoyo para subcontratarlo fácilmente en tus eventos.'}</p>{!proveedores.length && <button type="button" onClick={()=>setProveedorModal({isOpen:true,data:null})} className="mt-6 px-7 py-4 rounded-2xl bg-gradient-to-r from-[#ff2da0] to-[#7657FF] text-white font-black"><Plus size={18} className="inline mr-2"/> Registrar Ahora</button>}</div>
+            ) : provFiltered.map((p, idx) => (
+              <ProveedorCardItem key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} onEdit={(data) => setProveedorModal({isOpen: true, data})} onWhatsApp={utils.openWhatsAppBusiness} onContrato={(prov) => { setPrintData(prov); setPrintType('contrato_proveedor'); setIsPrinting(true); }} eventosActivos={eventosActivos}/>
+            ))}
+          </div>
         </div>
       );
   };
