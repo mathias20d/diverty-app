@@ -276,7 +276,11 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
     const [confirmedName, setConfirmedName] = useState('');
-    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setConfirmedName(''); } }, [isOpen]);
+    const [santaAsignado, setSantaAsignado] = useState('Santa 1');
+    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setConfirmedName(''); setSantaAsignado('Santa 1'); } }, [isOpen]);
+    useEffect(() => {
+        if (selectedRequest) setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
+    }, [selectedRequest]);
     useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && (selectedRequest || confirmedName)) { setSelectedRequest(null); setConfirmedName(''); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest, confirmedName]);
     if (!isOpen) return null;
     const reqs = eventosActivos
@@ -288,7 +292,8 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         if (!selectedRequest || confirming) return;
         setConfirming(true);
         const currentName = selectedRequest.cliente || 'Cliente';
-        const ok = await onConfirmWebRequest(selectedRequest);
+        const esNavidad = selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''));
+        const ok = await onConfirmWebRequest(selectedRequest, esNavidad ? santaAsignado : '');
         setConfirming(false);
         if (ok) { setSelectedRequest(null); setConfirmedName(currentName); }
     };
@@ -316,6 +321,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                             <div className="p-4 space-y-3"><div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><CalendarDays size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Fecha</p><p className="text-xs font-black text-slate-800 mt-1">{selectedRequest.fecha?.split('-').reverse().join('/') || '—'}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><Clock size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Hora</p><p className="text-xs font-black text-slate-800 mt-1">{utils.formatTime12h(selectedRequest.hora)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><MapPin size={18} className="text-[#FF3EA5]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Ubicación</p><p className="text-[11px] font-black text-slate-800 mt-1 leading-tight">{selectedRequest.ubicacion || '—'}</p></div></div>
                             <div className="rounded-[20px] bg-slate-50 p-4"><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400">Dirección</p><p className="font-bold text-slate-700 mt-1 whitespace-pre-wrap">{selectedRequest.direccion || 'No indicada'}</p></div>
                             <div className="rounded-[22px] bg-gradient-to-br from-[#F7F3FF] to-white p-4 border border-[#7657FF]/10"><div className="flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-[.12em] font-black text-[#7657FF] flex items-center gap-1.5"><Sparkles size={14}/> Servicio solicitado</p><p className="font-black text-[#10182D] mt-2 whitespace-pre-wrap">{selectedRequest.servicio || '—'}</p></div><span className="shrink-0 h-fit rounded-full bg-[#7657FF]/10 px-3 py-1.5 font-black text-[#7657FF]">{money(selectedRequest.total)}</span></div>{selectedRequest.descripcionEvento && <p className="font-semibold text-slate-600 whitespace-pre-wrap mt-3 text-sm leading-relaxed">{selectedRequest.descripcionEvento}</p>}{selectedRequest.comentarios && <div className="mt-3 pt-3 border-t border-[#7657FF]/10"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400">Comentarios</p><p className="font-semibold text-slate-600 whitespace-pre-wrap mt-1">{selectedRequest.comentarios}</p></div>}</div>
+                            {(selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))) && <div className="rounded-[22px] border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4"><div className="flex items-center gap-3 mb-3"><div className="w-11 h-11 rounded-[15px] bg-red-100 flex items-center justify-center text-2xl">🎅</div><div><p className="text-[9px] uppercase tracking-[.14em] font-black text-red-500">Operación Navidad</p><p className="font-black text-[#10182D]">Santa asignado</p></div></div><select value={santaAsignado} onChange={e=>setSantaAsignado(e.target.value)} className="w-full rounded-[16px] border border-red-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none"><option value="Santa 1">Santa 1</option><option value="Santa 2">Santa 2</option><option value="Santa 3">Santa 3</option><option value="Santa 4">Santa 4</option></select><p className="mt-2 text-[10px] font-semibold text-slate-400">Selecciona quién atenderá esta entrega. La asignación quedará guardada en la reserva.</p></div>}
                             <div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Transporte</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.transporte)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Descuento</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.descuento)}</p></div><div className="rounded-[18px] bg-emerald-50 p-3"><p className="text-[9px] uppercase font-black text-emerald-500">Total</p><p className="font-black text-emerald-600 mt-1">{money(selectedRequest.total)}</p></div></div></div>
                         </div>
                         <div className="grid grid-cols-[.8fr_1.2fr] gap-3 mt-4"><button type="button" onClick={()=>setSelectedRequest(null)} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-500 font-black bg-white active:scale-[.98]">Volver</button><button disabled={confirming} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : 'Confirmar reserva'}</button></div>
@@ -1439,7 +1445,7 @@ export default function App() {
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
   }, [showAlert]);
 
-  const handleConfirmWebRequest = useCallback(async (event) => {
+  const handleConfirmWebRequest = useCallback(async (event, santaAsignado = '') => {
       if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return false;
       try {
           utils.triggerHaptic('light');
@@ -1451,7 +1457,14 @@ export default function App() {
               const remote = snap.data();
               if (utils.normalizeText(remote.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
               if (utils.normalizeText(remote.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
-              confirmedData = { ...remote, estado: 'Confirmada', _rev: (Number(remote._rev) || 0) + 1, updatedAt: new Date().toISOString() };
+              const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
+              confirmedData = {
+                  ...remote,
+                  estado: 'Confirmada',
+                  ...(esNavidad ? { esNavidad: true, recursoNavidad: 'Santa', santaAsignado: santaAsignado || remote.santaAsignado || 'Santa 1' } : {}),
+                  _rev: (Number(remote._rev) || 0) + 1,
+                  updatedAt: new Date().toISOString()
+              };
               tx.set(ref, confirmedData);
           });
           await publishSync('evento', event.id, 'update');
