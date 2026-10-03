@@ -12,40 +12,60 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 const CRM_URL = 'https://diverty-app.vercel.app/';
+const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
 
-// Las notificaciones con payload notification siguen siendo mostradas por FCM.
-// Este handler garantiza que al tocarlas se abra/enfoque Diverty con su deep-link.
+// IMPORTANTE:
+// El Worker de Cloudflare debe enviar un mensaje DATA-ONLY para que este Service Worker
+// sea quien construya la notificaciÃ³n y controle de forma fiable el clic en Android.
+messaging.onBackgroundMessage((payload) => {
+  const data = payload?.data || {};
+  const reservationId = String(data.reservationId || '').trim();
+  const title = data.title || 'ðŸŽ‰ Nueva reserva Diverty';
+  const body = data.body || 'Tienes una nueva reserva.';
+  const targetUrl = data.url || (reservationId
+    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
+    : CRM_URL);
+
+  return self.registration.showNotification(title, {
+    body,
+    icon: ICON_URL,
+    badge: ICON_URL,
+    tag: reservationId ? `diverty-reserva-${reservationId}` : 'diverty-notificacion',
+    renotify: false,
+    data: {
+      url: targetUrl,
+      reservationId
+    }
+  });
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const notificationData = event.notification?.data || {};
-  const fcmMessage = notificationData.FCM_MSG || {};
-  const messageData = fcmMessage.data || {};
-  const fcmOptions = fcmMessage.fcmOptions || fcmMessage.webpush?.fcmOptions || {};
-
-  const targetUrl =
-    notificationData.url ||
-    messageData.url ||
-    fcmOptions.link ||
-    CRM_URL;
+  const data = event.notification?.data || {};
+  const reservationId = String(data.reservationId || '').trim();
+  const targetUrl = data.url || (reservationId
+    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
+    : CRM_URL);
 
   event.waitUntil((async () => {
-    const absoluteTarget = new URL(targetUrl, self.location.origin).href;
+    const absoluteTarget = new URL(targetUrl, CRM_URL).href;
     const target = new URL(absoluteTarget);
     const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
 
-    // Si Diverty ya está abierto, lo enfocamos y navegamos al deep-link.
     for (const client of clientList) {
       try {
         const current = new URL(client.url);
         if (current.origin === target.origin) {
-          if ('navigate' in client) await client.navigate(absoluteTarget);
-          return client.focus();
+          if ('navigate' in client) {
+            await client.navigate(absoluteTarget);
+          }
+          await client.focus();
+          return;
         }
       } catch (_) {}
     }
 
-    // Si estaba cerrado, abre Diverty directamente en la reserva.
-    return clients.openWindow(absoluteTarget);
+    await clients.openWindow(absoluteTarget);
   })());
 });
