@@ -713,6 +713,7 @@ export default function App() {
   const [isAgendaSummaryOpen, setIsAgendaSummaryOpen] = useState(false);
   const [isChristmasOpsOpen, setIsChristmasOpsOpen] = useState(false);
   const [christmasSantaCapacity, setChristmasSantaCapacity] = useState(1);
+  const christmasAutoAssignBusyRef = useRef(false);
 
   // Operación Navidad es una pantalla completa: bloquea el documento inferior para que
   // Agenda nunca aparezca detrás durante scroll/rebote en Android o iOS Safari.
@@ -773,7 +774,7 @@ export default function App() {
   }, [publishSync]);
 
   useEffect(() => {
-      if (!isChristmasOpsOpen || !firebaseUser) return;
+      if (!firebaseUser) return;
       let alive = true;
       (async () => {
           try {
@@ -786,7 +787,7 @@ export default function App() {
           }
       })();
       return () => { alive = false; };
-  }, [isChristmasOpsOpen, firebaseUser]);
+  }, [firebaseUser]);
 
   useEffect(() => {
       // Si la app corre dentro de un contenedor Android/Capacitor, libera el splash nativo
@@ -1082,6 +1083,45 @@ export default function App() {
   const eventosActivos = useMemo(() => {
     return eventos.filter(ev => !ev.deletedLocally).sort((a,b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora).localeCompare(String(b.hora)));
   }, [eventos]);
+
+
+  // NAVIDAD: asignación automática con la capacidad configurada. No crea listeners nuevos:
+  // reutiliza los eventos que ya llegan por el listener operativo del CRM.
+  useEffect(() => {
+    if (!firebaseUser || christmasAutoAssignBusyRef.current) return;
+    const isChristmas = e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''));
+    const pending = eventosActivos.filter(e => { const a=String(e.santaAsignado || '').trim(); return isChristmas(e) && (!a || a === 'Sin asignar'); });
+    if (!pending.length) return;
+
+    const capacity = Math.max(1, Number(christmasSantaCapacity) || 1);
+    const santaNames = Array.from({length: capacity}, (_, i) => `Santa ${i + 1}`);
+    const toMinutes = value => { const m = String(value || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const working = eventosActivos.filter(e => { const a=String(e.santaAsignado || '').trim(); return isChristmas(e) && a && a !== 'Sin asignar'; });
+
+    christmasAutoAssignBusyRef.current = true;
+    (async () => {
+      try {
+        for (const ev of pending.sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||'')) || String(a.hora||'').localeCompare(String(b.hora||'')))) {
+          const t = toMinutes(ev.hora);
+          const scored = santaNames.map(name => {
+            const sameSanta = working.filter(x => String(x.santaAsignado || '').trim() === name && String(x.fecha || '') === String(ev.fecha || ''));
+            const conflict = t !== null && sameSanta.some(x => { const ot = toMinutes(x.hora); return ot !== null && Math.abs(ot - t) < 45; });
+            return { name, conflict, load: sameSanta.length };
+          }).filter(x => !x.conflict).sort((a,b)=>a.load-b.load || a.name.localeCompare(b.name, undefined, {numeric:true}));
+
+          const chosen = scored[0]?.name;
+          if (!chosen) continue; // Sin asignar solo cuando ningún Santa tiene una ventana viable.
+          await patchEventoAtomic(ev.id, { santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' });
+          working.push({ ...ev, santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' });
+          setEventos(prev => prev.map(x => x.id === ev.id ? { ...x, santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' } : x));
+        }
+      } catch (err) {
+        console.warn('Asignación automática de Santa pendiente:', err);
+      } finally {
+        christmasAutoAssignBusyRef.current = false;
+      }
+    })();
+  }, [eventosActivos, christmasSantaCapacity, firebaseUser, patchEventoAtomic]);
 
   // Índices derivados: se calculan una sola vez cuando cambian los eventos.
   // Evitan recorrer toda la base repetidamente en Calendario y Clientes.
@@ -1961,6 +2001,8 @@ export default function App() {
              </div>
              <button type="button" onClick={() => openModal()} className="relative z-10 mt-5 w-full rounded-[18px] py-3.5 px-5 bg-[linear-gradient(90deg,#FF2F9A_0%,#E42AD8_45%,#8A3DFF_100%)] text-white font-black text-[14px] sm:text-base tracking-wide shadow-[0_14px_34px_rgba(218,42,216,.34)] border border-white/20 flex items-center justify-center gap-3 active:scale-[0.99] transition-transform"><Plus size={22} strokeWidth={3}/> Nueva Reserva <ChevronRight size={20} className="absolute right-5"/></button>
           </div>
+
+          <button type="button" onClick={() => { utils.triggerHaptic('light'); handleTabChange('eventos'); setIsChristmasOpsOpen(true); window.scrollTo(0,0); }} className="w-full rounded-[22px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] p-4 text-white shadow-[0_14px_32px_rgba(217,31,45,.22)] border border-white/20 flex items-center gap-3 active:scale-[.985] transition-transform"><div className="w-11 h-11 rounded-[15px] bg-white/15 border border-white/20 flex items-center justify-center text-2xl shrink-0">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[.16em] text-white/70">Acceso permanente</p><p className="text-[17px] font-black leading-tight">Operación Navidad</p><p className="text-[10px] font-bold text-white/80 mt-0.5">24–25 dic · Santas · rutas · reservas</p></div><ChevronRight size={21} className="shrink-0"/></button>
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <button type="button" className="text-left group" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
