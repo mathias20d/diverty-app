@@ -22,43 +22,9 @@ const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
 const isEventRef = ref => ref.path.startsWith(`artifacts/${appId}/public/data/eventos/`);
 const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', id);
 const publicSlot = value => {
-  const state = String(value?.estado || '').toLowerCase();
-  if (!value?.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
+  const state = String(value.estado || '').toLowerCase();
+  if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
   return { fecha: String(value.fecha), hora: String(value.hora || '') };
-};
-const slotDocRef = value => {
-  const slot = publicSlot(value);
-  if (!slot) return null;
-  const safeSlot = `${slot.fecha}_${String(slot.hora || '').replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
-  return doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', `slot_${safeSlot}`);
-};
-const samePublicSlot = (a,b) => {
-  const x=publicSlot(a), y=publicSlot(b);
-  return Boolean(x && y && x.fecha===y.fecha && x.hora===y.hora);
-};
-const writeSlotMembership = (writer, ref, snap, eventId, direction, eventValue) => {
-  if (!ref) return;
-  const current = snap?.exists() ? (snap.data() || {}) : {};
-  let ids = Array.isArray(current.reservationIds) ? current.reservationIds.map(String) : [];
-  let count = Math.max(Number(current.count || 0), ids.length);
-  if (direction < 0) {
-    const hadId = ids.includes(String(eventId));
-    ids = ids.filter(x => x !== String(eventId));
-    // Los slots antiguos podían tener count sin todos los IDs. Al borrar una reserva
-    // del horario igualmente se libera exactamente un cupo.
-    count = Math.max(0, count - 1);
-    if (!hadId) count = Math.max(count, ids.length);
-  } else if (!ids.includes(String(eventId))) {
-    ids.push(String(eventId));
-    count = Math.max(count + 1, ids.length);
-  }
-  if (count <= 0 && ids.length === 0) { writer.delete(ref); return; }
-  const slot = publicSlot(eventValue) || {fecha:String(current.fecha||''),hora:String(current.hora||'')};
-  writer.set(ref, {
-    fecha: slot.fecha, hora: slot.hora, count,
-    capacity: Math.max(1, Number(current.capacity || 3)),
-    reservationIds: ids, updatedAt: new Date().toISOString()
-  });
 };
 const clientStatusRef = id => doc(db,'artifacts',appId,'public','data','reservas_cliente',id);
 const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono','fecha','hora','estado','servicio','total','abono'].map(key => [key,String(value[key] ?? '')]));
@@ -87,129 +53,51 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
 });
 const setDoc = async (ref, value, options) => {
   if (!isEventRef(ref)) return options ? rawSetDoc(ref, value, options) : rawSetDoc(ref, value);
-  return rawRunTransaction(db, async tx => {
-    const currentSnap = await tx.get(ref);
-    const current = currentSnap.exists() ? currentSnap.data() : {};
-    const next = options?.merge ? {...current, ...value} : value;
-    const oldSlotRef = slotDocRef(current);
-    const newSlotRef = slotDocRef(next);
-    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
-    const newSlotSnap = newSlotRef && (!oldSlotRef || newSlotRef.path !== oldSlotRef.path) ? await tx.get(newSlotRef) : oldSlotSnap;
-    if (options) tx.set(ref, value, options); else tx.set(ref, value);
-    projectEvent(tx, ref, next);
-    if (!samePublicSlot(current, next)) {
-      if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, ref.id, -1, current);
-      if (newSlotRef) writeSlotMembership(tx, newSlotRef, newSlotSnap, ref.id, 1, next);
-    }
+  return runTransaction(db, async tx => {
+    if (options?.merge) await tx.get(ref);
+    tx.set(ref, value, options);
   });
 };
 const deleteDoc = async ref => {
   if (!isEventRef(ref)) return rawDeleteDoc(ref);
-  return rawRunTransaction(db, async tx => {
-    const currentSnap = await tx.get(ref);
-    const current = currentSnap.exists() ? currentSnap.data() : {};
-    const oldSlotRef = slotDocRef(current);
-    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
-    tx.delete(ref);
-    tx.delete(availabilityRef(ref.id));
-    tx.delete(clientStatusRef(ref.id));
-    if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, ref.id, -1, current);
-  });
+  const batch = writeBatch(db); batch.delete(ref); batch.delete(availabilityRef(ref.id)); batch.delete(clientStatusRef(ref.id)); await batch.commit();
 };
 let preparationPromise = null;
 let preparationComplete = false;
-async function repairPublicAvailabilityOnce() {
-  if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
-  const marker = getConfigRef('reparacion_disponibilidad_v2');
-  if ((await getDoc(marker)).exists()) return {alreadyDone:true};
-
-  const eventsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-  const availabilityCollection = collection(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web');
-  const oldAvailabilitySnap = await getDocs(availabilityCollection);
-
-  let capacidad = 3;
-  try {
-    const capacitySnap = await getDoc(doc(db,'artifacts',appId,'public','data','config_web','global'));
-    const configured = Number(capacitySnap.exists() ? capacitySnap.data()?.capacidadSimultanea : 3);
-    if (Number.isInteger(configured) && configured >= 1 && configured <= 100) capacidad = configured;
-  } catch (_) {}
-
-  const validEvents = [];
-  const slotGroups = new Map();
-  for (const row of eventsSnap.docs) {
-    const ev = row.data() || {};
-    if (ev._system) continue;
-    const slot = publicSlot(ev);
-    if (!slot) continue;
-    validEvents.push({id:row.id, slot});
-    const key = `${slot.fecha}_${String(slot.hora || '').replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
-    const group = slotGroups.get(key) || {fecha:slot.fecha, hora:slot.hora, ids:[]};
-    group.ids.push(row.id);
-    slotGroups.set(key, group);
-  }
-
-  const operations = [];
-  oldAvailabilitySnap.docs.forEach(d => operations.push({type:'delete', ref:d.ref}));
-  validEvents.forEach(({id,slot}) => operations.push({type:'set', ref:availabilityRef(id), value:slot}));
-  for (const [key,group] of slotGroups) {
-    operations.push({type:'set', ref:doc(db,'artifacts',appId,'public','data','disponibilidad_web',`slot_${key}`), value:{
-      fecha:group.fecha,
-      hora:group.hora,
-      count:group.ids.length,
-      capacity:capacidad,
-      reservationIds:group.ids,
-      updatedAt:new Date().toISOString()
-    }});
-  }
-
-  for (let i=0; i<operations.length; i+=400) {
-    const batch = writeBatch(db);
-    for (const op of operations.slice(i,i+400)) {
-      if (op.type === 'delete') batch.delete(op.ref);
-      else batch.set(op.ref, op.value);
-    }
-    await batch.commit();
-  }
-  await rawSetDoc(marker, {completada:true, fecha:new Date().toISOString(), eventosValidos:validEvents.length, slots:slotGroups.size});
-  return {alreadyDone:false, eventosValidos:validEvents.length, slots:slotGroups.size};
-}
-
 async function prepareDivertyData() {
-  if (preparationComplete) return repairPublicAvailabilityOnce();
+  if (preparationComplete) return;
   if (preparationPromise) return preparationPromise;
   preparationPromise = (async () => {
     if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
     const marker = getConfigRef('migracion_segura_v1');
-    if (!(await getDoc(marker)).exists()) {
-      // One intentional migration read, never executed by public visitors.
-      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
-      const max = {factura: 0, contrato: 0, cotizacion: 0};
-      const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
-      const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
-      let batch = writeBatch(db), size = 0;
-      for (const row of snap.docs) {
-        const ev = row.data();
-        for (const type of Object.keys(fields)) {
-          const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
-          if (match) max[type] = Math.max(max[type], Number(match[1]));
-        }
-        if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
-        if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
+    if ((await getDoc(marker)).exists()) {preparationComplete=true; return;}
+    // One intentional migration read, never executed by public visitors.
+    const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+    const max = {factura: 0, contrato: 0, cotizacion: 0};
+    const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
+    const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
+    let batch = writeBatch(db), size = 0;
+    for (const row of snap.docs) {
+      const ev = row.data();
+      for (const type of Object.keys(fields)) {
+        const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
+        if (match) max[type] = Math.max(max[type], Number(match[1]));
       }
-      if (size) await batch.commit();
-      await rawRunTransaction(db, async tx => {
-        const types = Object.keys(max);
-        const refs = types.map(type => getConfigRef('contador_' + type));
-        const values = [];
-        for (const ref of refs) values.push(await tx.get(ref));
-        refs.forEach((ref, i) => tx.set(ref, {ultimo: Math.max(max[types[i]], Number(values[i].data()?.ultimo) || 0)}));
-        tx.set(marker, {completada: true, fecha: new Date().toISOString()});
-        tx.set(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'disponibilidad'), {lista: true});
-      });
+      if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
+      if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
     }
-    return repairPublicAvailabilityOnce();
+    if (size) await batch.commit();
+    await rawRunTransaction(db, async tx => {
+      const types = Object.keys(max);
+      const refs = types.map(type => getConfigRef('contador_' + type));
+      const values = [];
+      for (const ref of refs) values.push(await tx.get(ref));
+      refs.forEach((ref, i) => tx.set(ref, {ultimo: Math.max(max[types[i]], Number(values[i].data()?.ultimo) || 0)}));
+      tx.set(marker, {completada: true, fecha: new Date().toISOString()});
+      tx.set(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'disponibilidad'), {lista: true});
+    });
   })();
-  try { const result = await preparationPromise; preparationComplete=true; return result; } finally { preparationPromise = null; }
+  try { await preparationPromise; preparationComplete=true; } finally { preparationPromise = null; }
 }
 
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
@@ -1619,40 +1507,13 @@ export default function App() {
                     const openedRev = Number(modalConfig.initialData?._rev) || 0;
                     if (remoteRev !== openedRev) throw new Error('EDIT_CONFLICT');
                     savedData = { ...dataToSave, _rev: remoteRev + 1, updatedAt: new Date().toISOString() };
-                    const oldSlotRef = slotDocRef(remote);
-                    const newSlotRef = slotDocRef(savedData);
-                    const oldSlotSnap = oldSlotRef ? await tx.get(oldSlotRef) : null;
-                    const newSlotSnap = newSlotRef && (!oldSlotRef || newSlotRef.path !== oldSlotRef.path) ? await tx.get(newSlotRef) : oldSlotSnap;
                     tx.set(ref, savedData);
-                    if (!samePublicSlot(remote, savedData)) {
-                        if (oldSlotRef) writeSlotMembership(tx, oldSlotRef, oldSlotSnap, id, -1, remote);
-                        if (newSlotRef) writeSlotMembership(tx, newSlotRef, newSlotSnap, id, 1, savedData);
-                    }
                 });
             } else {
                 savedData = { ...dataToSave, _rev: 1, updatedAt: new Date().toISOString() };
                 await setDoc(getDocRef(id), savedData);
             }
             await publishSync('evento', id, 'update');
-
-            // NOTIFICACIONES PUSH: avisar solo al crear una reserva nueva.
-            // No bloquea ni revierte el guardado si el servicio de notificaciones falla.
-            const isNewReservation = !isExisting && !isCotizacionMode;
-            if (isNewReservation) {
-                try {
-                    const notifyResponse = await fetch('https://diverty-notificaciones.divertypty.workers.dev', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ reservationId: id })
-                    });
-                    if (!notifyResponse.ok) {
-                        console.warn('Reserva guardada, pero el Worker de notificaciones respondió:', notifyResponse.status);
-                    }
-                } catch (notifyErr) {
-                    console.warn('Reserva guardada, pero no se pudo enviar la notificación push:', notifyErr);
-                }
-            }
-
             setEventos(prev => { const arr = [...prev]; const i = arr.findIndex(x=>x.id===id); if(i>-1) arr[i]=savedData; else arr.push(savedData); return arr; });
             closeModal();
             utils.setSafeLocal('diverty_form_draft', '');
@@ -1751,7 +1612,19 @@ export default function App() {
       catch (err) { console.error("Error eliminando proveedor:", err); showAlert("No se pudo eliminar el proveedor.", false); }
   }); }, [showConfirm, showAlert, publishSync]);
   const sendWhatsAppCall = useCallback((e, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(e, type, empresaSettings || appSettings.empresa), phoneClean = String(e.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
-  const openGoogleMaps = useCallback((dir, ubi) => { utils.triggerHaptic('light'); window.open(`https://maps.google.com/maps?q=${encodeURIComponent(`${dir || ''} ${ubi || ''} Panamá`)}`, '_blank'); }, []);
+  const openGoogleMaps = useCallback((dir, ubi) => {
+    utils.triggerHaptic('light');
+    const rawDir = String(dir || '').trim();
+    // Reservas web/Navidad: si la dirección contiene un enlace GPS de Google Maps,
+    // abrir exclusivamente ese enlace para conservar el pin exacto.
+    const mapUrlMatch = rawDir.match(/https?:\/\/(?:www\.)?(?:google\.[^\s/]+\/maps|maps\.google\.[^\s/]+)[^\s]*/i);
+    if (mapUrlMatch) {
+        window.open(mapUrlMatch[0], '_blank');
+        return;
+    }
+    // Reservas normales/antiguas: mantener la búsqueda tradicional por dirección y zona.
+    window.open(`https://maps.google.com/maps?q=${encodeURIComponent(`${rawDir} ${ubi || ''} Panamá`)}`, '_blank');
+}, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
 
   const downloadPDF = useCallback(async () => {
@@ -2525,7 +2398,7 @@ export default function App() {
 
     if (configView === 'tools') return sectionShell(<>
       {subHeader('Herramientas del sistema','Funciones administrativas de uso ocasional.',Settings,'text-[#7657FF]')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Disponibilidad web reparada correctamente.',true);}catch(err){console.error(err);showAlert('No se pudo reparar la disponibilidad. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Reparar disponibilidad web</button></div></div>
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
     </>);
 
     if (configView === 'security') return sectionShell(<>
