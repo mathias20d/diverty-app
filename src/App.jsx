@@ -712,6 +712,7 @@ export default function App() {
   const [financeFocus, setFinanceFocus] = useState(null);
   const [isAgendaSummaryOpen, setIsAgendaSummaryOpen] = useState(false);
   const [isChristmasOpsOpen, setIsChristmasOpsOpen] = useState(false);
+  const [christmasSantaCapacity, setChristmasSantaCapacity] = useState(1);
 
   // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
   // la fuente oficial; este ID solo evita que un dispositivo procese su propia señal dos veces.
@@ -750,6 +751,22 @@ export default function App() {
       await publishSync('evento', id, 'update');
       return saved;
   }, [publishSync]);
+
+  useEffect(() => {
+      if (!isChristmasOpsOpen || !firebaseUser) return;
+      let alive = true;
+      (async () => {
+          try {
+              const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'global'));
+              const n = Number(snap.exists() ? snap.data()?.capacidadSanta : 1);
+              if (alive) setChristmasSantaCapacity(Number.isInteger(n) && n >= 1 && n <= 20 ? n : 1);
+          } catch (err) {
+              console.warn('No se pudo leer capacidadSanta:', err);
+              if (alive) setChristmasSantaCapacity(1);
+          }
+      })();
+      return () => { alive = false; };
+  }, [isChristmasOpsOpen, firebaseUser]);
 
   useEffect(() => {
       // Si la app corre dentro de un contenedor Android/Capacitor, libera el splash nativo
@@ -2080,7 +2097,26 @@ export default function App() {
         {isChristmasOpsOpen && (()=>{
           const christmasEvents = eventosActivos.filter(e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''))).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
           const closeChristmas = ()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(false)};
-          const santaNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar'))).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+          const enabledSantas = Array.from({length: Math.max(1, christmasSantaCapacity)}, (_,i)=>`Santa ${i+1}`);
+          const assignedNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')));
+          const santaNames = Array.from(new Set([...enabledSantas, ...assignedNames.filter(n=>n==='Sin asignar'||enabledSantas.includes(n))])).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+          const toMinutes = value => { const m=String(value||'').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60+Number(m[2]) : null; };
+          const hasScheduleConflict = (ev, list) => { const t=toMinutes(ev.hora); if(t===null) return false; return list.some(other=>other.id!==ev.id && other.fecha===ev.fecha && toMinutes(other.hora)!==null && Math.abs(toMinutes(other.hora)-t)<45); };
+          const suggestSanta = ev => {
+            const t=toMinutes(ev.hora);
+            if(t===null) return enabledSantas[0];
+            const scored=enabledSantas.map(name=>{ const list=christmasEvents.filter(x=>String(x.santaAsignado||'Sin asignar')===name && x.id!==ev.id && x.fecha===ev.fecha); const conflicts=list.filter(x=>toMinutes(x.hora)!==null && Math.abs(toMinutes(x.hora)-t)<45).length; return {name, conflicts, load:list.length}; });
+            scored.sort((a,b)=>a.conflicts-b.conflicts||a.load-b.load||a.name.localeCompare(b.name,undefined,{numeric:true}));
+            return scored[0]?.name || 'Santa 1';
+          };
+          const reassignSanta = async (ev, santa) => {
+            if (!ev?.id || !santa) return;
+            try {
+              utils.triggerHaptic('light');
+              await patchEventoAtomic(ev.id, { santaAsignado: santa, esNavidad: true, recursoNavidad: 'Santa' });
+              showAlert(`Reserva reasignada a ${santa}.`, true);
+            } catch (err) { console.error(err); showAlert('No se pudo reasignar el Santa. Intenta nuevamente.', false); }
+          };
           const formatChristmasTime = value => { const raw=String(value||'').trim(); const m=raw.match(/^(\d{1,2}):(\d{2})/); if(!m) return raw||'Por definir'; const h=Number(m[1]); return `${h%12||12}:${m[2]} ${h>=12?'PM':'AM'}`; };
           const mapTarget = ev => {
             const raw=String(ev.direccion||'').trim();
@@ -2104,10 +2140,12 @@ export default function App() {
               <div className="max-w-4xl mx-auto px-4 pb-5">
                 <button type="button" onClick={closeChristmas} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/20 border border-white/30 px-4 py-3 text-[11px] font-black uppercase tracking-[.12em] shadow-sm active:scale-[.97]"><ChevronLeft size={18}/> Agenda</button>
                 <div className="mt-4 flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-white/70">24 y 25 de diciembre</p><h2 className="text-3xl sm:text-4xl font-black tracking-[-.035em] mt-1">Operación Navidad</h2><p className="text-sm font-bold text-white/80 mt-1">Santas · rutas · clientes · GPS</p></div><div className="w-14 h-14 rounded-[19px] bg-white/15 border border-white/20 flex items-center justify-center text-3xl shrink-0">🎅</div></div>
-                <div className="grid grid-cols-3 gap-2 mt-5"><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-2xl font-black">{christmasEvents.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Entregas</p></div><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-2xl font-black">{Math.max(santaNames.filter(n=>n!=='Sin asignar').length,1)}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Santas</p></div><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-lg font-black">24–25</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Diciembre</p></div></div>
+                <div className="grid grid-cols-3 gap-2 mt-5"><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-2xl font-black">{christmasEvents.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Entregas</p></div><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-2xl font-black">{christmasSantaCapacity}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Santas</p></div><div className="rounded-[18px] bg-white/13 border border-white/10 p-3"><p className="text-lg font-black">24–25</p><p className="text-[8px] uppercase font-black tracking-wider text-white/70">Diciembre</p></div></div>
               </div>
             </div>
-            <div className="max-w-4xl mx-auto p-4 sm:p-6">{christmasEvents.length===0?<div className="rounded-[28px] bg-white border border-slate-100 shadow-[0_14px_38px_rgba(15,23,42,.07)] px-6 py-12 text-center"><div className="text-5xl mb-4">🎄</div><h3 className="text-xl font-black text-slate-950">Aún no hay entregas navideñas</h3><p className="text-sm font-semibold text-slate-500 mt-2">Las reservas confirmadas del 24 y 25 aparecerán aquí.</p></div>:<div className="space-y-5">{santaNames.map(santa=>{const stops=christmasEvents.filter(e=>(String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')===santa);return <section key={santa} className="rounded-[28px] bg-white border border-slate-100 shadow-[0_12px_34px_rgba(15,23,42,.07)] overflow-hidden"><div className="p-4 bg-gradient-to-r from-red-50 to-amber-50 border-b border-red-100 flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-white shadow-sm flex items-center justify-center text-2xl">🎅</div><div><p className="font-black text-slate-950">{santa}</p><p className="text-[10px] font-bold text-slate-500">{stops.length} {stops.length===1?'entrega':'entregas'} · ordenadas por hora</p></div></div><button type="button" onClick={()=>openSantaRoute(stops)} className="rounded-[14px] bg-slate-950 text-white px-3 py-2.5 text-[9px] font-black uppercase tracking-wider active:scale-[.97] flex items-center gap-1.5"><MapIcon size={14}/> Abrir ruta</button></div><div className="p-3 space-y-3">{stops.map((ev,index)=><div key={ev.id} className="rounded-[22px] border border-slate-100 bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,.045)]"><div className="flex items-start gap-3"><div className="w-14 h-14 rounded-[17px] bg-red-50 text-red-600 flex flex-col items-center justify-center shrink-0"><span className="text-[8px] font-black uppercase">Parada {index+1}</span><span className="text-[11px] font-black mt-0.5">{formatChristmasTime(ev.hora)}</span></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><p className="font-black text-slate-950 truncate">{ev.cliente||'Reserva Navidad'}</p><span className="rounded-full bg-amber-50 text-amber-700 px-2.5 py-1 text-[8px] font-black uppercase">{String(ev.fecha||'').slice(8,10)} DIC</span></div><p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{ev.referenciaLugar||ev.direccion||ev.ubicacion||'Ubicación pendiente'}</p><p className="text-[10px] font-bold text-slate-400 mt-1">Visita estimada: 15–25 min</p></div>{ev.direccion&&<button type="button" onClick={()=>openGoogleMaps(ev.direccion, ev.ubicacion)} className="w-11 h-11 rounded-[15px] bg-[#EEF2FF] text-[#7657FF] flex items-center justify-center shrink-0" aria-label="Abrir GPS"><MapPin size={20}/></button>}</div></div>)}</div></section>})}</div>}</div>
+            <div className="max-w-4xl mx-auto p-4 sm:p-6">
+              {christmasEvents.length>0 && <div className="mb-5 rounded-[28px] bg-white border border-slate-100 shadow-[0_12px_34px_rgba(15,23,42,.07)] p-4"><div className="flex items-start gap-3"><div className="w-12 h-12 rounded-[16px] bg-[#F2EEFF] text-[#7657FF] flex items-center justify-center shrink-0"><CalendarDays size={22}/></div><div className="min-w-0 flex-1"><p className="text-[9px] uppercase tracking-[.16em] font-black text-[#7657FF]">Planificador de Santas</p><h3 className="text-lg font-black text-slate-950 mt-0.5">{christmasSantaCapacity} {christmasSantaCapacity===1?'Santa habilitado':'Santas habilitados'}</h3><p className="text-[11px] font-semibold text-slate-500 mt-1">Alerta si dos inicios del mismo Santa quedan a menos de 45 min. El traslado real se confirma con la ruta GPS.</p></div></div></div>}
+              {christmasEvents.length===0?<div className="rounded-[28px] bg-white border border-slate-100 shadow-[0_14px_38px_rgba(15,23,42,.07)] px-6 py-12 text-center"><div className="text-5xl mb-4">🎄</div><h3 className="text-xl font-black text-slate-950">Aún no hay entregas navideñas</h3><p className="text-sm font-semibold text-slate-500 mt-2">Las reservas confirmadas del 24 y 25 aparecerán aquí.</p></div>:<div className="space-y-5">{santaNames.map(santa=>{const stops=christmasEvents.filter(e=>(String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')===santa);return <section key={santa} className="rounded-[28px] bg-white border border-slate-100 shadow-[0_12px_34px_rgba(15,23,42,.07)] overflow-hidden"><div className="p-4 bg-gradient-to-r from-red-50 to-amber-50 border-b border-red-100 flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-white shadow-sm flex items-center justify-center text-2xl">🎅</div><div><p className="font-black text-slate-950">{santa}</p><p className="text-[10px] font-bold text-slate-500">{stops.length} {stops.length===1?'entrega':'entregas'} · ordenadas por hora</p></div></div><button type="button" onClick={()=>openSantaRoute(stops)} className="rounded-[14px] bg-slate-950 text-white px-3 py-2.5 text-[9px] font-black uppercase tracking-wider active:scale-[.97] flex items-center gap-1.5"><MapIcon size={14}/> Abrir ruta</button></div><div className="p-3 space-y-3">{stops.map((ev,index)=><div key={ev.id} className="rounded-[22px] border border-slate-100 bg-white p-4 shadow-[0_6px_20px_rgba(15,23,42,.045)]"><div className="flex items-start gap-3"><div className="w-14 h-14 rounded-[17px] bg-red-50 text-red-600 flex flex-col items-center justify-center shrink-0"><span className="text-[8px] font-black uppercase">Parada {index+1}</span><span className="text-[11px] font-black mt-0.5">{formatChristmasTime(ev.hora)}</span></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><p className="font-black text-slate-950 truncate">{ev.cliente||'Reserva Navidad'}</p><span className="rounded-full bg-amber-50 text-amber-700 px-2.5 py-1 text-[8px] font-black uppercase">{String(ev.fecha||'').slice(8,10)} DIC</span></div><p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{ev.referenciaLugar||ev.direccion||ev.ubicacion||'Ubicación pendiente'}</p><p className="text-[10px] font-bold text-slate-400 mt-1">Visita estimada: 15–25 min</p>{hasScheduleConflict(ev,stops)&&<div className="mt-2 rounded-[13px] bg-red-50 border border-red-100 px-3 py-2"><p className="text-[9px] font-black text-red-600 uppercase tracking-wide">⚠ Posible conflicto de horario</p><p className="text-[10px] font-semibold text-red-500 mt-0.5">Menos de 45 min entre entregas de {santa}.</p>{suggestSanta(ev)!==santa&&<button type="button" onClick={()=>reassignSanta(ev,suggestSanta(ev))} className="mt-2 rounded-[11px] bg-red-600 text-white px-3 py-2 text-[9px] font-black uppercase tracking-wide active:scale-[.97]">Reasignar a {suggestSanta(ev)}</button>}</div>}<div className="mt-2 flex flex-wrap gap-1.5">{enabledSantas.filter(n=>n!==santa).map(n=><button key={n} type="button" onClick={()=>reassignSanta(ev,n)} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[8px] font-black text-slate-600 active:scale-[.97]">Mover a {n}</button>)}</div></div>{ev.direccion&&<button type="button" onClick={()=>openGoogleMaps(ev.direccion, ev.ubicacion)} className="w-11 h-11 rounded-[15px] bg-[#EEF2FF] text-[#7657FF] flex items-center justify-center shrink-0" aria-label="Abrir GPS"><MapPin size={20}/></button>}</div></div>)}</div></section>})}</div>}</div>
           </div>;
         })()}
         {isAgendaSummaryOpen && (()=>{
