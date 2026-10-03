@@ -713,6 +713,25 @@ export default function App() {
   const [isAgendaSummaryOpen, setIsAgendaSummaryOpen] = useState(false);
   const [isChristmasOpsOpen, setIsChristmasOpsOpen] = useState(false);
   const [christmasSantaCapacity, setChristmasSantaCapacity] = useState(1);
+
+  // Operación Navidad es una pantalla completa: bloquea el documento inferior para que
+  // Agenda nunca aparezca detrás durante scroll/rebote en Android o iOS Safari.
+  useEffect(() => {
+      if (!isChristmasOpsOpen || typeof document === 'undefined') return;
+      const body = document.body;
+      const html = document.documentElement;
+      const prevBodyOverflow = body.style.overflow;
+      const prevBodyOverscroll = body.style.overscrollBehavior;
+      const prevHtmlOverscroll = html.style.overscrollBehavior;
+      body.style.overflow = 'hidden';
+      body.style.overscrollBehavior = 'none';
+      html.style.overscrollBehavior = 'none';
+      return () => {
+          body.style.overflow = prevBodyOverflow;
+          body.style.overscrollBehavior = prevBodyOverscroll;
+          html.style.overscrollBehavior = prevHtmlOverscroll;
+      };
+  }, [isChristmasOpsOpen]);
   const [expandedChristmasId, setExpandedChristmasId] = useState(null);
 
   // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
@@ -2103,7 +2122,7 @@ export default function App() {
     };
 
     return (
-      <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
+      <div className={`${isChristmasOpsOpen ? '' : 'animate-fadeIn'} min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]`}>
         <div className="pt-1 sm:pt-3 mb-6 sm:mb-8 flex flex-col gap-3 relative z-10">
             <div className="flex flex-col gap-4"><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Agenda</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Organiza tus eventos con precisión</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsAgendaSummaryOpen(true)}} className="w-full flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] px-5 py-3.5 text-white shadow-[0_16px_34px_rgba(184,61,255,.26)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/15 border border-white/15 flex items-center justify-center shadow-inner"><CalendarDays size={27}/></div><div className="text-left min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumen de agenda</p><p className="text-2xl font-black leading-tight mt-1">{eventosActivos.filter(e=>{const d=String(e.fecha||''); const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6); const ds=new Date(d+'T00:00:00'); return ds>=start&&ds<=end&&!/cancelado|cot/i.test(String(e.estado||''));}).length} eventos <span className="text-base font-bold text-white/80">esta semana</span></p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button></div>
             <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(true)}} className="w-full mt-1 flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] px-5 py-4 text-white shadow-[0_16px_34px_rgba(217,31,45,.22)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/16 border border-white/20 flex items-center justify-center text-2xl">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/75">24 y 25 de diciembre</p><p className="text-xl font-black leading-tight mt-0.5">Operación Navidad</p><p className="text-[11px] font-bold text-white/80 mt-0.5">Santas · horarios · clientes · GPS</p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button>
@@ -2139,7 +2158,7 @@ export default function App() {
           const mapTarget = ev => { const raw=String(ev.direccion||'').trim(); const q=raw.match(/[?&]q=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i); if(q) return `${q[1]},${q[2]}`; const at=raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/); if(at) return `${at[1]},${at[2]}`; return raw || String(ev.referenciaLugar||ev.ubicacion||'').trim(); };
           const openSantaRoute = stops => { const targets=stops.map(mapTarget).filter(Boolean); if(!targets.length) return showAlert('Estas entregas todavía no tienen GPS disponible.', false); utils.triggerHaptic('light'); if(targets.length===1){ window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(targets[0])}`,'_blank'); return; } const destination=targets[targets.length-1]; const waypoints=targets.slice(0,-1).join('|'); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank'); };
           const deleteChristmas = ev => showConfirm(`¿Eliminar la reserva navideña de ${ev.cliente || 'este cliente'}? El horario se liberará automáticamente en la web.`, async()=>{ try { utils.triggerHaptic('light'); await deleteEventoSynced(ev.id); await publishSync('evento', ev.id, 'delete'); setEventos(prev=>prev.filter(x=>x.id!==ev.id)); setExpandedChristmasId(null); showAlert('Reserva eliminada y cupo liberado en la web.', true); } catch(err){ console.error(err); showAlert('No se pudo eliminar la reserva. Intenta nuevamente.', false); } });
-          return <div className="fixed inset-0 z-[78] bg-[radial-gradient(circle_at_top,rgba(239,68,68,.08),transparent_26%),#F6F7FB] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))]">
+          return <div className="fixed left-0 top-0 right-0 bottom-0 w-screen h-[100dvh] max-w-none z-[78] bg-[#F6F7FB] overflow-y-auto overscroll-none [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))] isolate" style={{backgroundColor:'#F6F7FB',backgroundImage:'radial-gradient(circle at top, rgba(239,68,68,.08), transparent 26%)'}}>
             <div className="relative z-20 bg-[linear-gradient(135deg,#7F1D1D_0%,#C62828_42%,#EA580C_100%)] text-white shadow-[0_10px_28px_rgba(127,29,29,.22)] pt-[max(52px,calc(env(safe-area-inset-top)+40px))]">
               <div className="max-w-4xl mx-auto px-4 pb-4"><button type="button" onClick={closeChristmas} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/25 px-4 py-3 text-[11px] font-black uppercase tracking-[.12em] active:scale-[.97]"><ChevronLeft size={18}/> Agenda</button><div className="mt-3 flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-white/65">24 y 25 de diciembre</p><h2 className="text-3xl sm:text-4xl font-black tracking-[-.035em] mt-1">Operación Navidad</h2><p className="text-sm font-bold text-white/75 mt-1">Entregas organizadas, información completa y rutas por Santa</p></div><div className="w-14 h-14 rounded-[19px] bg-white/12 border border-white/20 flex items-center justify-center text-3xl shrink-0">🎅</div></div><div className="grid grid-cols-3 gap-2 mt-4"><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{christmasEvents.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Entregas</p></div><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{christmasSantaCapacity}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Santas</p></div><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-lg font-black">24–25</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Diciembre</p></div></div></div>
             </div>
