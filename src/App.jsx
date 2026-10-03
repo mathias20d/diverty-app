@@ -114,6 +114,10 @@ const UI = {
 };
 const COLORS = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' };
 
+// DIVERTY_EARLY_NATIVE_SPLASH_HIDE
+// Cierra el splash nativo tan pronto como este bundle comienza a ejecutarse.
+try { window?.Capacitor?.Plugins?.SplashScreen?.hide?.(); } catch (_) {}
+
 // --- 3. FUNCIONES UTILITARIAS ---
 export const utils = {
   normalizeText: (t) => String(t || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), 
@@ -2077,7 +2081,7 @@ export default function App() {
           const christmasEvents = eventosActivos.filter(e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''))).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
           const closeChristmas = ()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(false)};
           const santaNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar'))).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
-          const formatChristmasTime = value => utils.formatTime12h(String(value||'').slice(0,5));
+          const formatChristmasTime = value => { const raw=String(value||'').trim(); const m=raw.match(/^(\d{1,2}):(\d{2})/); if(!m) return raw||'Por definir'; const h=Number(m[1]); return `${h%12||12}:${m[2]} ${h>=12?'PM':'AM'}`; };
           const mapTarget = ev => {
             const raw=String(ev.direccion||'').trim();
             const q=raw.match(/[?&]q=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i);
@@ -2096,7 +2100,7 @@ export default function App() {
             window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank');
           };
           return <div className="fixed inset-0 z-[78] bg-[#F7F8FC] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))]">
-            <div className="sticky top-0 z-30 bg-gradient-to-r from-[#C91D2E] via-[#E43A2F] to-[#F59E0B] text-white shadow-[0_12px_34px_rgba(190,24,35,.25)] pt-[max(30px,calc(env(safe-area-inset-top)+18px))]">
+            <div className="sticky top-0 z-30 bg-gradient-to-r from-[#C91D2E] via-[#E43A2F] to-[#F59E0B] text-white shadow-[0_12px_34px_rgba(190,24,35,.25)] pt-[max(58px,calc(env(safe-area-inset-top)+46px))]">
               <div className="max-w-4xl mx-auto px-4 pb-5">
                 <button type="button" onClick={closeChristmas} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/20 border border-white/30 px-4 py-3 text-[11px] font-black uppercase tracking-[.12em] shadow-sm active:scale-[.97]"><ChevronLeft size={18}/> Agenda</button>
                 <div className="mt-4 flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-white/70">24 y 25 de diciembre</p><h2 className="text-3xl sm:text-4xl font-black tracking-[-.035em] mt-1">Operación Navidad</h2><p className="text-sm font-bold text-white/80 mt-1">Santas · rutas · clientes · GPS</p></div><div className="w-14 h-14 rounded-[19px] bg-white/15 border border-white/20 flex items-center justify-center text-3xl shrink-0">🎅</div></div>
