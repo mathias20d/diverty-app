@@ -12,36 +12,33 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 const CRM_URL = 'https://diverty-app.vercel.app/';
-const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
+const DEFAULT_ICON = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
 
-// IMPORTANTE:
-// El Worker de Cloudflare debe enviar un mensaje DATA-ONLY para que este Service Worker
-// sea quien construya la notificaciÃ³n y controle de forma fiable el clic en Android.
 messaging.onBackgroundMessage((payload) => {
   const data = payload?.data || {};
-  const reservationId = String(data.reservationId || '').trim();
-  const title = data.title || 'ðŸŽ‰ Nueva reserva Diverty';
+  const title = data.title || '🎉 Nueva reserva Diverty';
   const body = data.body || 'Tienes una nueva reserva.';
+  const reservationId = String(data.reservationId || '').trim();
   const targetUrl = data.url || (reservationId
     ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
     : CRM_URL);
 
   return self.registration.showNotification(title, {
     body,
-    icon: ICON_URL,
-    badge: ICON_URL,
-    tag: reservationId ? `diverty-reserva-${reservationId}` : 'diverty-notificacion',
-    renotify: false,
+    icon: data.icon || DEFAULT_ICON,
+    badge: data.icon || DEFAULT_ICON,
+    tag: reservationId ? `diverty-reserva-${reservationId}` : 'diverty-nueva-reserva',
+    renotify: true,
     data: {
       url: targetUrl,
-      reservationId
+      reservationId,
+      type: data.type || 'new_reservation'
     }
   });
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
   const data = event.notification?.data || {};
   const reservationId = String(data.reservationId || '').trim();
   const targetUrl = data.url || (reservationId
@@ -49,7 +46,7 @@ self.addEventListener('notificationclick', (event) => {
     : CRM_URL);
 
   event.waitUntil((async () => {
-    const absoluteTarget = new URL(targetUrl, CRM_URL).href;
+    const absoluteTarget = new URL(targetUrl, self.location.origin).href;
     const target = new URL(absoluteTarget);
     const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
 
@@ -57,15 +54,11 @@ self.addEventListener('notificationclick', (event) => {
       try {
         const current = new URL(client.url);
         if (current.origin === target.origin) {
-          if ('navigate' in client) {
-            await client.navigate(absoluteTarget);
-          }
-          await client.focus();
-          return;
+          if ('navigate' in client) await client.navigate(absoluteTarget);
+          return client.focus();
         }
       } catch (_) {}
     }
-
-    await clients.openWindow(absoluteTarget);
+    return clients.openWindow(absoluteTarget);
   })());
 });
