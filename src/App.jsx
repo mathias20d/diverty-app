@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
@@ -429,52 +430,169 @@ const Confirm = memo(({ modal, setModal }) => { if (!modal.isOpen) return null; 
 
 const QuickExpenseModal = memo(function QuickExpenseModal({ modal, onClose, onSave }) {
     const ev = modal?.event;
-    const [categoria, setCategoria] = useState('personal');
-    const [monto, setMonto] = useState('');
-    const [detalle, setDetalle] = useState('');
+    const makeLine = (categoria='personal') => ({ id:`tmp-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, categoria, monto:'', detalle:'' });
+    const [lines, setLines] = useState([makeLine('personal')]);
     const [fecha, setFecha] = useState(utils.getLocalYYYYMMDD(new Date()));
     const [saving, setSaving] = useState(false);
+
     useEffect(() => {
         if (!modal?.isOpen) return;
-        setCategoria('personal'); setMonto(''); setDetalle('');
-        setFecha(utils.getLocalYYYYMMDD(new Date())); setSaving(false);
+        setLines([makeLine('personal')]);
+        setFecha(utils.getLocalYYYYMMDD(new Date()));
+        setSaving(false);
     }, [modal?.isOpen, ev?.id]);
+
     if (!modal?.isOpen || !ev) return null;
+
     const iconFor = id => id === 'personal' ? Users : id === 'transporte' ? Truck : id === 'globos' ? Sparkles : Receipt;
+    const updateLine = (id, patch) => setLines(prev => prev.map(line => line.id === id ? { ...line, ...patch } : line));
+    const addLine = (categoria = '') => {
+        utils.triggerHaptic('light');
+        setLines(prev => {
+            const suggested = categoria || (prev.length === 1 ? 'transporte' : 'otros');
+            return [...prev, makeLine(suggested)];
+        });
+        setTimeout(() => {
+            try { document.getElementById('quick-expense-scroll-end')?.scrollIntoView({behavior:'smooth', block:'nearest'}); } catch (_) {}
+        }, 80);
+    };
+    const removeLine = id => {
+        utils.triggerHaptic('light');
+        setLines(prev => prev.length <= 1 ? prev : prev.filter(line => line.id !== id));
+    };
+    const validLines = lines
+      .map(line => ({...line, monto:Number(String(line.monto).replace(',','.'))}))
+      .filter(line => Number.isFinite(line.monto) && line.monto > 0);
+    const total = validLines.reduce((sum,line)=>sum+line.monto,0);
+
     const submit = async (e) => {
         e.preventDefault();
-        const value = Number(String(monto).replace(',', '.'));
-        if (!Number.isFinite(value) || value <= 0 || saving) return;
+        if (!validLines.length || saving) return;
         setSaving(true);
-        try { await onSave(ev, { categoria, monto:value, detalle:detalle.trim(), fecha }); }
-        finally { setSaving(false); }
+        try {
+            await onSave(ev, validLines.map(line => ({
+                categoria:line.categoria,
+                monto:line.monto,
+                detalle:String(line.detalle || '').trim(),
+                fecha
+            })));
+        } finally { setSaving(false); }
     };
+
     return (
       <div className="fixed inset-0 z-[100000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn" onClick={onClose}>
-        <form onSubmit={submit} onClick={e=>e.stopPropagation()} className="w-full sm:max-w-md bg-white rounded-t-[30px] sm:rounded-[30px] p-5 sm:p-6 shadow-[0_30px_80px_rgba(15,23,42,.28)] border border-white max-h-[92dvh] overflow-y-auto">
-          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-5 sm:hidden"></div>
-          <div className="flex items-start justify-between gap-4 mb-5">
-            <div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7657FF]">Gasto de reserva</p><h3 className="text-2xl font-black text-slate-950 mt-1">{ev.cliente || 'Reserva'}</h3><p className="text-xs font-semibold text-slate-400 mt-1">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''} · {ev.servicio || ev.tipoEvento || 'Evento'}</p></div>
-            <button type="button" onClick={onClose} className="w-10 h-10 rounded-[14px] bg-slate-100 text-slate-500 flex items-center justify-center"><X size={19}/></button>
+        <form onSubmit={submit} onClick={e=>e.stopPropagation()} className="w-full sm:max-w-lg bg-white rounded-t-[30px] sm:rounded-[30px] shadow-[0_30px_80px_rgba(15,23,42,.28)] border border-white max-h-[94dvh] overflow-hidden flex flex-col">
+          <div className="px-5 sm:px-6 pt-4 sm:pt-6">
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-5 sm:hidden"></div>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7657FF]">Gastos de reserva</p>
+                <h3 className="text-2xl font-black text-slate-950 mt-1">{ev.cliente || 'Reserva'}</h3>
+                <p className="text-xs font-semibold text-slate-400 mt-1">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''} · {ev.servicio || ev.tipoEvento || 'Evento'}</p>
+              </div>
+              <button type="button" onClick={onClose} className="w-10 h-10 rounded-[14px] bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><X size={19}/></button>
+            </div>
+
+            <div className="rounded-[17px] bg-[#F7F3FF] border border-[#7657FF]/10 p-3.5 flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-[12px] bg-white text-[#7657FF] flex items-center justify-center shadow-sm shrink-0"><Plus size={18}/></div>
+              <div>
+                <p className="text-[11px] font-black text-slate-800">Puedes registrar varios gastos de una sola vez</p>
+                <p className="text-[10px] font-semibold text-slate-500 mt-1 leading-relaxed">Ejemplo: pago de animadores + transporte + globos o cualquier gasto adicional.</p>
+              </div>
+            </div>
+
+            <div className="flex items-end justify-between gap-3 mb-3">
+              <div><label className={UI.label}>Fecha de los gastos</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} className={`${UI.input} py-2.5`}/></div>
+              <div className="text-right pb-1"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Total a registrar</p><p className="text-xl font-black text-rose-500">${total.toFixed(2)}</p></div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2.5 mb-5">
-            {EXPENSE_CATEGORIES.map(cat => {
-              const Ic = iconFor(cat.id), active = categoria === cat.id;
-              return <button key={cat.id} type="button" onClick={()=>{utils.triggerHaptic('light');setCategoria(cat.id)}} className={`min-h-[68px] rounded-[18px] border p-3 text-left flex items-center gap-3 transition-all active:scale-[.98] ${active?'bg-[#7657FF] text-white border-[#7657FF] shadow-[0_10px_24px_rgba(118,87,255,.24)]':'bg-slate-50 text-slate-700 border-slate-200'}`}><span className={`w-10 h-10 rounded-[13px] flex items-center justify-center ${active?'bg-white/15':'bg-white'}`}><Ic size={19}/></span><span className="text-[11px] font-black leading-tight">{cat.label}</span></button>;
-            })}
+
+          <div className="px-5 sm:px-6 pb-2 overflow-y-auto overscroll-contain">
+            <div className="space-y-3">
+              {lines.map((line, idx) => {
+                const Ic = iconFor(line.categoria);
+                return (
+                  <div key={line.id} className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-3.5 shadow-sm animate-fadeIn">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-[13px] bg-white text-[#7657FF] flex items-center justify-center border border-slate-100 shadow-sm"><Ic size={18}/></div>
+                        <div><p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400">Gasto {idx+1}</p><p className="text-[12px] font-black text-slate-800">{EXPENSE_CATEGORIES.find(c=>c.id===line.categoria)?.label || 'Otro gasto'}</p></div>
+                      </div>
+                      {lines.length > 1 && <button type="button" onClick={()=>removeLine(line.id)} className="w-9 h-9 rounded-[12px] bg-rose-50 text-rose-500 border border-rose-100 flex items-center justify-center"><Trash2 size={16}/></button>}
+                    </div>
+                    <div className="grid grid-cols-[1.2fr_.8fr] gap-2.5">
+                      <div>
+                        <label className={UI.label}>Tipo</label>
+                        <select value={line.categoria} onChange={e=>updateLine(line.id,{categoria:e.target.value})} className={`${UI.input} py-2.5`}>
+                          {EXPENSE_CATEGORIES.map(cat=><option key={cat.id} value={cat.id}>{cat.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={UI.label}>Monto *</label>
+                        <div className="relative"><span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span><input type="number" min="0.01" step="0.01" inputMode="decimal" value={line.monto} onChange={e=>updateLine(line.id,{monto:e.target.value})} placeholder="0.00" className={`${UI.input} pl-7 py-2.5 font-black text-rose-500`} /></div>
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <label className={UI.label}>Detalle opcional</label>
+                      <input value={line.detalle} onChange={e=>updateLine(line.id,{detalle:e.target.value})} placeholder={line.categoria==='personal'?'Ej. Animador Juan / ayudante':line.categoria==='transporte'?'Ej. Combustible / taxi':line.categoria==='globos'?'Ej. Globos, hielo, materiales':'Ej. Compra imprevista'} className={`${UI.input} py-2.5`}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4">
+              <p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400 mb-2">Agregar otro gasto rápido</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id:'personal', label:'Personal', icon:Users },
+                  { id:'transporte', label:'Transporte', icon:Truck },
+                  { id:'globos', label:'Globos / materiales', icon:Sparkles },
+                  { id:'otros', label:'Otro gasto', icon:Receipt }
+                ].map(opt => {
+                  const Ic = opt.icon;
+                  return <button key={opt.id} type="button" onClick={()=>addLine(opt.id)} className="min-h-[46px] rounded-[15px] border border-slate-200 bg-white text-slate-700 font-black text-[9px] uppercase tracking-[.08em] flex items-center justify-center gap-2 active:scale-[.98] shadow-sm"><Ic size={16} className="text-[#7657FF]"/>{opt.label}</button>;
+                })}
+              </div>
+            </div>
+            <div id="quick-expense-scroll-end"></div>
+
+            <div className="mt-4 rounded-[16px] bg-amber-50 border border-amber-100 p-3 flex gap-2.5">
+              <Info size={17} className="text-amber-500 shrink-0"/>
+              <p className="text-[11px] font-semibold text-amber-800/80 leading-relaxed">Todos los gastos con monto se sumarán automáticamente a esta reserva y a Finanzas. Puedes repetir categorías, por ejemplo dos pagos de personal.</p>
+            </div>
           </div>
-          <div className="grid grid-cols-[1fr_130px] gap-3">
-            <div><label className={UI.label}>Monto *</label><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span><input type="number" min="0.01" step="0.01" inputMode="decimal" autoFocus value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00" className={`${UI.input} pl-8 text-xl font-black text-rose-500`} /></div></div>
-            <div><label className={UI.label}>Fecha</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} className={UI.input}/></div>
+
+          <div className="px-5 sm:px-6 pb-[max(18px,env(safe-area-inset-bottom))] pt-3 border-t border-slate-100 bg-white">
+            <button type="submit" disabled={saving || !validLines.length} className="w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.14em] shadow-[0_14px_30px_rgba(157,74,255,.24)] disabled:opacity-50 flex items-center justify-center gap-2">
+              <Receipt size={18}/>{saving?'Guardando...':validLines.length>1?`Registrar ${validLines.length} gastos · $${total.toFixed(2)}`:`Registrar gasto · $${total.toFixed(2)}`}
+            </button>
           </div>
-          <div className="mt-4"><label className={UI.label}>Detalle opcional</label><input value={detalle} onChange={e=>setDetalle(e.target.value)} placeholder={categoria==='personal'?'Ej. Pago animador / ayudante':categoria==='transporte'?'Ej. Combustible / taxi':categoria==='globos'?'Ej. Globos, hielo, materiales':'Ej. Compra imprevista'} className={UI.input}/></div>
-          <div className="mt-4 rounded-[16px] bg-amber-50 border border-amber-100 p-3 flex gap-2.5"><Info size={17} className="text-amber-500 shrink-0"/><p className="text-[11px] font-semibold text-amber-800/80 leading-relaxed">Se sumará automáticamente a los gastos de esta reserva y a Finanzas. No necesitas entrar a Editar reserva.</p></div>
-          <button type="submit" disabled={saving || !(Number(String(monto).replace(',','.')) > 0)} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.14em] shadow-[0_14px_30px_rgba(157,74,255,.24)] disabled:opacity-50 flex items-center justify-center gap-2"><Receipt size={18}/>{saving?'Guardando...':'Registrar gasto'}</button>
         </form>
       </div>
     );
 });
 
+const NavigationChoiceModal = memo(function NavigationChoiceModal({ modal, onClose }) {
+    if (!modal?.isOpen) return null;
+    const open = url => { if (!url) return; utils.triggerHaptic('light'); window.open(url, '_blank'); onClose(); };
+    return (
+      <div className="fixed inset-0 z-[100000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn" onClick={onClose}>
+        <div onClick={e=>e.stopPropagation()} className="w-full sm:max-w-md bg-white rounded-t-[30px] sm:rounded-[30px] p-5 sm:p-6 shadow-[0_30px_80px_rgba(15,23,42,.28)]">
+          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-5 sm:hidden"></div>
+          <div className="flex items-start justify-between gap-4">
+            <div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7657FF]">Navegación</p><h3 className="text-2xl font-black text-slate-950 mt-1">¿Con qué app quieres ir?</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-relaxed">{modal.label || 'Ubicación de la reserva'}</p></div>
+            <button type="button" onClick={onClose} className="w-10 h-10 rounded-[14px] bg-slate-100 text-slate-500 flex items-center justify-center shrink-0"><X size={19}/></button>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-6">
+            <button type="button" onClick={()=>open(modal.googleUrl)} className="min-h-[112px] rounded-[22px] bg-[#F7F3FF] border border-[#7657FF]/15 text-[#7657FF] flex flex-col items-center justify-center gap-1.5 active:scale-[.97] shadow-sm"><MapIcon size={30}/><span className="font-black text-[12px]">Google Maps</span><span className="text-[9px] font-bold opacity-70">Mapa y ruta</span></button>
+            <button type="button" onClick={()=>open(modal.wazeUrl)} className="min-h-[112px] rounded-[22px] bg-sky-50 border border-sky-100 text-sky-600 flex flex-col items-center justify-center gap-1.5 active:scale-[.97] shadow-sm"><MapPin size={30}/><span className="font-black text-[12px]">Waze</span><span className="text-[9px] font-bold opacity-70">Navegar ahora</span></button>
+          </div>
+          <p className="text-[10px] font-semibold text-slate-400 text-center mt-4 leading-relaxed">Si la reserva tiene coordenadas GPS exactas, ambas aplicaciones abrirán el mismo punto.</p>
+        </div>
+      </div>
+    );
+});
 const EmptyState = memo(function EmptyState({ icon: Icon, title, message, actionBtn }) { return (<div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}><div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm"><Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#7657FF]/60" /></div><h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3><p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>{actionBtn}</div>); });
 const IconBox = memo(function IconBox({ icon: Icon, color = 'blue', className = '' }) { const cMap = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }; return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; });
 const Badge = memo(function Badge({ children, color = 'blue', className = '' }) { const bgColors = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', gray: 'bg-slate-100 text-slate-600 border-slate-200/60' }; return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; });
@@ -848,17 +966,298 @@ const TransactionItem = memo(function TransactionItem({ ev, isExpanded, onToggle
 });
 
 const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir, onRegistrarAbono, onRegistrarGasto, forceExpanded = false }) {
-    const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false); const startX = useRef(0); const cardRef = useRef(null);
-    useEffect(() => { if (!forceExpanded) return; setIsExpanded(true); const timer = setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 180); return () => clearTimeout(timer); }, [forceExpanded]);
-    useEffect(() => { const closeOnAppBack = (e) => { if (isExpanded) { setIsExpanded(false); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeOnAppBack); return () => window.removeEventListener('diverty:back-layer', closeOnAppBack); }, [isExpanded]);
-    const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []); const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]); const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
-    const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo),gastosInternos=getGastosInternosEvento(ev);
+    const [swipeX, setSwipeX] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
+    const startX = useRef(0);
+    const cardRef = useRef(null);
+
+    useEffect(() => {
+        if (forceExpanded) setIsExpanded(true);
+    }, [forceExpanded]);
+
+    useEffect(() => {
+        const closeOnAppBack = (e) => {
+            if (!isExpanded) return;
+            setIsExpanded(false);
+            if (e?.detail) e.detail.handled = true;
+        };
+        window.addEventListener('diverty:back-layer', closeOnAppBack);
+        return () => window.removeEventListener('diverty:back-layer', closeOnAppBack);
+    }, [isExpanded]);
+
+    useEffect(() => {
+        if (!isExpanded || typeof document === 'undefined') return;
+        const body = document.body;
+        const previousOverflow = body.style.overflow;
+        body.style.overflow = 'hidden';
+        return () => { body.style.overflow = previousOverflow; };
+    }, [isExpanded]);
+
+    const handleTouchStart = useCallback((e) => {
+        if (isExpanded) return;
+        startX.current = e.touches[0].clientX;
+        setIsDragging(true);
+    }, [isExpanded]);
+
+    const handleTouchMove = useCallback((e) => {
+        if (!isDragging || isExpanded) return;
+        const diffX = e.touches[0].clientX - startX.current;
+        setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0);
+    }, [isDragging, isExpanded]);
+
+    const handleTouchEnd = useCallback(() => {
+        setIsDragging(false);
+        if (swipeX > 80) {
+            utils.triggerHaptic('success');
+            onDelete(ev.id);
+        }
+        setSwipeX(0);
+    }, [swipeX, ev.id, onDelete, utils]);
+
+    const estNormalized = utils.normalizeText(ev.estado);
+    const isCotizacion = estNormalized.includes('cotizaci') || estNormalized.includes('cot.');
+    const tot = utils.safeNum(ev.total);
+    const abo = utils.safeNum(ev.abono);
+    const restante = Math.max(0, tot - abo);
+    const gastosInternos = getGastosInternosEvento(ev);
+    const expenseItems = getExpenseItems(ev).slice().reverse();
+    const transporte = utils.safeNum(ev.transporte);
+    const proveedores = Array.isArray(ev.subcontratos) ? ev.subcontratos : [];
     const eventId = String(ev.id || '');
     const isWebReservation = !eventId.startsWith('man-') && !eventId.startsWith('cot-');
-    let sideColor="bg-slate-200",dotColor="bg-slate-300",waType='agradecimiento'; if(estNormalized==='completado'){sideColor='bg-emerald-500';dotColor='bg-emerald-400';}else if(estNormalized.includes('aprobada')){sideColor='bg-teal-500';dotColor='bg-teal-400';}else if(estNormalized.includes('rechazada')){sideColor='bg-slate-400';dotColor='bg-slate-300';}else if(isCotizacion){sideColor='bg-amber-400';dotColor='bg-amber-400';waType='cotizacion';}else if(estNormalized.startsWith('confirmad')){sideColor='bg-[#7657FF]';dotColor='bg-[#7657FF]';waType='recordatorio';}else if(estNormalized==='pendiente'){sideColor='bg-amber-500';dotColor='bg-amber-500';waType='cobro';}else if(estNormalized==='cancelado'||estNormalized==='cancelada'){sideColor='bg-rose-500';dotColor='bg-rose-500';}
-    let diff=null,dateBadgeContent=null; if(ev.fecha){const[y,m,d]=String(ev.fecha).split('-');if(y&&m&&d){diff=Math.ceil((new Date(parseInt(y,10),parseInt(m,10)-1,parseInt(d,10)).getTime()-todayTime)/(1000*60*60*24));}}
-    if(diff===0&&!isCotizacion)dateBadgeContent=<Badge color="rose"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-sm"></div> HOY</Badge>;else if(diff===1&&!isCotizacion)dateBadgeContent=<Badge color="amber">MAÑANA</Badge>;else if(isCotizacion){ if(estNormalized.includes('aprobada'))dateBadgeContent=<Badge color="teal">COT. Aprobada</Badge>; else if(estNormalized.includes('rechazada'))dateBadgeContent=<Badge color="gray">COT. Rechazada</Badge>; else dateBadgeContent=<Badge color="amberSolid"><FileText size={12}/> Cotización</Badge>; }
-    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{!isCotizacion && estNormalized.includes('rechaz') && (<Badge color="gray">Rechazada</Badge>)}{!isCotizacion && (estNormalized==='cancelado' || estNormalized==='cancelada') && (<Badge color="rose">Cancelada</Badge>)}{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#7657FF]" /></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && (<div className="mt-3 pt-3 border-t border-slate-200/70"><div className="flex items-center justify-between mb-2.5"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gastos registrados</span><span className="text-sm font-black text-rose-500">-${gastosInternos.toFixed(2)}</span></div><div className={`grid gap-2 ${restante > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>{restante > 0 && <AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full py-2.5 px-2 text-[11px]" icon={DollarSign}>+ Abono</AppButton>}<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarGasto(ev); }} variant="default" className="w-full py-2.5 px-2 text-[11px] bg-rose-50 text-rose-600 border-rose-100" icon={Receipt}>+ Gasto</AppButton></div></div>)}</div>{!isCotizacion && (<div className="mb-3" onClick={(e)=>e.stopPropagation()}><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Estado de la reserva</label><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Completado">Completado</option><option value="Cancelado">Cancelado</option><option value="Rechazada">Rechazada</option></select></div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
+    const fechaTexto = ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha';
+    const horaTexto = ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora';
+    const locationText = [ev.ubicacion, ev.direccion].filter(Boolean).join(' · ') || 'Ubicación no indicada';
+    const expenseLabel = id => EXPENSE_CATEGORIES.find(x => x.id === id)?.label || 'Otro gasto';
+
+    let sideColor = 'bg-slate-200';
+    let dotColor = 'bg-slate-300';
+    let waType = 'agradecimiento';
+    if (estNormalized === 'completado') {
+        sideColor = 'bg-emerald-500'; dotColor = 'bg-emerald-400';
+    } else if (estNormalized.includes('aprobada')) {
+        sideColor = 'bg-teal-500'; dotColor = 'bg-teal-400';
+    } else if (estNormalized.includes('rechazada')) {
+        sideColor = 'bg-slate-400'; dotColor = 'bg-slate-300';
+    } else if (isCotizacion) {
+        sideColor = 'bg-amber-400'; dotColor = 'bg-amber-400'; waType = 'cotizacion';
+    } else if (estNormalized.startsWith('confirmad')) {
+        sideColor = 'bg-[#7657FF]'; dotColor = 'bg-[#7657FF]'; waType = 'recordatorio';
+    } else if (estNormalized === 'pendiente') {
+        sideColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; waType = 'cobro';
+    } else if (estNormalized === 'cancelado' || estNormalized === 'cancelada') {
+        sideColor = 'bg-rose-500'; dotColor = 'bg-rose-500';
+    }
+
+    let diff = null;
+    if (ev.fecha) {
+        const [y,m,d] = String(ev.fecha).split('-');
+        if (y && m && d) diff = Math.ceil((new Date(parseInt(y,10), parseInt(m,10)-1, parseInt(d,10)).getTime() - todayTime) / (1000*60*60*24));
+    }
+
+    const badge = (() => {
+        if (isCotizacion) {
+            if (estNormalized.includes('aprobada')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-teal-50 text-teal-600 border border-teal-100">Cot. aprobada</span>;
+            if (estNormalized.includes('rechazada')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Cot. rechazada</span>;
+            return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">Cotización</span>;
+        }
+        if (diff === 0) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-100">Hoy</span>;
+        if (diff === 1) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">Mañana</span>;
+        if (estNormalized.includes('rechaz')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Rechazada</span>;
+        if (estNormalized === 'cancelado' || estNormalized === 'cancelada') return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-100">Cancelada</span>;
+        return null;
+    })();
+
+    const openDetails = (e) => {
+        e?.stopPropagation?.();
+        if (swipeX > 10) return;
+        utils.triggerHaptic('light');
+        setIsExpanded(true);
+    };
+
+    const detailOverlay = isExpanded && typeof document !== 'undefined' ? createPortal(
+      <div className="fixed inset-0 z-[90000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 animate-fadeIn" onClick={()=>setIsExpanded(false)}>
+        <section onClick={e=>e.stopPropagation()} className="w-full h-[100dvh] sm:h-[94dvh] sm:max-w-2xl bg-[#F5F6FA] sm:rounded-[32px] shadow-[0_35px_90px_rgba(15,23,42,.40)] overflow-hidden flex flex-col animate-slideUp">
+          <header className="shrink-0 bg-white border-b border-slate-200/80 px-4 sm:px-6 pt-[max(16px,env(safe-area-inset-top))] pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></span>
+                  {isWebReservation && !isCotizacion && <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15">Web</span>}
+                  {badge}
+                  <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">{horaTexto}</span>
+                </div>
+                <h2 className="text-[27px] sm:text-3xl font-black text-slate-950 tracking-[-.03em] leading-tight mt-2 break-words">{String(ev.cliente || 'Reserva')}</h2>
+                <p className="text-[11px] font-bold uppercase tracking-[.12em] text-slate-400 mt-1">{fechaTexto} · {String(ev.estado || (isCotizacion ? 'Cotización' : 'Pendiente'))}</p>
+                <p className="text-[10px] font-semibold text-slate-400 mt-1">Vista completa · desliza para revisar toda la información</p>
+              </div>
+              <button type="button" onClick={()=>setIsExpanded(false)} className="w-11 h-11 rounded-[15px] bg-slate-100 text-slate-500 flex items-center justify-center shrink-0 active:scale-[.96]"><X size={21}/></button>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 pb-[max(28px,env(safe-area-inset-bottom))]">
+            <div className="rounded-[24px] bg-gradient-to-br from-[#17142B] via-[#34256B] to-[#7657FF] text-white p-5 shadow-[0_16px_36px_rgba(118,87,255,.22)]">
+              <p className="text-[9px] font-black uppercase tracking-[.18em] text-white/55">{isCotizacion ? 'Cotización' : 'Reserva completa'}</p>
+              <p className="text-lg font-black mt-1 leading-snug">{String(ev.servicio || ev.tipoEvento || 'Sin paquete asignado')}</p>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Total</p><p className="text-lg font-black mt-1">${tot.toFixed(2)}</p></div>
+                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Recibido</p><p className="text-lg font-black mt-1">${abo.toFixed(2)}</p></div>
+                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Pendiente</p><p className={`text-lg font-black mt-1 ${restante > 0 ? 'text-rose-200' : 'text-emerald-200'}`}>${restante.toFixed(2)}</p></div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div><p className="text-[9px] font-black uppercase tracking-[.16em] text-[#7657FF]">Información del evento</p><h3 className="text-lg font-black text-slate-950 mt-1">Datos principales</h3></div>
+                <button type="button" onClick={()=>onMapClick(ev.direccion, ev.ubicacion, ev)} className="shrink-0 min-h-[44px] px-3.5 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[10px] uppercase tracking-wider flex items-center gap-2 active:scale-[.97]"><MapPin size={16}/> GPS</button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3"><Calendar size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fecha y hora</p><p className="text-sm font-bold text-slate-800 mt-0.5">{fechaTexto} · {horaTexto}</p></div></div>
+                <div className="flex items-start gap-3"><Sparkles size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Servicio</p><p className="text-sm font-bold text-slate-800 mt-0.5 whitespace-pre-wrap break-words">{String(ev.servicio || 'Sin paquete asignado')}</p>{ev.descripcionEvento && <p className="text-xs font-medium text-slate-500 mt-1 whitespace-pre-wrap">{String(ev.descripcionEvento)}</p>}</div></div>
+                <div className="flex items-start gap-3"><MapPin size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Ubicación</p><p className="text-sm font-bold text-slate-800 mt-0.5 break-words whitespace-pre-wrap">{locationText}</p>{ev.referenciaLugar && <p className="text-xs font-medium text-slate-500 mt-1">Referencia: {String(ev.referenciaLugar)}</p>}</div></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Teléfono</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.telefono || 'No indicado')}</p></div>
+                  <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Correo</p><p className="text-sm font-bold text-slate-800 mt-1 break-all">{String(ev.email || 'No indicado')}</p></div>
+                  {ev.ninos !== undefined && String(ev.ninos || '').trim() !== '' && <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Niños</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.ninos)}</p></div>}
+                  {ev.tipoEvento && <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Tipo de evento</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.tipoEvento)}</p></div>}
+                </div>
+                {ev.comentarios && <div className="rounded-[16px] bg-amber-50/70 border border-amber-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-amber-600">Comentarios</p><p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-wrap">{String(ev.comentarios)}</p></div>}
+              </div>
+            </div>
+
+            {!isCotizacion && (
+              <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="text-[9px] font-black uppercase tracking-[.16em] text-rose-500">Finanzas de la reserva</p><h3 className="text-lg font-black text-slate-950 mt-1">Pagos y gastos</h3></div>
+                  <div className="text-right"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Gastos</p><p className="text-xl font-black text-rose-500">-${gastosInternos.toFixed(2)}</p></div>
+                </div>
+
+                <div className="mt-4 w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0}/></div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                  <div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Total</p><p className="font-black text-slate-900 mt-1">${tot.toFixed(2)}</p></div>
+                  <div className="rounded-[15px] bg-emerald-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-emerald-500">Recibido</p><p className="font-black text-emerald-700 mt-1">${abo.toFixed(2)}</p></div>
+                  <div className="rounded-[15px] bg-rose-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-rose-400">Pendiente</p><p className="font-black text-rose-600 mt-1">${restante.toFixed(2)}</p></div>
+                  <div className="rounded-[15px] bg-violet-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-violet-500">Transporte</p><p className="font-black text-violet-700 mt-1">${transporte.toFixed(2)}</p></div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  {restante > 0 && <button type="button" onClick={()=>onRegistrarAbono(ev)} className="min-h-[56px] rounded-[17px] bg-gradient-to-r from-[#FF2F9A] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.12em] shadow-[0_12px_28px_rgba(157,74,255,.22)] flex items-center justify-center gap-2 active:scale-[.98]"><DollarSign size={19}/> Registrar abono</button>}
+                  <button type="button" onClick={()=>onRegistrarGasto(ev)} className={`min-h-[56px] rounded-[17px] bg-rose-50 text-rose-600 border border-rose-100 font-black text-[11px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98] ${restante <= 0 ? 'sm:col-span-2' : ''}`}><Receipt size={19}/> Registrar gastos</button>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[.12em] text-slate-500">Detalle de gastos</p><span className="text-[10px] font-bold text-slate-400">{expenseItems.length ? `${expenseItems.length} registrado${expenseItems.length===1?'':'s'}` : 'Sin desglose'}</span></div>
+                  {expenseItems.length > 0 ? (
+                    <div className="space-y-2 mt-3">
+                      {expenseItems.map((item, i) => <div key={item.id || i} className="rounded-[15px] bg-slate-50 border border-slate-100 p-3 flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black text-slate-800">{expenseLabel(item.categoria)}</p><p className="text-[9px] font-semibold text-slate-400 mt-0.5">{item.fecha ? String(item.fecha).split('-').reverse().join('/') : 'Sin fecha'}{item.detalle ? ` · ${String(item.detalle)}` : ''}</p></div><p className="font-black text-rose-500 shrink-0">-${utils.safeNum(item.monto).toFixed(2)}</p></div>)}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-400 mt-3">Los gastos nuevos aparecerán aquí separados por personal, transporte, materiales u otros.</p>
+                  )}
+                </div>
+
+                {proveedores.length > 0 && <div className="mt-4 pt-4 border-t border-slate-100"><p className="text-[10px] font-black uppercase tracking-[.12em] text-slate-500">Proveedores</p><div className="space-y-2 mt-3">{proveedores.map((sc,i)=><div key={sc.id||i} className="rounded-[15px] bg-slate-50 border border-slate-100 p-3 flex items-start justify-between gap-3"><div><p className="text-[10px] font-black text-slate-800">{String(sc.nombre||'Proveedor')}</p><p className="text-[9px] font-semibold text-slate-400 mt-0.5">{String(sc.servicio||'Servicio')}</p></div><div className="text-right"><p className="font-black text-rose-500">${utils.safeNum(sc.costo).toFixed(2)}</p><p className={`text-[8px] font-black uppercase mt-0.5 ${sc.pagado?'text-emerald-500':'text-amber-500'}`}>{sc.pagado?'Pagado':'Pendiente'}</p></div></div>)}</div></div>}
+              </div>
+            )}
+
+            {!isCotizacion && (
+              <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
+                <label className="text-[9px] font-black uppercase tracking-[.16em] text-slate-400 block mb-2">Estado de la reserva</label>
+                <select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-3.5 cursor-pointer font-black`}>
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Confirmado">Confirmado</option>
+                  <option value="Completado">Completado</option>
+                  <option value="Cancelado">Cancelado</option>
+                  <option value="Rechazada">Rechazada</option>
+                </select>
+              </div>
+            )}
+
+            <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
+              <p className="text-[9px] font-black uppercase tracking-[.16em] text-slate-400">Acciones rápidas</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <button type="button" onClick={()=>onWhatsApp(ev, waType, empresa)} className="min-h-[54px] rounded-[17px] bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 shadow-sm active:scale-[.98]"><MessageCircle size={19}/> WhatsApp Business</button>
+                <button type="button" onClick={()=>onMapClick(ev.direccion, ev.ubicacion, ev)} className="min-h-[54px] rounded-[17px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><MapPin size={19}/> Abrir GPS</button>
+                {isCotizacion ? (
+                  <button type="button" onClick={()=>onViewDoc(ev,'cotizacion')} className="sm:col-span-2 min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><FileText size={18}/> Ver cotización PDF</button>
+                ) : (
+                  <>
+                    <button type="button" onClick={()=>onViewDoc(ev,'factura')} className="min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><Receipt size={18}/> Factura</button>
+                    <button type="button" onClick={()=>onViewDoc(ev,'contrato')} className="min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><FileSignature size={18}/> Contrato</button>
+                  </>
+                )}
+              </div>
+
+              {isCotizacion && <div className="mt-3 pt-3 border-t border-slate-100">
+                {estNormalized === 'cotizacion' && <div className="grid grid-cols-2 gap-3"><button type="button" onClick={()=>onUpdateEstado(ev.id,'Cot. Aprobada')} className="min-h-[50px] rounded-[16px] bg-emerald-500 text-white font-black text-[10px] uppercase tracking-wider">Aprobar</button><button type="button" onClick={()=>onUpdateEstado(ev.id,'Cot. Rechazada')} className="min-h-[50px] rounded-[16px] bg-slate-100 text-slate-600 border border-slate-200 font-black text-[10px] uppercase tracking-wider">Rechazar</button></div>}
+                {estNormalized.includes('aprobada') && <button type="button" onClick={()=>onConvertir(ev)} className="w-full min-h-[52px] rounded-[16px] bg-gradient-to-r from-[#FF2F9A] to-[#7657FF] text-white font-black text-[10px] uppercase tracking-wider shadow-sm">Convertir en reserva</button>}
+              </div>}
+
+              <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-slate-100">
+                <button type="button" onClick={()=>{setIsExpanded(false);onEdit(ev,isCotizacion);}} className="min-h-[48px] rounded-[14px] bg-slate-50 border border-slate-200 text-slate-700 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Edit size={15}/> Editar</button>
+                <button type="button" onClick={()=>{setIsExpanded(false);onDuplicate(ev);}} className="min-h-[48px] rounded-[14px] bg-[#7657FF]/5 border border-[#7657FF]/10 text-[#7657FF] font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Copy size={15}/> Duplicar</button>
+                <button type="button" onClick={()=>onDelete(ev.id)} className="min-h-[48px] rounded-[14px] bg-rose-50 border border-rose-100 text-rose-600 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Trash2 size={15}/> Eliminar</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>,
+      document.body
+    ) : null;
+
+    return (
+      <>
+        <div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode:'both', animationDelay:`${idx*40}ms` }}>
+          <div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}>
+            <Trash2 size={24} className="text-white"/>
+            <span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span>
+          </div>
+
+          <div
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onClick={openDetails}
+            className="relative p-5 sm:p-6 z-10 bg-white/95 cursor-pointer text-slate-900 active:bg-slate-50 transition-colors"
+            style={{ transform:`translateX(${swipeX}px)`, transition:isDragging?'none':'transform .2s ease-out' }}
+          >
+            <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor}`}></div>
+            <div className="pl-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></span>
+                    <h3 className="text-[19px] sm:text-xl font-black text-slate-950 leading-tight tracking-tight break-words">{String(ev.cliente || 'Reserva')}</h3>
+                    {isWebReservation && !isCotizacion && <span className="px-2 py-1 rounded-[9px] text-[8px] font-black uppercase tracking-wider bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15">Web</span>}
+                    {badge}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap mt-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-500 bg-slate-100 px-2.5 py-1.5 rounded-[10px]"><Calendar size={13}/> {fechaTexto}</span>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-500 bg-slate-100 px-2.5 py-1.5 rounded-[10px]"><Clock size={13}/> {horaTexto}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xl font-black text-slate-950">${tot.toFixed(2)}</p>
+                  {!isCotizacion && <p className={`text-[10px] font-black uppercase tracking-wider mt-1 ${restante>0?'text-rose-500':'text-emerald-500'}`}>{restante>0?`Debe $${restante.toFixed(0)}`:'Pagado'}</p>}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <div className="flex items-start gap-2"><Sparkles size={15} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-[13px] font-semibold text-slate-600 break-words">{String(ev.servicio || ev.tipoEvento || 'Sin paquete asignado')}</p></div>
+                {(ev.ubicacion || ev.direccion) && <div className="flex items-start gap-2"><MapPin size={15} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-[12px] font-semibold text-slate-500 line-clamp-2">{locationText}</p></div>}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                {!isCotizacion ? <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-400"><Receipt size={14}/>${gastosInternos.toFixed(2)} gastos</div> : <div className="text-[10px] font-black uppercase tracking-wider text-amber-500">Cotización</div>}
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-[#7657FF]">Expandir reserva <ChevronRight size={16}/></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {detailOverlay}
+      </>
+    );
 });
 
 const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
@@ -997,6 +1396,7 @@ export default function App() {
   const handleToggleProv = useCallback((id) => setExpandedProvId(prev => prev === id ? null : id), []);
   const [modalConfig, setModalConfig] = useState({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); 
   const [expenseModal, setExpenseModal] = useState({ isOpen: false, event: null });
+  const [navigationModal, setNavigationModal] = useState({ isOpen:false, googleUrl:'', wazeUrl:'', label:'' });
   const [monthlyReport, setMonthlyReport] = useState(null);
   const [monthlyReportLoading, setMonthlyReportLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null }); 
@@ -1158,9 +1558,9 @@ export default function App() {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ modalConfig, expenseModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
+  const stateRef = useRef({ modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
   useEffect(() => { 
-      stateRef.current = { modalConfig, expenseModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen }; 
+      stateRef.current = { modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen }; 
   });
   
   useEffect(() => {
@@ -1173,6 +1573,7 @@ export default function App() {
         if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
         else if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
         else if (s.isPrinting) { setIsPrinting(false); blocked = true; }
+        else if (s.navigationModal?.isOpen) { setNavigationModal({ isOpen:false, googleUrl:'', wazeUrl:'', label:'' }); blocked = true; }
         else if (s.expenseModal?.isOpen) { setExpenseModal({ isOpen:false, event:null }); blocked = true; }
         else if (s.modalConfig?.isOpen) { setModalConfig(p => ({...p, isOpen: false})); blocked = true; }
         else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); blocked = true; }
@@ -1943,19 +2344,26 @@ export default function App() {
       setExpenseModal({ isOpen:true, event:ev });
   }, []);
 
-  const handleSaveQuickExpense = useCallback(async (ev, expense) => {
-      const monto = utils.safeNum(expense?.monto);
-      if (!ev?.id || monto <= 0) return;
-      const categoria = ['personal','transporte','globos','otros'].includes(String(expense?.categoria || '').toLowerCase()) ? String(expense.categoria).toLowerCase() : 'otros';
-      const categoriaLabel = EXPENSE_CATEGORIES.find(x=>x.id===categoria)?.label || 'Otro gasto';
-      const expenseItem = {
-          id: `gas-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-          categoria,
-          monto:Number(monto.toFixed(2)),
-          detalle:String(expense?.detalle || '').trim(),
-          fecha:String(expense?.fecha || utils.getLocalYYYYMMDD(new Date())),
-          createdAt:new Date().toISOString()
-      };
+  const handleSaveQuickExpense = useCallback(async (ev, expenseOrList) => {
+      if (!ev?.id) return;
+      const inputList = Array.isArray(expenseOrList) ? expenseOrList : [expenseOrList];
+      const nowIso = new Date().toISOString();
+      const cleanExpenses = inputList.map((expense, index) => {
+          const monto = utils.safeNum(expense?.monto);
+          const categoriaRaw = String(expense?.categoria || '').toLowerCase();
+          const categoria = ['personal','transporte','globos','otros'].includes(categoriaRaw) ? categoriaRaw : 'otros';
+          return {
+              id:`gas-${Date.now()}-${index}-${Math.random().toString(36).slice(2,7)}`,
+              categoria,
+              monto:Number(monto.toFixed(2)),
+              detalle:String(expense?.detalle || '').trim(),
+              fecha:String(expense?.fecha || utils.getLocalYYYYMMDD(new Date())),
+              createdAt:nowIso
+          };
+      }).filter(item => Number.isFinite(item.monto) && item.monto > 0);
+      if (!cleanExpenses.length) return;
+      const totalAgregado = Number(cleanExpenses.reduce((sum,item)=>sum+item.monto,0).toFixed(2));
+
       try {
           let savedPatch = null;
           await runTransaction(db, async tx => {
@@ -1964,27 +2372,30 @@ export default function App() {
               if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
               const actual = snap.data() || {};
               const baseInterno = getGastosInternosEvento(actual);
-              const nuevoTotal = Number((baseInterno + monto).toFixed(2));
-              const items = [...getExpenseItems(actual), expenseItem];
-              const linea = `${expenseItem.fecha} · ${categoriaLabel}: $${expenseItem.monto.toFixed(2)}${expenseItem.detalle ? ` · ${expenseItem.detalle}` : ''}`;
-              const detalleGastos = [String(actual.detalleGastos || '').trim(), linea].filter(Boolean).join('\n');
+              const nuevoTotal = Number((baseInterno + totalAgregado).toFixed(2));
+              const items = [...getExpenseItems(actual), ...cleanExpenses];
+              const nuevasLineas = cleanExpenses.map(item => {
+                  const label = EXPENSE_CATEGORIES.find(x=>x.id===item.categoria)?.label || 'Otro gasto';
+                  return `${item.fecha} · ${label}: $${item.monto.toFixed(2)}${item.detalle ? ` · ${item.detalle}` : ''}`;
+              });
+              const detalleGastos = [String(actual.detalleGastos || '').trim(), ...nuevasLineas].filter(Boolean).join('\n');
               savedPatch = {
                   gastos:nuevoTotal,
                   gastosItems:items,
                   detalleGastos,
                   costosSeparados:true,
                   _rev:(Number(actual._rev)||0)+1,
-                  updatedAt:new Date().toISOString()
+                  updatedAt:nowIso
               };
               tx.set(ref, savedPatch, { merge:true });
           });
           await publishSync('evento', ev.id, 'update');
           setEventos(prev=>prev.map(item=>item.id===ev.id?{...item,...savedPatch}:item));
           setExpenseModal({ isOpen:false, event:null });
-          showAlert(`${categoriaLabel}: $${monto.toFixed(2)} registrado.`, true);
+          showAlert(cleanExpenses.length > 1 ? `${cleanExpenses.length} gastos por $${totalAgregado.toFixed(2)} registrados.` : `Gasto de $${totalAgregado.toFixed(2)} registrado.`, true);
       } catch (err) {
           console.error('Error registrando gasto rápido:', err);
-          showAlert('No se pudo registrar el gasto. Revisa la conexión e intenta nuevamente.', false);
+          showAlert('No se pudieron registrar los gastos. Revisa la conexión e intenta nuevamente.', false);
           throw err;
       }
   }, [publishSync, showAlert]);
@@ -2406,19 +2817,31 @@ export default function App() {
       catch (err) { console.error("Error eliminando proveedor:", err); showAlert("No se pudo eliminar el proveedor.", false); }
   }); }, [showConfirm, showAlert, publishSync]);
   const sendWhatsAppCall = useCallback((e, type, empresaSettings) => { utils.triggerHaptic('success'); const msg = getWhatsAppMessage(e, type, empresaSettings || appSettings.empresa), phoneClean = String(e.telefono).replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }, [appSettings.empresa]);
-  const openGoogleMaps = useCallback((dir, ubi) => {
+  const openGoogleMaps = useCallback((dir, ubi, eventData = null) => {
     utils.triggerHaptic('light');
     const rawDir = String(dir || '').trim();
-    // Reservas web/Navidad: si la dirección contiene un enlace GPS de Google Maps,
-    // abrir exclusivamente ese enlace para conservar el pin exacto.
-    const mapUrlMatch = rawDir.match(/https?:\/\/(?:www\.)?(?:google\.[^\s/]+\/maps|maps\.google\.[^\s/]+)[^\s]*/i);
-    if (mapUrlMatch) {
-        window.open(mapUrlMatch[0], '_blank');
-        return;
+    const rawUbi = String(ubi || '').trim();
+    const mapUrlMatch = rawDir.match(/https?:\/\/(?:www\.)?(?:(?:google\.[^\s/]+\/maps|maps\.google\.[^\s/]+)|maps\.app\.goo\.gl)[^\s]*/i);
+    const gps = christmasEventGps(eventData || { direccion:rawDir });
+    const queryText = [rawDir.replace(/https?:\/\/\S+/g,'').trim(), rawUbi, 'Panamá'].filter(Boolean).join(' ').trim();
+
+    let googleUrl = '';
+    let wazeUrl = '';
+    if (gps) {
+        googleUrl = mapUrlMatch?.[0] || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${gps.lat},${gps.lng}`)}`;
+        wazeUrl = `https://www.waze.com/ul?ll=${encodeURIComponent(`${gps.lat},${gps.lng}`)}&navigate=yes`;
+    } else {
+        googleUrl = mapUrlMatch?.[0] || `https://maps.google.com/maps?q=${encodeURIComponent(queryText || rawDir || rawUbi)}`;
+        wazeUrl = `https://www.waze.com/ul?q=${encodeURIComponent(queryText || rawUbi || rawDir)}&navigate=yes`;
     }
-    // Reservas normales/antiguas: mantener la búsqueda tradicional por dirección y zona.
-    window.open(`https://maps.google.com/maps?q=${encodeURIComponent(`${rawDir} ${ubi || ''} Panamá`)}`, '_blank');
-}, []);
+
+    setNavigationModal({
+        isOpen:true,
+        googleUrl,
+        wazeUrl,
+        label: rawUbi || String(eventData?.referenciaLugar || '').trim() || 'Ubicación de la reserva'
+    });
+  }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
 
   const downloadPDF = useCallback(async () => {
@@ -2874,7 +3297,7 @@ export default function App() {
           const formatChristmasTime = value => { const raw=String(value||'').trim(); const m=raw.match(/^(\d{1,2}):(\d{2})/); if(!m) return raw||'Por definir'; const h=Number(m[1]); return `${h%12||12}:${m[2]} ${h>=12?'PM':'AM'}`; };
           const money = v => `$${utils.safeNum(v).toFixed(2)}`;
           const mapTarget = ev => { const gps=christmasEventGps(ev); if(gps) return `${gps.lat},${gps.lng}`; const raw=String(ev.direccion||'').trim(); return raw || String(ev.referenciaLugar||ev.ubicacion||'').trim(); };
-          const openSantaRoute = stops => { const targets=stops.map(mapTarget).filter(Boolean); if(!targets.length) return showAlert('Estas entregas todavía no tienen GPS disponible.', false); utils.triggerHaptic('light'); if(targets.length===1){ window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(targets[0])}`,'_blank'); return; } const destination=targets[targets.length-1]; const waypoints=targets.slice(0,-1).join('|'); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank'); };
+          const openSantaRoute = stops => { const targets=stops.map(mapTarget).filter(Boolean); if(!targets.length) return showAlert('Estas entregas todavía no tienen GPS disponible.', false); utils.triggerHaptic('light'); if(targets.length===1){ const only=stops[0]; openGoogleMaps(only?.direccion, only?.ubicacion || only?.referenciaLugar, only); return; } const destination=targets[targets.length-1]; const waypoints=targets.slice(0,-1).join('|'); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank'); };
           const deleteChristmas = ev => showConfirm(`¿Eliminar la reserva navideña de ${ev.cliente || 'este cliente'}? El horario se liberará automáticamente en la web.`, async()=>{ try { utils.triggerHaptic('light'); await deleteEventoSynced(ev.id); await publishSync('evento', ev.id, 'delete'); setEventos(prev=>prev.filter(x=>x.id!==ev.id)); setExpandedChristmasId(null); showAlert('Reserva eliminada y cupo liberado en la web.', true); } catch(err){ console.error(err); showAlert('No se pudo eliminar la reserva. Intenta nuevamente.', false); } });
           return <div className="fixed left-0 top-0 right-0 bottom-0 w-screen h-[100dvh] max-w-none z-[78] bg-[#F6F7FB] overflow-y-auto overscroll-none [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))] isolate" style={{backgroundColor:'#F6F7FB',backgroundImage:'radial-gradient(circle at top, rgba(239,68,68,.08), transparent 26%)'}}>
             <div className="relative z-20 bg-[linear-gradient(135deg,#7F1D1D_0%,#C62828_42%,#EA580C_100%)] text-white shadow-[0_10px_28px_rgba(127,29,29,.22)] pt-[max(52px,calc(env(safe-area-inset-top)+40px))]">
@@ -3342,6 +3765,7 @@ export default function App() {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.3s ease-out forwards;} .animate-slideLeft{animation:slideLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-slideUp{animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-fadeInUp{animation:fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards;} @keyframes pulse-slow{0%,100%{opacity:0.04;transform:scale(1);}50%{opacity:0.06;transform:scale(1.05);}} .animate-pulse-slow{animation:pulse-slow 10s ease-in-out infinite;} @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin-slow{animation:spin-slow 15s linear infinite;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;} .pb-safe{padding-bottom: env(safe-area-inset-bottom);} button{-webkit-tap-highlight-color:transparent;} @media(max-width:640px){#main-content{background:radial-gradient(circle at 85% 8%,rgba(255,62,165,.055),transparent 24%),radial-gradient(circle at 10% 28%,rgba(118,87,255,.06),transparent 28%),linear-gradient(180deg,#F5F6FB 0%,#FAFAFD 48%,#F4F6FB 100%);} #main-content>div{padding-left:14px;padding-right:14px;} input,select,textarea{font-size:16px!important;} button{touch-action:manipulation;} .animate-fadeIn{animation-duration:.14s!important;} .animate-slideLeft{animation-duration:.18s!important;} .animate-slideUp{animation-duration:.2s!important;} .animate-fadeInUp{animation-duration:.22s!important;} }`}</style>
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
+      <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
       <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
