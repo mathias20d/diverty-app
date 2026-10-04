@@ -128,6 +128,16 @@ const publicSlot = value => {
 
   return slot;
 };
+
+const isPendingWebRequest = value => {
+  const estado = String(value?.estado || '').trim().toLowerCase();
+  const origen = String(value?.origen || '').trim().toLowerCase();
+  return estado === 'pendiente' && origen === 'web directa';
+};
+const isArchivedReservation = value => {
+  const estado = String(value?.estado || '').trim().toLowerCase();
+  return estado === 'cancelado' || estado === 'cancelada' || estado.includes('rechaz');
+};
 const clientStatusRef = id => doc(db,'artifacts',appId,'public','data','reservas_cliente',id);
 const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono','fecha','hora','estado','servicio','total','abono'].map(key => [key,String(value[key] ?? '')]));
 const projectEvent = (writer, ref, value) => {
@@ -325,6 +335,78 @@ const normalizeLegacyCostsForEdit = (ev) => {
   return { ...ev, gastos: Math.max(0, utils.safeNum(ev.gastos) - proveedores).toString(), costosSeparados: true };
 };
 
+// Gastos rápidos 4.0: cada gasto puede registrarse desde la tarjeta de la reserva
+// sin entrar al formulario completo. `gastos` sigue guardando el total para mantener
+// compatibilidad con versiones anteriores y `gastosItems` conserva el desglose.
+const EXPENSE_CATEGORIES = Object.freeze([
+  { id: 'personal', label: 'Personal' },
+  { id: 'transporte', label: 'Transporte' },
+  { id: 'globos', label: 'Globos / materiales' },
+  { id: 'otros', label: 'Otro gasto' }
+]);
+const getExpenseItems = (ev) => Array.isArray(ev?.gastosItems)
+  ? ev.gastosItems.filter(item => item && utils.safeNum(item.monto) > 0)
+  : [];
+const getExpenseBreakdownEvento = (ev) => {
+  const out = { personal: 0, transporte: 0, globos: 0, otros: 0 };
+  const items = getExpenseItems(ev);
+  let itemTotal = 0;
+  items.forEach(item => {
+    const monto = utils.safeNum(item.monto);
+    itemTotal += monto;
+    const categoria = ['personal','transporte','globos','otros'].includes(String(item.categoria || '').toLowerCase())
+      ? String(item.categoria).toLowerCase()
+      : 'otros';
+    out[categoria] += monto;
+  });
+  const totalInterno = getGastosInternosEvento(ev);
+  // Si un registro antiguo fue editado manualmente después de usar gastos rápidos,
+  // ajustamos el desglose al total real para que Finanzas nunca muestre categorías
+  // que sumen más que el gasto interno guardado.
+  if (itemTotal > totalInterno && itemTotal > 0) {
+    const factor = totalInterno / itemTotal;
+    Object.keys(out).forEach(k => { out[k] *= factor; });
+    return out;
+  }
+  // Todo gasto antiguo que no tenía categoría queda en "Otros", sin duplicarlo.
+  out.otros += Math.max(0, totalInterno - itemTotal);
+  return out;
+};
+const buildMonthlyFinanceReport = (rows, year, month) => {
+  const monthRows = (Array.isArray(rows) ? rows : []).filter(e => {
+    const parts = String(e?.fecha || '').split('-');
+    return Number(parts[0]) === Number(year) && Number(parts[1]) === Number(month);
+  });
+  const active = monthRows.filter(e => {
+    const es = utils.normalizeText(e?.estado);
+    if (isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return false;
+    return true;
+  });
+  const breakdown = active.reduce((acc, ev) => {
+    const b = getExpenseBreakdownEvento(ev);
+    acc.personal += b.personal; acc.transporte += b.transporte; acc.globos += b.globos; acc.otros += b.otros;
+    return acc;
+  }, { personal:0, transporte:0, globos:0, otros:0 });
+  const facturado = active.reduce((sum,e)=>sum+utils.safeNum(e.total),0);
+  const cobrado = active.reduce((sum,e)=>sum+Math.min(utils.safeNum(e.abono),utils.safeNum(e.total)),0);
+  const porCobrar = active.reduce((sum,e)=>sum+Math.max(utils.safeNum(e.total)-utils.safeNum(e.abono),0),0);
+  const gastosInternos = active.reduce((sum,e)=>sum+getGastosInternosEvento(e),0);
+  const proveedores = active.reduce((sum,e)=>sum+getCostoProveedoresEvento(e),0);
+  const costosTotales = gastosInternos + proveedores;
+  const ganancia = facturado - costosTotales;
+  return {
+    periodo: `${year}-${String(month).padStart(2,'0')}`,
+    year:Number(year), month:Number(month),
+    registrosMes:monthRows.length,
+    reservas:active.length,
+    completadas:active.filter(e=>utils.normalizeText(e.estado)==='completado').length,
+    canceladas:monthRows.filter(e=>['cancelado','cancelada'].includes(utils.normalizeText(e.estado))).length,
+    rechazadas:monthRows.filter(e=>utils.normalizeText(e.estado).includes('rechaz')).length,
+    facturado, cobrado, porCobrar, gastosInternos, proveedores, costosTotales, ganancia,
+    gastosPorCategoria: breakdown
+  };
+};
+
 function getWhatsAppMessage(ev, type, empresa) {
     const tot = utils.safeNum(ev.total), abo = utils.safeNum(ev.abono), saldo = (tot - abo).toFixed(2), fec = String(ev.fecha||'').split('-').reverse().join('/'), hor = utils.formatTime12h(ev.hora);
     const vigDias = Math.max(1, Math.round(utils.safeNum(ev.vigenciaCotizacion) || 7));
@@ -344,6 +426,55 @@ function getWhatsAppMessage(ev, type, empresa) {
 const Bg = memo(() => (<div className="fixed inset-0 z-0 pointer-events-none overflow-hidden bg-[#F4F6FB]"><div className="absolute top-[-18%] left-[-22%] w-[90vw] h-[55vh] bg-[#7657FF]/10 blur-[110px] rounded-full"></div><div className="absolute top-[8%] right-[-30%] w-[80vw] h-[45vh] bg-[#FF3EA5]/10 blur-[120px] rounded-full"></div><div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.025)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.025)_1px,transparent_1px)] bg-[size:28px_28px] opacity-40"></div></div>));
 const Toast = memo(({ alert }) => { if (!alert.isOpen) return null; return (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[90%] max-w-sm animate-fadeIn"><div className={`px-5 py-4 rounded-2xl shadow-xl flex items-center gap-3 border text-white backdrop-blur-md ${alert.success ? 'bg-emerald-500/95 border-emerald-400' : 'bg-rose-500/95 border-rose-400'}`}>{alert.success ? <CheckCircle2 size={24}/> : <AlertTriangle size={24}/>}<p className="font-bold text-sm tracking-wide">{alert.message}</p></div></div>); });
 const Confirm = memo(({ modal, setModal }) => { if (!modal.isOpen) return null; return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn overscroll-none"><div className={`${UI.modal} max-w-md w-full text-center border-rose-200/50 p-8`}><div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100"><AlertTriangle size={32} className="text-rose-500" /></div><h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">¿Estás seguro?</h3><p className="text-slate-500 font-medium mb-8 leading-relaxed">{modal.message}</p><div className="flex gap-4"><button type="button" onClick={() => setModal({ isOpen: false, message: '', onConfirm: null })} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-slate-600 bg-slate-100/80 hover:bg-slate-200 transition-all border border-slate-200/50">Cancelar</button><button type="button" onClick={() => { if (modal.onConfirm) modal.onConfirm(); setModal({ isOpen: false, message: '', onConfirm: null }); }} className="flex-1 py-3.5 rounded-xl font-bold uppercase tracking-wider text-white bg-rose-600 hover:bg-rose-700 shadow-lg transition-all">Confirmar</button></div></div></div>); });
+
+const QuickExpenseModal = memo(function QuickExpenseModal({ modal, onClose, onSave }) {
+    const ev = modal?.event;
+    const [categoria, setCategoria] = useState('personal');
+    const [monto, setMonto] = useState('');
+    const [detalle, setDetalle] = useState('');
+    const [fecha, setFecha] = useState(utils.getLocalYYYYMMDD(new Date()));
+    const [saving, setSaving] = useState(false);
+    useEffect(() => {
+        if (!modal?.isOpen) return;
+        setCategoria('personal'); setMonto(''); setDetalle('');
+        setFecha(utils.getLocalYYYYMMDD(new Date())); setSaving(false);
+    }, [modal?.isOpen, ev?.id]);
+    if (!modal?.isOpen || !ev) return null;
+    const iconFor = id => id === 'personal' ? Users : id === 'transporte' ? Truck : id === 'globos' ? Sparkles : Receipt;
+    const submit = async (e) => {
+        e.preventDefault();
+        const value = Number(String(monto).replace(',', '.'));
+        if (!Number.isFinite(value) || value <= 0 || saving) return;
+        setSaving(true);
+        try { await onSave(ev, { categoria, monto:value, detalle:detalle.trim(), fecha }); }
+        finally { setSaving(false); }
+    };
+    return (
+      <div className="fixed inset-0 z-[100000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn" onClick={onClose}>
+        <form onSubmit={submit} onClick={e=>e.stopPropagation()} className="w-full sm:max-w-md bg-white rounded-t-[30px] sm:rounded-[30px] p-5 sm:p-6 shadow-[0_30px_80px_rgba(15,23,42,.28)] border border-white max-h-[92dvh] overflow-y-auto">
+          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-5 sm:hidden"></div>
+          <div className="flex items-start justify-between gap-4 mb-5">
+            <div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7657FF]">Gasto de reserva</p><h3 className="text-2xl font-black text-slate-950 mt-1">{ev.cliente || 'Reserva'}</h3><p className="text-xs font-semibold text-slate-400 mt-1">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : ''} · {ev.servicio || ev.tipoEvento || 'Evento'}</p></div>
+            <button type="button" onClick={onClose} className="w-10 h-10 rounded-[14px] bg-slate-100 text-slate-500 flex items-center justify-center"><X size={19}/></button>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5 mb-5">
+            {EXPENSE_CATEGORIES.map(cat => {
+              const Ic = iconFor(cat.id), active = categoria === cat.id;
+              return <button key={cat.id} type="button" onClick={()=>{utils.triggerHaptic('light');setCategoria(cat.id)}} className={`min-h-[68px] rounded-[18px] border p-3 text-left flex items-center gap-3 transition-all active:scale-[.98] ${active?'bg-[#7657FF] text-white border-[#7657FF] shadow-[0_10px_24px_rgba(118,87,255,.24)]':'bg-slate-50 text-slate-700 border-slate-200'}`}><span className={`w-10 h-10 rounded-[13px] flex items-center justify-center ${active?'bg-white/15':'bg-white'}`}><Ic size={19}/></span><span className="text-[11px] font-black leading-tight">{cat.label}</span></button>;
+            })}
+          </div>
+          <div className="grid grid-cols-[1fr_130px] gap-3">
+            <div><label className={UI.label}>Monto *</label><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span><input type="number" min="0.01" step="0.01" inputMode="decimal" autoFocus value={monto} onChange={e=>setMonto(e.target.value)} placeholder="0.00" className={`${UI.input} pl-8 text-xl font-black text-rose-500`} /></div></div>
+            <div><label className={UI.label}>Fecha</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} className={UI.input}/></div>
+          </div>
+          <div className="mt-4"><label className={UI.label}>Detalle opcional</label><input value={detalle} onChange={e=>setDetalle(e.target.value)} placeholder={categoria==='personal'?'Ej. Pago animador / ayudante':categoria==='transporte'?'Ej. Combustible / taxi':categoria==='globos'?'Ej. Globos, hielo, materiales':'Ej. Compra imprevista'} className={UI.input}/></div>
+          <div className="mt-4 rounded-[16px] bg-amber-50 border border-amber-100 p-3 flex gap-2.5"><Info size={17} className="text-amber-500 shrink-0"/><p className="text-[11px] font-semibold text-amber-800/80 leading-relaxed">Se sumará automáticamente a los gastos de esta reserva y a Finanzas. No necesitas entrar a Editar reserva.</p></div>
+          <button type="submit" disabled={saving || !(Number(String(monto).replace(',','.')) > 0)} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.14em] shadow-[0_14px_30px_rgba(157,74,255,.24)] disabled:opacity-50 flex items-center justify-center gap-2"><Receipt size={18}/>{saving?'Guardando...':'Registrar gasto'}</button>
+        </form>
+      </div>
+    );
+});
+
 const EmptyState = memo(function EmptyState({ icon: Icon, title, message, actionBtn }) { return (<div className={`${UI.card} bg-white/30 backdrop-blur-sm p-10 text-center flex flex-col items-center justify-center animate-fadeIn w-full border-dashed border-slate-300 min-h-[300px]`}><div className="w-24 h-24 rounded-[24px] flex justify-center items-center mb-6 border border-slate-200/50 relative overflow-hidden bg-white/80 rotate-3 transition-transform hover:rotate-0 duration-300 shadow-sm"><Icon size={48} strokeWidth={1.5} className="relative z-10 text-[#7657FF]/60" /></div><h3 className="text-xl font-bold text-slate-800 mb-3 tracking-tight">{title}</h3><p className="text-sm font-medium text-slate-500 max-w-md mb-8 leading-relaxed">{message}</p>{actionBtn}</div>); });
 const IconBox = memo(function IconBox({ icon: Icon, color = 'blue', className = '' }) { const cMap = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', rose: 'bg-[#FF3EA5]/10 text-[#FF3EA5] border-[#FF3EA5]/20', amber: 'bg-amber-500/10 text-amber-500 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }; return <div className={`p-2.5 rounded-xl border backdrop-blur-sm shadow-sm ${cMap[color]} ${className}`}><Icon size={20}/></div>; });
 const Badge = memo(function Badge({ children, color = 'blue', className = '' }) { const bgColors = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', rose: 'bg-rose-500/10 text-rose-500 border-rose-500/20', amber: 'bg-amber-500/10 text-amber-600 border-amber-500/20', emerald: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20', gray: 'bg-slate-100 text-slate-600 border-slate-200/60' }; return <span className={`border px-3 py-1 rounded-[10px] text-[10px] sm:text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 shrink-0 shadow-sm backdrop-blur-sm ${bgColors[color]||bgColors.blue} ${className}`}>{children}</span>; });
@@ -439,19 +570,21 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest }) {
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
+    const [rejecting, setRejecting] = useState(false);
     const [confirmedName, setConfirmedName] = useState('');
+    const [rejectedName, setRejectedName] = useState('');
     const [santaAsignado, setSantaAsignado] = useState('Santa 1');
-    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setConfirmedName(''); setSantaAsignado('Santa 1'); } }, [isOpen]);
+    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); } }, [isOpen]);
     useEffect(() => {
         if (selectedRequest) setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
     }, [selectedRequest]);
-    useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && (selectedRequest || confirmedName)) { setSelectedRequest(null); setConfirmedName(''); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest, confirmedName]);
+    useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && (selectedRequest || confirmedName || rejectedName)) { setSelectedRequest(null); setConfirmedName(''); setRejectedName(''); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest, confirmedName, rejectedName]);
     if (!isOpen) return null;
     const reqs = eventosActivos
-        .filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa')
+        .filter(isPendingWebRequest)
         .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
     const money = v => `$${utils.safeNum(v).toFixed(2)}`;
     const phone = selectedRequest ? String(selectedRequest.telefono || '').replace(/\D/g,'') : '';
@@ -464,6 +597,15 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         setConfirming(false);
         if (ok) { setSelectedRequest(null); setConfirmedName(currentName); }
     };
+    const rejectSelected = async () => {
+        if (!selectedRequest || rejecting) return;
+        const currentName = selectedRequest.cliente || 'Cliente';
+        if (!window.confirm(`¿Rechazar la solicitud de ${currentName}? El horario se liberará y quedará guardada en Canceladas / Rechazadas.`)) return;
+        setRejecting(true);
+        const ok = await onRejectWebRequest(selectedRequest);
+        setRejecting(false);
+        if (ok) { setSelectedRequest(null); setRejectedName(currentName); }
+    };
     const webCard = (e) => (
         <button key={e.id} type="button" onClick={()=>setSelectedRequest(e)} className="w-full text-left bg-white rounded-[24px] p-5 border border-slate-200/80 shadow-[0_10px_30px_rgba(15,23,42,.055)] active:scale-[0.985] transition-all group relative overflow-hidden">
             <span className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-400"/>
@@ -475,11 +617,11 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         <div className="fixed inset-0 z-[100000] bg-[#071225]/65 backdrop-blur-md flex justify-end animate-fadeIn">
             <div className="w-full sm:w-[430px] bg-[radial-gradient(circle_at_top_right,rgba(118,87,255,.09),transparent_25%),#F6F7FB] h-full flex flex-col shadow-2xl animate-slideLeft">
                 <div className="px-5 py-5 bg-[#071126] border-b border-white/10 flex justify-between items-center shadow-lg relative z-10 text-white">
-                    <div className="flex items-center gap-3">{(selectedRequest || confirmedName) && <button onClick={()=>{setSelectedRequest(null);setConfirmedName('')}} className="p-2 -ml-2 hover:bg-white/10 rounded-xl"><ChevronLeft size={21}/></button>}<div className="w-10 h-10 rounded-[14px] bg-white/10 flex items-center justify-center"><BellRing className="text-[#B7A5FF]" size={22}/></div><div><h3 className="font-black text-[21px] leading-tight">{selectedRequest ? 'Solicitud Web' : confirmedName ? 'Reserva confirmada' : 'Alertas Web'}</h3>{!selectedRequest && !confirmedName && <p className="text-[11px] text-white/55 font-semibold mt-0.5">Solicitudes recibidas desde tu página web</p>}</div></div>
+                    <div className="flex items-center gap-3">{(selectedRequest || confirmedName || rejectedName) && <button onClick={()=>{setSelectedRequest(null);setConfirmedName('');setRejectedName('')}} className="p-2 -ml-2 hover:bg-white/10 rounded-xl"><ChevronLeft size={21}/></button>}<div className="w-10 h-10 rounded-[14px] bg-white/10 flex items-center justify-center"><BellRing className="text-[#B7A5FF]" size={22}/></div><div><h3 className="font-black text-[21px] leading-tight">{selectedRequest ? 'Solicitud Web' : confirmedName ? 'Reserva confirmada' : rejectedName ? 'Reserva rechazada' : 'Alertas Web'}</h3>{!selectedRequest && !confirmedName && !rejectedName && <p className="text-[11px] text-white/55 font-semibold mt-0.5">Solicitudes recibidas desde tu página web</p>}</div></div>
                     <button onClick={onClose} className="p-2.5 hover:bg-white/10 rounded-xl transition-colors"><X size={21} className="text-white/65"/></button>
                 </div>
-                {confirmedName ? (
-                    <div className="flex-1 p-5 flex items-center justify-center"><div className="w-full bg-white rounded-[30px] p-7 text-center shadow-[0_20px_55px_rgba(15,23,42,.12)] border border-white"><div className="mx-auto w-24 h-24 rounded-[30px] bg-gradient-to-br from-[#F3EEFF] to-[#E9E2FF] flex items-center justify-center relative"><CalendarDays size={45} className="text-[#7657FF]"/><span className="absolute -right-2 -bottom-2 w-10 h-10 rounded-full bg-[#7657FF] text-white flex items-center justify-center border-4 border-white"><Check size={20}/></span></div><h4 className="font-black text-3xl text-[#10182D] mt-6">¡Reserva confirmada!</h4><p className="text-slate-500 font-semibold mt-2">La reserva de <b className="text-slate-700">{confirmedName}</b> quedó confirmada correctamente.</p><button onClick={onClose} className="mt-7 w-full py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)]">Cerrar</button></div></div>
+                {(confirmedName || rejectedName) ? (
+                    <div className="flex-1 p-5 flex items-center justify-center"><div className="w-full bg-white rounded-[30px] p-7 text-center shadow-[0_20px_55px_rgba(15,23,42,.12)] border border-white"><div className={`mx-auto w-24 h-24 rounded-[30px] flex items-center justify-center relative ${rejectedName ? 'bg-gradient-to-br from-rose-50 to-slate-100' : 'bg-gradient-to-br from-[#F3EEFF] to-[#E9E2FF]'}`}>{rejectedName ? <X size={46} className="text-rose-500"/> : <CalendarDays size={45} className="text-[#7657FF]"/>}<span className={`absolute -right-2 -bottom-2 w-10 h-10 rounded-full text-white flex items-center justify-center border-4 border-white ${rejectedName ? 'bg-rose-500' : 'bg-[#7657FF]'}`}>{rejectedName ? <X size={20}/> : <Check size={20}/>}</span></div><h4 className="font-black text-3xl text-[#10182D] mt-6">{rejectedName ? 'Reserva rechazada' : '¡Reserva confirmada!'}</h4><p className="text-slate-500 font-semibold mt-2">{rejectedName ? <>La solicitud de <b className="text-slate-700">{rejectedName}</b> se guardó en Canceladas / Rechazadas y el horario quedó liberado.</> : <>La reserva de <b className="text-slate-700">{confirmedName}</b> quedó confirmada correctamente y ya aparece en la agenda.</>}</p><button onClick={onClose} className={`mt-7 w-full py-4 rounded-[18px] text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.18)] ${rejectedName ? 'bg-gradient-to-r from-rose-500 to-rose-600' : 'bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF]'}`}>Cerrar</button></div></div>
                 ) : !selectedRequest ? (
                     <div className="flex-1 overflow-y-auto p-4 sm:p-5"><div className="bg-white/80 rounded-[24px] p-2 mb-4 border border-white shadow-sm"><div className="grid grid-cols-2 gap-2"><div className="rounded-[18px] bg-gradient-to-r from-[#7657FF] to-[#9A5CFF] text-white px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black opacity-75">Pendientes</p><p className="text-2xl font-black">{reqs.length}</p></div><div className="rounded-[18px] bg-slate-50 px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black text-slate-400">Canal</p><p className="text-sm font-black text-slate-700 mt-1">Página Web</p></div></div></div><div className="space-y-3">{reqs.length === 0 ? <div className="bg-white rounded-[28px] p-10 text-center border border-slate-200/70 shadow-sm mt-5"><div className="w-20 h-20 rounded-[26px] bg-emerald-50 mx-auto flex items-center justify-center"><CheckCircle2 size={38} className="text-emerald-500"/></div><p className="font-black text-[#10182D] text-xl mt-5">Todo al día</p><p className="font-semibold text-slate-400 text-sm mt-1">No hay nuevas solicitudes web.</p></div> : reqs.map(webCard)}</div></div>
                 ) : (
@@ -491,7 +633,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                             {(selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))) && <div className="rounded-[22px] border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4"><div className="flex items-center gap-3 mb-3"><div className="w-11 h-11 rounded-[15px] bg-red-100 flex items-center justify-center text-2xl">🎅</div><div><p className="text-[9px] uppercase tracking-[.14em] font-black text-red-500">Operación Navidad</p><p className="font-black text-[#10182D]">Santa asignado</p></div></div><select value={santaAsignado} onChange={e=>setSantaAsignado(e.target.value)} className="w-full rounded-[16px] border border-red-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none"><option value="Santa 1">Santa 1</option><option value="Santa 2">Santa 2</option><option value="Santa 3">Santa 3</option><option value="Santa 4">Santa 4</option></select><p className="mt-2 text-[10px] font-semibold text-slate-400">Selecciona quién atenderá esta entrega. La asignación quedará guardada en la reserva.</p></div>}
                             <div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Transporte</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.transporte)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Descuento</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.descuento)}</p></div><div className="rounded-[18px] bg-emerald-50 p-3"><p className="text-[9px] uppercase font-black text-emerald-500">Total</p><p className="font-black text-emerald-600 mt-1">{money(selectedRequest.total)}</p></div></div></div>
                         </div>
-                        <div className="grid grid-cols-[.8fr_1.2fr] gap-3 mt-4"><button type="button" onClick={()=>setSelectedRequest(null)} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-500 font-black bg-white active:scale-[.98]">Volver</button><button disabled={confirming} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : 'Confirmar reserva'}</button></div>
+                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : 'Aceptar reserva'}</button></div>
                     </div>
                 )}
             </div>
@@ -705,18 +847,18 @@ const TransactionItem = memo(function TransactionItem({ ev, isExpanded, onToggle
     return(<div className="group bg-white/80 backdrop-blur-sm rounded-[20px] mb-2 border border-slate-200/80 shadow-sm hover:border-slate-300 overflow-hidden transition-all"><button type="button" onClick={(e)=>{if(e){e.preventDefault();e.stopPropagation();}onToggleExpand(ev.id);}} className="w-full flex justify-between items-center p-5 bg-transparent hover:bg-slate-50/80 transition-colors duration-200 text-left active:scale-[0.99] text-slate-900"><div className="flex flex-col min-w-0 flex-1 pr-4"><p className="font-bold capitalize text-[16px] text-slate-900 truncate tracking-tight">{String(ev.cliente||'')}</p><p className="text-xs font-medium text-slate-500 mt-1.5">{ev.fecha?String(ev.fecha).split('-').reverse().join('/'):''} • {String(ev.tipoEvento||'').substring(0,15)}</p></div><div className="text-right shrink-0 flex items-center gap-4"><div className="flex flex-col items-end"><span className="font-bold text-emerald-500 text-lg leading-none block mb-2 tracking-tight">+${neta.toFixed(2)}</span>{gas>0&&<span className="text-[10px] font-bold uppercase tracking-wider text-rose-500 leading-none px-2 py-1 bg-rose-50 rounded-lg border border-rose-100">Gastos: -${gas}</span>}</div><ChevronDown size={18} className={`text-slate-400 transition-transform duration-300 ${isExpanded?'rotate-180':''}`}/></div></button>{isExpanded&&(<div className="p-5 bg-slate-50/50 border-t border-slate-100/80 animate-fadeIn"><div className="flex justify-between items-center mb-3"><span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Ingreso Bruto</span><span className="font-bold text-[15px] text-slate-900">${tot.toFixed(2)}</span></div><div className="flex justify-between items-center mb-3"><span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Gastos Operativos</span><span className="font-bold text-[15px] text-rose-500">-${gas.toFixed(2)}</span></div>{ev.detalleGastos&&(<div className="mt-4 pt-4 border-t border-slate-200/60"><span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-2">Desglose:</span><p className="text-[13px] font-medium text-slate-600 italic leading-relaxed whitespace-pre-wrap">{String(ev.detalleGastos)}</p></div>)}</div>)}</div>);
 });
 
-const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir, onRegistrarAbono, forceExpanded = false }) {
+const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir, onRegistrarAbono, onRegistrarGasto, forceExpanded = false }) {
     const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false); const startX = useRef(0); const cardRef = useRef(null);
     useEffect(() => { if (!forceExpanded) return; setIsExpanded(true); const timer = setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 180); return () => clearTimeout(timer); }, [forceExpanded]);
     useEffect(() => { const closeOnAppBack = (e) => { if (isExpanded) { setIsExpanded(false); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeOnAppBack); return () => window.removeEventListener('diverty:back-layer', closeOnAppBack); }, [isExpanded]);
     const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []); const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]); const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
-    const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo);
+    const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo),gastosInternos=getGastosInternosEvento(ev);
     const eventId = String(ev.id || '');
     const isWebReservation = !eventId.startsWith('man-') && !eventId.startsWith('cot-');
-    let sideColor="bg-slate-200",dotColor="bg-slate-300",waType='agradecimiento'; if(estNormalized==='completado'){sideColor='bg-emerald-500';dotColor='bg-emerald-400';}else if(estNormalized.includes('aprobada')){sideColor='bg-teal-500';dotColor='bg-teal-400';}else if(estNormalized.includes('rechazada')){sideColor='bg-slate-400';dotColor='bg-slate-300';}else if(isCotizacion){sideColor='bg-amber-400';dotColor='bg-amber-400';waType='cotizacion';}else if(estNormalized==='confirmado'){sideColor='bg-[#7657FF]';dotColor='bg-[#7657FF]';waType='recordatorio';}else if(estNormalized==='pendiente'){sideColor='bg-amber-500';dotColor='bg-amber-500';waType='cobro';}else if(estNormalized==='cancelado'){sideColor='bg-rose-500';dotColor='bg-rose-500';}
+    let sideColor="bg-slate-200",dotColor="bg-slate-300",waType='agradecimiento'; if(estNormalized==='completado'){sideColor='bg-emerald-500';dotColor='bg-emerald-400';}else if(estNormalized.includes('aprobada')){sideColor='bg-teal-500';dotColor='bg-teal-400';}else if(estNormalized.includes('rechazada')){sideColor='bg-slate-400';dotColor='bg-slate-300';}else if(isCotizacion){sideColor='bg-amber-400';dotColor='bg-amber-400';waType='cotizacion';}else if(estNormalized.startsWith('confirmad')){sideColor='bg-[#7657FF]';dotColor='bg-[#7657FF]';waType='recordatorio';}else if(estNormalized==='pendiente'){sideColor='bg-amber-500';dotColor='bg-amber-500';waType='cobro';}else if(estNormalized==='cancelado'||estNormalized==='cancelada'){sideColor='bg-rose-500';dotColor='bg-rose-500';}
     let diff=null,dateBadgeContent=null; if(ev.fecha){const[y,m,d]=String(ev.fecha).split('-');if(y&&m&&d){diff=Math.ceil((new Date(parseInt(y,10),parseInt(m,10)-1,parseInt(d,10)).getTime()-todayTime)/(1000*60*60*24));}}
     if(diff===0&&!isCotizacion)dateBadgeContent=<Badge color="rose"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-sm"></div> HOY</Badge>;else if(diff===1&&!isCotizacion)dateBadgeContent=<Badge color="amber">MAÑANA</Badge>;else if(isCotizacion){ if(estNormalized.includes('aprobada'))dateBadgeContent=<Badge color="teal">COT. Aprobada</Badge>; else if(estNormalized.includes('rechazada'))dateBadgeContent=<Badge color="gray">COT. Rechazada</Badge>; else dateBadgeContent=<Badge color="amberSolid"><FileText size={12}/> Cotización</Badge>; }
-    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#7657FF]" /></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && restante > 0 && (<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full mt-3 py-2.5" icon={DollarSign}>+ Registrar abono</AppButton>)}</div>{!isCotizacion && (<div className="mb-3" onClick={(e)=>e.stopPropagation()}><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Estado de la reserva</label><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Completado">Completado</option><option value="Cancelado">Cancelado</option></select></div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
+    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{!isCotizacion && estNormalized.includes('rechaz') && (<Badge color="gray">Rechazada</Badge>)}{!isCotizacion && (estNormalized==='cancelado' || estNormalized==='cancelada') && (<Badge color="rose">Cancelada</Badge>)}{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#7657FF]" /></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && (<div className="mt-3 pt-3 border-t border-slate-200/70"><div className="flex items-center justify-between mb-2.5"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gastos registrados</span><span className="text-sm font-black text-rose-500">-${gastosInternos.toFixed(2)}</span></div><div className={`grid gap-2 ${restante > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>{restante > 0 && <AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full py-2.5 px-2 text-[11px]" icon={DollarSign}>+ Abono</AppButton>}<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarGasto(ev); }} variant="default" className="w-full py-2.5 px-2 text-[11px] bg-rose-50 text-rose-600 border-rose-100" icon={Receipt}>+ Gasto</AppButton></div></div>)}</div>{!isCotizacion && (<div className="mb-3" onClick={(e)=>e.stopPropagation()}><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Estado de la reserva</label><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Completado">Completado</option><option value="Cancelado">Cancelado</option><option value="Rechazada">Rechazada</option></select></div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
 });
 
 const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
@@ -814,8 +956,13 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
 // --- APP COMPONENT ---
 export default function App() {
   const lastActivityRef = useRef(Date.now()); 
-  const [currentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [appSettings, setAppSettings] = useState(() => { const saved = utils.getSafeLocal('diverty_settings'); return saved ? JSON.parse(saved) : { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }; });
+  // Mantiene día/mes financiero vivo aunque la app permanezca abierta durante medianoche.
+  useEffect(() => {
+      const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+      return () => clearInterval(timer);
+  }, []);
   
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
   const [isAuthLoading, setIsAuthLoading] = useState(true); 
@@ -849,6 +996,9 @@ export default function App() {
   
   const handleToggleProv = useCallback((id) => setExpandedProvId(prev => prev === id ? null : id), []);
   const [modalConfig, setModalConfig] = useState({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); 
+  const [expenseModal, setExpenseModal] = useState({ isOpen: false, event: null });
+  const [monthlyReport, setMonthlyReport] = useState(null);
+  const [monthlyReportLoading, setMonthlyReportLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null }); 
   const [clientEditModal, setClientEditModal] = useState({ isOpen: false, oldName: '', clientKey: '' });
   const [toastAlert, setToastAlert] = useState({ isOpen: false, message: '', success: false }); 
@@ -1008,9 +1158,9 @@ export default function App() {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
+  const stateRef = useRef({ modalConfig, expenseModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
   useEffect(() => { 
-      stateRef.current = { modalConfig, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen }; 
+      stateRef.current = { modalConfig, expenseModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen }; 
   });
   
   useEffect(() => {
@@ -1023,6 +1173,7 @@ export default function App() {
         if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
         else if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
         else if (s.isPrinting) { setIsPrinting(false); blocked = true; }
+        else if (s.expenseModal?.isOpen) { setExpenseModal({ isOpen:false, event:null }); blocked = true; }
         else if (s.modalConfig?.isOpen) { setModalConfig(p => ({...p, isOpen: false})); blocked = true; }
         else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); blocked = true; }
         else if (s.proveedorModal?.isOpen) { setProveedorModal({ isOpen: false, data: null }); blocked = true; }
@@ -1238,7 +1389,7 @@ export default function App() {
   useEffect(() => {
     const needsHistory = activeTab === 'clientes' || activeTab === 'proveedores' ||
       (activeTab === 'finanzas' && financePeriod === 'todos') ||
-      (activeTab === 'eventos' && (viewMode === 'todas' || viewMode === 'pendientes' || viewMode === 'completadas' || !!deferredGlobalSearch || !!filterDate));
+      (activeTab === 'eventos' && (viewMode === 'todas' || viewMode === 'pendientes' || viewMode === 'completadas' || viewMode === 'canceladas' || !!deferredGlobalSearch || !!filterDate));
     if (needsHistory) loadFullHistory(false);
   }, [activeTab, viewMode, deferredGlobalSearch, filterDate, loadFullHistory, financePeriod]);
 
@@ -1294,7 +1445,7 @@ export default function App() {
   // apuntando a un Santa desactivado (por ejemplo, Santa 2 cuando solo queda Santa 1).
   useEffect(() => {
     if (!firebaseUser || christmasAutoAssignBusyRef.current) return;
-    const isChristmas = e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''));
+    const isChristmas = e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''));
     const capacity = Math.max(1, Number(christmasSantaCapacity) || 1);
     const santaNames = Array.from({length: capacity}, (_, i) => `Santa ${i + 1}`);
     const pending = eventosActivos.filter(e => {
@@ -1338,7 +1489,7 @@ export default function App() {
     const map = new Map();
     eventosActivos.forEach(e => {
       const es = utils.normalizeText(e.estado);
-      if (!e.fecha || es === 'cancelado' || es.includes('rechaz') || es.includes('cotizaci') || es.includes('cot.')) return;
+      if (!e.fecha || isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return;
       // Normaliza fechas que puedan venir como YYYY-MM-DD, ISO o con espacios.
       const fechaKey = String(e.fecha).trim().slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaKey)) return;
@@ -1371,7 +1522,7 @@ export default function App() {
         const isHoy = e.fecha === todayStr;
         const isManana = e.fecha === tomorrowStr;
         
-        if(es !== 'cancelado' && !es.includes('cotizaci') && !es.includes('cot.')) {
+        if(!isArchivedReservation(e) && !isPendingWebRequest(e) && !es.includes('cotizaci') && !es.includes('cot.')) {
             const t = utils.safeNum(e.total), a = utils.safeNum(e.abono), g = getCostosEvento(e), p = t - g;  
             let evYear = 0, evMonth = 0, evDay = 0;
             
@@ -1412,7 +1563,7 @@ export default function App() {
      const clientsMap = new Map();
      eventosActivos.forEach(e => {
          const es = utils.normalizeText(e.estado);
-         if(es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return;
+         if(isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return;
 
          const clientKey = getClientKey(e);
          if(!clientKey) return;
@@ -1480,16 +1631,27 @@ export default function App() {
   
   const agendaFiltrados = useMemo(() => { 
       return eventosActivos.filter(e => { 
-          const es = utils.normalizeText(e.estado); 
-          if (es.includes('cotizaci') || es.includes('cot.')) return false; 
-          if ((es === 'cancelado' || es.includes('rechaz')) && viewMode !== 'todas') return false;
+          const es = utils.normalizeText(e.estado);
+          const archivada = isArchivedReservation(e);
+          const solicitudWebPendiente = isPendingWebRequest(e);
+          if (es.includes('cotizaci') || es.includes('cot.')) return false;
+
+          // Las solicitudes web todavía no aceptadas viven únicamente en Notificaciones.
+          // Solo entran a la Agenda cuando se aceptan desde la app.
+          if (solicitudWebPendiente) return false;
+
+          // Canceladas y rechazadas tienen su propio archivo y no ensucian la agenda activa.
+          if (viewMode === 'canceladas') {
+              if (!archivada) return false;
+          } else if (archivada) return false;
+
           if (deferredGlobalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(deferredGlobalSearch.toLowerCase())) return false; 
           if (filterDate && e.fecha !== filterDate) return false; 
           
           if (!filterDate && !deferredGlobalSearch) { 
               // Una reserva completada sale de la operación diaria inmediatamente.
-              // Sigue disponible en "Completadas", "Todas", Clientes y Finanzas cuando se carga el historial.
-              if (viewMode !== 'todas' && viewMode !== 'completadas' && es === 'completado') return false;
+              // Sigue disponible en Completadas y en el historial.
+              if (viewMode !== 'todas' && viewMode !== 'completadas' && viewMode !== 'canceladas' && es === 'completado') return false;
               if (viewMode === 'hoy') return e.fecha === todayStr; 
               let dt; 
               if (e.fecha) { const parts = String(e.fecha).split('-'); if (parts.length === 3) dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)); } 
@@ -1498,6 +1660,7 @@ export default function App() {
               if (viewMode === 'findesemana') return dt ? (dt.getDay() === 0 || dt.getDay() === 6) : false; 
               if (viewMode === 'pendientes') return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && es !== 'completado'; 
               if (viewMode === 'completadas') return es === 'completado';
+              if (viewMode === 'canceladas') return archivada;
               if (viewMode === 'todas') return true; 
           } 
           return true; 
@@ -1528,7 +1691,7 @@ export default function App() {
   const evtCalculoBase = useMemo(() => {
     return eventosActivos.filter(e => {
       const es = utils.normalizeText(e.estado);
-      if (es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return false;
+      if (isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return false;
       if (financePeriod === 'todos') return true;
       if (!e.fecha) return false;
       const parts = String(e.fecha).trim().split('-');
@@ -1556,11 +1719,17 @@ export default function App() {
         tI: facturado, tG: costosTotales, bT: ganancia, deudaTotalGlobal: porCobrar
       };
   }, [evtCalculoBase]);
+
+  const gastosPorCategoria = useMemo(() => evtCalculoBase.reduce((acc, ev) => {
+      const b = getExpenseBreakdownEvento(ev);
+      acc.personal += b.personal; acc.transporte += b.transporte; acc.globos += b.globos; acc.otros += b.otros;
+      return acc;
+  }, { personal:0, transporte:0, globos:0, otros:0 }), [evtCalculoBase]);
   
   const finanzasMes = useMemo(() => { 
     const ingresosEsteMesGlobal = eventosActivos.filter(e => { 
       const es = utils.normalizeText(e.estado); 
-      if (es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return false; 
+      if (isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return false; 
       if (!e.fecha) return false; 
       const parts = String(e.fecha).trim().split('-'); 
       return parseInt(parts[0], 10) === financeYear && parseInt(parts[1], 10) === financeMonth; 
@@ -1581,7 +1750,7 @@ export default function App() {
       return NOMBRES_MESES.map((nombre, idx) => {
         const month = idx + 1;
         const value = eventosActivos.filter(e => {
-          if (!e.fecha || utils.normalizeText(e.estado) === 'cancelado' || utils.normalizeText(e.estado).includes('cot')) return false;
+          if (!e.fecha || isArchivedReservation(e) || isPendingWebRequest(e) || utils.normalizeText(e.estado).includes('cot')) return false;
           const parts = String(e.fecha).split('-');
           return parseInt(parts[0], 10) === financeYear && parseInt(parts[1], 10) === month;
         }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
@@ -1592,7 +1761,7 @@ export default function App() {
       const mesesLabels = []; const d = new Date(todayTime);
       for (let i = 5; i >= 0; i--) { const temp = new Date(d.getFullYear(), d.getMonth() - i, 1); mesesLabels.push({ label: NOMBRES_MESES[temp.getMonth()].substring(0,3), year: temp.getFullYear(), month: temp.getMonth() + 1 }); }
       return mesesLabels.map(m => {
-        const val = eventosActivos.filter(e => { if (!e.fecha || utils.normalizeText(e.estado) === 'cancelado' || utils.normalizeText(e.estado).includes('cot')) return false; const parts = e.fecha.split('-'); return parseInt(parts[0], 10) === m.year && parseInt(parts[1], 10) === m.month; }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
+        const val = eventosActivos.filter(e => { if (!e.fecha || isArchivedReservation(e) || isPendingWebRequest(e) || utils.normalizeText(e.estado).includes('cot')) return false; const parts = e.fecha.split('-'); return parseInt(parts[0], 10) === m.year && parseInt(parts[1], 10) === m.month; }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
         return { date: m.label, value: val };
       });
     }
@@ -1600,7 +1769,7 @@ export default function App() {
     const semanas = [ { label: 'Sem 1', start: 1, end: 7 }, { label: 'Sem 2', start: 8, end: 14 }, { label: 'Sem 3', start: 15, end: 21 }, { label: 'Sem 4', start: 22, end: 28 }, { label: 'Sem 5', start: 29, end: 31 } ];
     return semanas.map(s => {
       const value = eventosActivos.filter(e => {
-        if (!e.fecha || utils.normalizeText(e.estado) === 'cancelado' || utils.normalizeText(e.estado).includes('cot')) return false;
+        if (!e.fecha || isArchivedReservation(e) || isPendingWebRequest(e) || utils.normalizeText(e.estado).includes('cot')) return false;
         const parts = e.fecha.split('-'); const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10), d = parseInt(parts[2], 10);
         return y === financeYear && m === financeMonth && d >= s.start && d <= s.end;
       }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
@@ -1655,21 +1824,78 @@ export default function App() {
       showAlert("Evento duplicado. Verifica los datos y guarda.", true); 
   }, [showAlert]);
   
+  const transitionEventStatus = useCallback(async (id, nuevoEstado, { requirePendingWeb = false, extra = {} } = {}) => {
+      if (!id) throw new Error('EVENT_ID_REQUIRED');
+      let updatedData = null;
+      await runTransaction(db, async tx => {
+          const ref = getDocRef(id);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+          const current = snap.data() || {};
+          if (requirePendingWeb) {
+              if (utils.normalizeText(current.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
+              if (utils.normalizeText(current.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
+          }
+
+          const nextState = utils.normalizeText(nuevoEstado);
+          const releasesCapacity = nextState === 'cancelado' || nextState === 'cancelada' || nextState.includes('rechaz');
+          let slotRef = null;
+          let slotSnap = null;
+          if (releasesCapacity && current.fecha && current.hora) {
+              const esNavidad = current.esNavidad === true || /entregas de nochebuena/i.test(String(current.servicio || ''));
+              const safeSlot = `${String(current.fecha)}_${String(current.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+              slotRef = availabilityRef(`${esNavidad ? 'slot_santa_' : 'slot_'}${safeSlot}`);
+              slotSnap = await tx.get(slotRef);
+          }
+
+          const nowIso = new Date().toISOString();
+          const stateMeta = nextState.includes('rechaz')
+              ? { rejectedAt: nowIso }
+              : (nextState === 'cancelado' || nextState === 'cancelada' ? { cancelledAt: nowIso } : {});
+          const patch = {
+              estado: nuevoEstado,
+              ...stateMeta,
+              ...extra,
+              _rev: (Number(current._rev) || 0) + 1,
+              updatedAt: nowIso
+          };
+          updatedData = { ...current, ...patch, id };
+          tx.set(ref, patch, { merge: true });
+
+          // Al cancelar o rechazar, libera también el candado interno del horario.
+          // El registro principal se conserva para el archivo de Canceladas / Rechazadas.
+          if (releasesCapacity && slotRef && slotSnap?.exists()) {
+              const slot = slotSnap.data() || {};
+              if (Array.isArray(slot.reservationIds)) {
+                  const ids = slot.reservationIds.map(String).filter(x => x !== String(id));
+                  if (ids.length <= 0) tx.delete(slotRef);
+                  else tx.set(slotRef, { ...slot, count: ids.length, reservationIds: ids, updatedAt: nowIso });
+              } else {
+                  const nextCount = Math.max(0, (Number(slot.count) || 1) - 1);
+                  if (nextCount <= 0) tx.delete(slotRef);
+                  else tx.set(slotRef, { ...slot, count: nextCount, updatedAt: nowIso });
+              }
+          }
+      });
+      await publishSync('evento', id, 'update');
+      setEventos(prev => prev.map(e => e.id === id ? updatedData : e));
+      return updatedData;
+  }, [publishSync]);
+
   const handleUpdateEstado = useCallback(async (id, nuevoEstado) => {
       utils.triggerHaptic('light');
       const anterior = eventos.find(e => e.id === id)?.estado || 'Pendiente';
       const nowIso = new Date().toISOString();
       setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado, updatedAt: nowIso } : e));
       try {
-          await setDoc(getDocRef(id), { estado: nuevoEstado, updatedAt: nowIso }, { merge: true });
-          publishSync('evento', id, 'update').catch(() => {});
+          await transitionEventStatus(id, nuevoEstado);
           showAlert(`Estado actualizado a ${nuevoEstado}`, true);
       } catch (err) {
           console.error("Error actualizando estado:", err);
           setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: anterior } : e));
           showAlert("No se pudo actualizar el estado de la reserva.", false);
       }
-  }, [eventos, showAlert, publishSync]);
+  }, [eventos, showAlert, transitionEventStatus]);
   
   const handleRegistrarAbono = useCallback(async (ev) => {
       utils.triggerHaptic('light');
@@ -1710,6 +1936,120 @@ export default function App() {
           showAlert("No se pudo registrar el abono. Verifica tu conexión e intenta nuevamente.", false);
       }
   }, [showAlert, publishSync]);
+
+  const handleOpenExpense = useCallback((ev) => {
+      if (!ev?.id) return;
+      utils.triggerHaptic('light');
+      setExpenseModal({ isOpen:true, event:ev });
+  }, []);
+
+  const handleSaveQuickExpense = useCallback(async (ev, expense) => {
+      const monto = utils.safeNum(expense?.monto);
+      if (!ev?.id || monto <= 0) return;
+      const categoria = ['personal','transporte','globos','otros'].includes(String(expense?.categoria || '').toLowerCase()) ? String(expense.categoria).toLowerCase() : 'otros';
+      const categoriaLabel = EXPENSE_CATEGORIES.find(x=>x.id===categoria)?.label || 'Otro gasto';
+      const expenseItem = {
+          id: `gas-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+          categoria,
+          monto:Number(monto.toFixed(2)),
+          detalle:String(expense?.detalle || '').trim(),
+          fecha:String(expense?.fecha || utils.getLocalYYYYMMDD(new Date())),
+          createdAt:new Date().toISOString()
+      };
+      try {
+          let savedPatch = null;
+          await runTransaction(db, async tx => {
+              const ref = getDocRef(ev.id);
+              const snap = await tx.get(ref);
+              if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
+              const actual = snap.data() || {};
+              const baseInterno = getGastosInternosEvento(actual);
+              const nuevoTotal = Number((baseInterno + monto).toFixed(2));
+              const items = [...getExpenseItems(actual), expenseItem];
+              const linea = `${expenseItem.fecha} · ${categoriaLabel}: $${expenseItem.monto.toFixed(2)}${expenseItem.detalle ? ` · ${expenseItem.detalle}` : ''}`;
+              const detalleGastos = [String(actual.detalleGastos || '').trim(), linea].filter(Boolean).join('\n');
+              savedPatch = {
+                  gastos:nuevoTotal,
+                  gastosItems:items,
+                  detalleGastos,
+                  costosSeparados:true,
+                  _rev:(Number(actual._rev)||0)+1,
+                  updatedAt:new Date().toISOString()
+              };
+              tx.set(ref, savedPatch, { merge:true });
+          });
+          await publishSync('evento', ev.id, 'update');
+          setEventos(prev=>prev.map(item=>item.id===ev.id?{...item,...savedPatch}:item));
+          setExpenseModal({ isOpen:false, event:null });
+          showAlert(`${categoriaLabel}: $${monto.toFixed(2)} registrado.`, true);
+      } catch (err) {
+          console.error('Error registrando gasto rápido:', err);
+          showAlert('No se pudo registrar el gasto. Revisa la conexión e intenta nuevamente.', false);
+          throw err;
+      }
+  }, [publishSync, showAlert]);
+
+  const generateMonthlyReport = useCallback(async (year, month, finalized = false) => {
+      const y = Number(year), m = Number(month);
+      if (!firebaseUser || !Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return null;
+      const start = `${y}-${String(m).padStart(2,'0')}-01`;
+      const end = `${y}-${String(m).padStart(2,'0')}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
+      const snap = await getDocs(query(collection(db,'artifacts',appId,'public','data','eventos'), where('fecha','>=',start), where('fecha','<=',end)));
+      const rows = snap.docs.filter(d=>!d.data()?._system).map(d=>({...d.data(),id:d.id}));
+      const base = buildMonthlyFinanceReport(rows,y,m);
+      const payload = {
+          ...base,
+          finalized:finalized === true,
+          generadoAt:new Date().toISOString(),
+          tipo:'reporte_mensual_finanzas',
+          version:1
+      };
+      await setDoc(getConfigRef(`reporte_mensual_${y}_${String(m).padStart(2,'0')}`), payload, { merge:true });
+      return payload;
+  }, [firebaseUser]);
+
+  // Cierre mensual sin servidor: el último día prepara el reporte y, si la app no estuvo
+  // abierta, la primera apertura del mes siguiente lo genera/finaliza automáticamente.
+  useEffect(() => {
+      if (!firebaseUser) return;
+      let cancelled = false;
+      (async () => {
+          try {
+              const now = new Date(`${todayStr}T12:00:00`);
+              const y = now.getFullYear(), m = now.getMonth()+1;
+              const lastDay = new Date(y,m,0).getDate();
+              if (now.getDate() === lastDay) await generateMonthlyReport(y,m,false);
+
+              const prev = new Date(y, m-2, 1);
+              const py = prev.getFullYear(), pm = prev.getMonth()+1;
+              const ref = getConfigRef(`reporte_mensual_${py}_${String(pm).padStart(2,'0')}`);
+              const existing = await getDoc(ref);
+              if (!existing.exists() || existing.data()?.finalized !== true) await generateMonthlyReport(py,pm,true);
+          } catch (err) {
+              if (!cancelled) console.warn('No se pudo completar el cierre mensual automático:', err);
+          }
+      })();
+      return () => { cancelled = true; };
+  }, [firebaseUser, todayStr, generateMonthlyReport]);
+
+  useEffect(() => {
+      if (!firebaseUser || activeTab !== 'finanzas' || financePeriod === 'anio' || financePeriod === 'todos') { setMonthlyReport(null); return; }
+      let cancelled = false;
+      setMonthlyReportLoading(true);
+      const y = financeYear, m = financeMonth;
+      const ref = getConfigRef(`reporte_mensual_${y}_${String(m).padStart(2,'0')}`);
+      getDoc(ref).then(async snap => {
+          if (cancelled) return;
+          if (snap.exists()) { setMonthlyReport(snap.data()); return; }
+          const currentKey = todayStr.slice(0,7), targetKey = `${y}-${String(m).padStart(2,'0')}`;
+          if (targetKey < currentKey) {
+              const generated = await generateMonthlyReport(y,m,true);
+              if (!cancelled) setMonthlyReport(generated);
+          } else setMonthlyReport(null);
+      }).catch(err=>{ console.warn('No se pudo leer el reporte mensual:',err); if(!cancelled)setMonthlyReport(null); })
+        .finally(()=>{ if(!cancelled)setMonthlyReportLoading(false); });
+      return () => { cancelled = true; };
+  }, [firebaseUser, activeTab, financePeriod, financeYear, financeMonth, todayStr, generateMonthlyReport]);
 
   // Counters and event numbers are committed together; no guessed fallback numbers.
   const ensureDocumentNumber = useCallback(async (eventData, type) => {
@@ -1753,7 +2093,7 @@ export default function App() {
               const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
               confirmedData = {
                   ...remote,
-                  estado: 'Confirmada',
+                  estado: 'Confirmado',
                   ...(esNavidad ? { esNavidad: true, recursoNavidad: 'Santa', santaAsignado: santaAsignado || remote.santaAsignado || 'Santa 1' } : {}),
                   _rev: (Number(remote._rev) || 0) + 1,
                   updatedAt: new Date().toISOString()
@@ -1771,6 +2111,22 @@ export default function App() {
           return false;
       }
   }, [publishSync, showAlert]);
+
+
+  const handleRejectWebRequest = useCallback(async (event) => {
+      if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return false;
+      try {
+          utils.triggerHaptic('light');
+          await transitionEventStatus(event.id, 'Rechazada', { requirePendingWeb: true, extra: { decisionSource: 'app' } });
+          showAlert('Solicitud rechazada. El horario quedó liberado.', true);
+          return true;
+      } catch (err) {
+          console.error('Error rechazando solicitud web:', err);
+          if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
+          else showAlert('No se pudo rechazar la reserva. Revisa la conexión e intenta nuevamente.', false);
+          return false;
+      }
+  }, [transitionEventStatus, showAlert]);
 
   const handleSaveFromModal = useCallback(async (formDataToSave, isCotizacionMode) => {
     if (!formDataToSave.cliente?.trim()) return showAlert("Por favor, ingresa el nombre del cliente."); 
@@ -1793,7 +2149,7 @@ export default function App() {
     const estNormal = utils.normalizeText(safeData.estado);
     const isCotiz = estNormal.includes('cotizaci') || estNormal.includes('cot.'); 
     const hasCollision = !isCotiz && eventosActivos.some(e => { 
-        if (e.id === evtId || utils.normalizeText(e.estado) === 'cancelado' || utils.normalizeText(e.estado).includes('cotizaci') || utils.normalizeText(e.estado).includes('cot.') || e.fecha !== safeData.fecha) return false; 
+        if (e.id === evtId || isArchivedReservation(e) || utils.normalizeText(e.estado).includes('cotizaci') || utils.normalizeText(e.estado).includes('cot.') || e.fecha !== safeData.fecha) return false; 
         if (!e.hora || !safeData.hora) return false; 
         const [h1, m1] = e.hora.split(':').map(Number), [h2, m2] = safeData.hora.split(':').map(Number); 
         return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) < 180; 
@@ -2111,14 +2467,14 @@ export default function App() {
   }, [printData, printType, appSettings, showAlert]);
 
   const downloadExcel = useCallback(() => {
-    utils.triggerHaptic('success'); const filteredForExport = eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); if (est === 'cancelado' || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(e.total) <= 0) return false; if (financePeriod === 'todos') return true; const fStr = String(e.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); if (financePeriod === 'anio') return parseInt(ey) === financeYear; return parseInt(ey) === financeYear && parseInt(em) === financeMonth; } return false; });
-    let csv = 'Fecha,Cliente,Tipo Evento,Ubicacion,Facturado,Cobrado,Por Cobrar,Gastos Internos,Proveedores,Costos Totales,Ganancia Estimada,Estado\n'; filteredForExport.forEach(e => { const t = utils.safeNum(e.total), cobrado = Math.min(utils.safeNum(e.abono), t), pendiente = Math.max(t - utils.safeNum(e.abono), 0), gi = getGastosInternosEvento(e), prov = getCostoProveedoresEvento(e), g = gi + prov; csv += `"${e.fecha||''}","${String(e.cliente||'').replace(/,/g,'')}","${String(e.tipoEvento||'').replace(/,/g,'')}","${String(e.ubicacion||'').replace(/,/g,'')}",${t},${cobrado},${pendiente},${gi},${prov},${g},${t-g},"${e.estado||''}"\n`; });
+    utils.triggerHaptic('success'); const filteredForExport = eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); if (isArchivedReservation(e) || isPendingWebRequest(e) || est.includes('cotizaci') || est.includes('cot.') || utils.safeNum(e.total) <= 0) return false; if (financePeriod === 'todos') return true; const fStr = String(e.fecha || ''); if (fStr) { const [ey, em] = fStr.split('-'); if (financePeriod === 'anio') return parseInt(ey) === financeYear; return parseInt(ey) === financeYear && parseInt(em) === financeMonth; } return false; });
+    let csv = 'Fecha,Cliente,Tipo Evento,Ubicacion,Facturado,Cobrado,Por Cobrar,Gastos Internos,Personal,Transporte,Globos-Materiales,Otros,Proveedores,Costos Totales,Ganancia Estimada,Estado\n'; filteredForExport.forEach(e => { const t = utils.safeNum(e.total), cobrado = Math.min(utils.safeNum(e.abono), t), pendiente = Math.max(t - utils.safeNum(e.abono), 0), gi = getGastosInternosEvento(e), gb = getExpenseBreakdownEvento(e), prov = getCostoProveedoresEvento(e), g = gi + prov; csv += `"${e.fecha||''}","${String(e.cliente||'').replace(/,/g,'')}","${String(e.tipoEvento||'').replace(/,/g,'')}","${String(e.ubicacion||'').replace(/,/g,'')}",${t},${cobrado},${pendiente},${gi},${gb.personal},${gb.transporte},${gb.globos},${gb.otros},${prov},${g},${t-g},"${e.estado||''}"\n`; });
     const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Reporte_Finanzas_Diverty_${financePeriod === 'todos' ? 'Historico' : financePeriod === 'anio' ? `Anual_${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}_${financeYear}`}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
   }, [eventosActivos, financePeriod, financeYear, financeMonth]);
 
   const handleLogin = useCallback(async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, emailInput, passwordInput); utils.triggerHaptic('success'); setEmailInput(''); setPasswordInput(''); } catch (error) { utils.triggerHaptic('warning'); showAlert("Credenciales incorrectas", false); } }, [emailInput, passwordInput, showAlert]);
   const handleLogout = useCallback(async () => { try { await signOut(auth); } catch (error) { showAlert("Error al cerrar sesión"); } }, [showAlert]);
-  const handleCopiarCobros = useCallback(() => { utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n"; eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && est !== 'cancelado' && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(e => { text += `👤 *${e.cliente}*\n📅 Fecha: ${e.fecha}\n💰 Debe: $${(utils.safeNum(e.total) - utils.safeNum(e.abono)).toFixed(2)}\n📞 WA: ${e.telefono}\n\n`; }); navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true); }, [eventosActivos, showAlert]);
+  const handleCopiarCobros = useCallback(() => { utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n"; eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && !isArchivedReservation(e) && !isPendingWebRequest(e) && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(e => { text += `👤 *${e.cliente}*\n📅 Fecha: ${e.fecha}\n💰 Debe: $${(utils.safeNum(e.total) - utils.safeNum(e.abono)).toFixed(2)}\n📞 WA: ${e.telefono}\n\n`; }); navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true); }, [eventosActivos, showAlert]);
 
   const activarNotificaciones = useCallback(async () => {
     if (!messaging) { showAlert("Notificaciones no disponibles.", false); return; }
@@ -2276,7 +2632,7 @@ export default function App() {
                  {stats.eventosHoy.length === 0 ? (
                      <div className="text-center py-16 bg-white/80 backdrop-blur-md rounded-[24px] border border-slate-200/50 shadow-sm"><Sun size={56} className="mx-auto text-slate-300 mb-5" strokeWidth={1.5}/><p className="text-slate-900 font-extrabold text-xl mb-2 tracking-tight">¡Todo Despejado!</p><p className="text-slate-500 font-medium text-sm">No hay eventos operativos para hoy.</p></div>
                  ) : (
-                     stats.eventosHoy.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} forceExpanded={String(e.id) === String(notificationReservationId)} />)
+                     stats.eventosHoy.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} />)
                  )}
              </div>
           </div>
@@ -2284,7 +2640,7 @@ export default function App() {
      }
      const reservasSemanaCount = eventosActivos.filter(e => {
         const estado = utils.normalizeText(e.estado);
-        if (!e.fecha || estado === 'cancelado' || estado === 'completado' || estado.includes('cotizaci') || estado.includes('cot.')) return false;
+        if (!e.fecha || isArchivedReservation(e) || isPendingWebRequest(e) || estado === 'completado' || estado.includes('cotizaci') || estado.includes('cot.')) return false;
         const key = String(e.fecha).trim().slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
         const [y,m,d] = key.split('-').map(Number);
@@ -2397,7 +2753,7 @@ export default function App() {
               <div className="mt-5 pt-5 border-t border-slate-200/60 relative">
                   <div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-amber-400/15 to-orange-500/10 text-amber-500 border border-amber-400/15 flex items-center justify-center shadow-sm"><FileText size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Seguimiento</p><h3 className="font-black text-xl sm:text-2xl text-slate-950 tracking-[-0.02em]">Cotizaciones Activas</h3></div></div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} forceExpanded={String(e.id) === String(notificationReservationId)} />)}
+                      {cotizacionesActivas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} />)}
                   </div>
               </div>
           )}
@@ -2409,7 +2765,7 @@ export default function App() {
               </div>
               {proximasReservas.length > 0 ? (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {proximasReservas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} forceExpanded={String(e.id) === String(notificationReservationId)} />)}
+                      {proximasReservas.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} />)}
                   </div>
               ) : (
                   <div className="relative overflow-hidden rounded-[24px] border border-white/90 bg-white/90 backdrop-blur-2xl px-4 py-4 shadow-[0_16px_40px_rgba(15,23,42,.07)]">
@@ -2456,8 +2812,9 @@ export default function App() {
 
     const renderListView = () => {
         const grouped = agendaFiltrados.reduce((acc, ev) => { if(!acc[ev.fecha]) acc[ev.fecha] = []; acc[ev.fecha].push(ev); return acc; }, {});
-        const fechasOrdenadas = Object.keys(grouped).sort((a, b) => viewMode === 'completadas' ? String(b).localeCompare(String(a)) : String(a).localeCompare(String(b)));
-        if (viewMode === 'completadas') {
+        const reverseHistory = viewMode === 'completadas' || viewMode === 'canceladas';
+        const fechasOrdenadas = Object.keys(grouped).sort((a, b) => reverseHistory ? String(b).localeCompare(String(a)) : String(a).localeCompare(String(b)));
+        if (reverseHistory) {
             Object.values(grouped).forEach(items => items.sort((a, b) => String(b.hora || '').localeCompare(String(a.hora || ''))));
         }
         return (
@@ -2465,10 +2822,10 @@ export default function App() {
                 {fechasOrdenadas.map(fecha => (
                     <div key={fecha} className="flex flex-col">
                         <div className="flex items-center justify-between gap-3 mb-5">
-                            <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-gradient-to-br from-[#EEF2FF] to-[#F6EEFF] border border-[#7657FF]/15 flex items-center justify-center shadow-sm"><CalendarDays size={20} className="text-[#7657FF]" strokeWidth={2.5}/></div><div><p className="text-[10px] uppercase tracking-[0.18em] font-black text-slate-400">{fecha === todayStr ? 'Hoy' : 'Agenda'}</p><h3 className="text-lg sm:text-xl font-black text-slate-950 tracking-tight">{fecha ? String(fecha).split('-').reverse().join('/') : 'Sin fecha'}</h3></div></div>
+                            <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-gradient-to-br from-[#EEF2FF] to-[#F6EEFF] border border-[#7657FF]/15 flex items-center justify-center shadow-sm"><CalendarDays size={20} className="text-[#7657FF]" strokeWidth={2.5}/></div><div><p className="text-[10px] uppercase tracking-[0.18em] font-black text-slate-400">{viewMode === 'canceladas' ? 'Canceladas / Rechazadas' : (fecha === todayStr ? 'Hoy' : 'Agenda')}</p><h3 className="text-lg sm:text-xl font-black text-slate-950 tracking-tight">{fecha ? String(fecha).split('-').reverse().join('/') : 'Sin fecha'}</h3></div></div>
                             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7657FF] bg-[#7657FF]/8 border border-[#7657FF]/10 px-3 py-2 rounded-full">{grouped[fecha].length} {grouped[fecha].length === 1 ? 'evento' : 'eventos'}</span>
                         </div>
-                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[58px_1fr] sm:grid-cols-[74px_1fr] gap-3 sm:gap-4 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} /></div></div>)}</div>
+                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[58px_1fr] sm:grid-cols-[74px_1fr] gap-3 sm:gap-4 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} /></div></div>)}</div>
                     </div>
                 ))}
             </div>
@@ -2478,12 +2835,12 @@ export default function App() {
     return (
       <div className={`${isChristmasOpsOpen ? '' : 'animate-fadeIn'} min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]`}>
         <div className="pt-1 sm:pt-3 mb-6 sm:mb-8 flex flex-col gap-3 relative z-10">
-            <div className="flex flex-col gap-4"><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Agenda</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Organiza tus eventos con precisión</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsAgendaSummaryOpen(true)}} className="w-full flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] px-5 py-3.5 text-white shadow-[0_16px_34px_rgba(184,61,255,.26)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/15 border border-white/15 flex items-center justify-center shadow-inner"><CalendarDays size={27}/></div><div className="text-left min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumen de agenda</p><p className="text-2xl font-black leading-tight mt-1">{eventosActivos.filter(e=>{const d=String(e.fecha||''); const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6); const ds=new Date(d+'T00:00:00'); return ds>=start&&ds<=end&&!/cancelado|cot/i.test(String(e.estado||''));}).length} eventos <span className="text-base font-bold text-white/80">esta semana</span></p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button></div>
+            <div className="flex flex-col gap-4"><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Agenda</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Organiza tus eventos con precisión</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsAgendaSummaryOpen(true)}} className="w-full flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] px-5 py-3.5 text-white shadow-[0_16px_34px_rgba(184,61,255,.26)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/15 border border-white/15 flex items-center justify-center shadow-inner"><CalendarDays size={27}/></div><div className="text-left min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumen de agenda</p><p className="text-2xl font-black leading-tight mt-1">{eventosActivos.filter(e=>{const d=String(e.fecha||''); const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6); const ds=new Date(d+'T00:00:00'); return ds>=start&&ds<=end&&!isPendingWebRequest(e)&&!/cancelado|rechaz|cot/i.test(String(e.estado||''));}).length} eventos <span className="text-base font-bold text-white/80">esta semana</span></p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button></div>
             <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(true)}} className="w-full mt-1 flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] px-5 py-4 text-white shadow-[0_16px_34px_rgba(217,31,45,.22)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/16 border border-white/20 flex items-center justify-center text-2xl">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/75">24 y 25 de diciembre</p><p className="text-xl font-black leading-tight mt-0.5">Operación Navidad</p><p className="text-[11px] font-bold text-white/80 mt-0.5">Santas · horarios · clientes · GPS</p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button>
             <div className="flex flex-col lg:flex-row gap-4 mt-3 sm:mt-5">
                  <div className="relative flex-1 group"><div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none z-20"><Search size={22} strokeWidth={2.6} className="text-[#7657FF] group-focus-within:text-[#7657FF] transition-colors" /></div><input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-white/95 backdrop-blur-xl border border-white rounded-[20px] pl-12 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#8B5CF6]/50 focus:ring-4 focus:ring-[#7657FF]/10 transition-all duration-300 shadow-[0_10px_28px_rgba(15,23,42,.06)] placeholder:text-slate-400" />{globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-400 hover:text-slate-700 transition-colors"><X size={18}/></button>}</div>
                  <div className="flex gap-2 overflow-x-auto scrollbar-hide p-1.5 items-center bg-white/70 backdrop-blur-xl rounded-[20px] border border-white shadow-[0_10px_30px_rgba(15,23,42,.05)]">
-                     {['hoy','semana','mes','pendientes'].map(v => (<button key={v} type="button" onClick={()=>{setFilterDate(''); setViewMode(v)}} className={`px-5 py-3.5 rounded-[14px] text-[10px] uppercase tracking-[0.1em] font-bold transition-all duration-300 ease-out whitespace-nowrap shadow-sm border active:scale-[0.98] ${viewMode===v&&!filterDate?'bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white border-transparent shadow-[0_10px_26px_rgba(184,61,255,0.30)]':'bg-white/90 backdrop-blur-xl text-slate-500 hover:text-slate-900 hover:bg-white border-slate-200/90'}`}>{v}</button>))}
+                     {[{id:'hoy',label:'Hoy'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'},{id:'pendientes',label:'Pendientes'},{id:'canceladas',label:'Canceladas / Rechazadas'}].map(item => (<button key={item.id} type="button" onClick={()=>{setFilterDate(''); setViewMode(item.id)}} className={`px-5 py-3.5 rounded-[14px] text-[10px] uppercase tracking-[0.1em] font-bold transition-all duration-300 ease-out whitespace-nowrap shadow-sm border active:scale-[0.98] ${viewMode===item.id&&!filterDate?'bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white border-transparent shadow-[0_10px_26px_rgba(184,61,255,0.30)]':'bg-white/90 backdrop-blur-xl text-slate-500 hover:text-slate-900 hover:bg-white border-slate-200/90'}`}>{item.label}</button>))}
                      <div className={`flex items-center justify-between px-5 py-3 rounded-[14px] transition-all duration-300 ease-out cursor-text focus-within:border-[#7657FF]/50 bg-white/90 backdrop-blur-xl border ${filterDate ? 'border-[#8B5CF6]/45 text-[#7657FF] shadow-md bg-[#7657FF]/8' : 'border-slate-200/90 shadow-sm text-slate-500 hover:bg-white'} shrink-0`}><div className="flex items-center flex-1 relative"><CalendarDays size={18} className={`mr-2.5 transition-colors duration-200`} /><input type="date" value={filterDate} onChange={(e) => { utils.triggerHaptic('light'); setFilterDate(e.target.value); }} className={`bg-transparent text-[11px] uppercase tracking-[0.1em] font-bold outline-none w-full flex-1 cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 absolute inset-0 opacity-0 z-20`} /><span className={`text-[11px] uppercase tracking-[0.1em] font-bold pointer-events-none relative z-10`}>{filterDate ? String(filterDate).split('-').reverse().join('/') : 'Fecha'}</span></div>{filterDate && <button type="button" onClick={() => {utils.triggerHaptic('light'); setFilterDate('');}} className="text-slate-400 hover:text-[#FF3EA5] ml-3 z-30 transition-all cursor-pointer"><X size={16}/></button>}</div>
                  </div>
             </div>
@@ -2495,11 +2852,11 @@ export default function App() {
             ) : agendaFiltrados.length === 0 ? (
                 <div className="mt-6 rounded-[26px] border border-slate-200/80 bg-white/90 backdrop-blur-xl px-5 py-5 shadow-[0_14px_38px_rgba(15,23,42,.06)] flex items-center gap-4"><div className="w-14 h-14 shrink-0 rounded-[18px] bg-gradient-to-br from-[#F2EEFF] to-[#FFF0F8] flex items-center justify-center border border-[#7657FF]/10"><Search size={25} className="text-[#7657FF]"/></div><div className="min-w-0 flex-1"><h3 className="text-lg font-black text-slate-950">Sin resultados</h3><p className="text-sm font-medium text-slate-500 mt-0.5">No se encontraron reservas para este filtro.</p></div>{(!!deferredGlobalSearch || !!filterDate) && <button type="button" onClick={()=>{setGlobalSearch(''); setFilterDate(''); setViewMode('todas');}} className="shrink-0 text-white font-black px-4 py-3 rounded-[14px] bg-gradient-to-r from-[#FF3EA5] to-[#7657FF] shadow-[0_8px_20px_rgba(184,61,255,.22)] uppercase tracking-wider text-[9px]">Limpiar</button>}</div>
             ) : (!!deferredGlobalSearch || !!filterDate) ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} forceExpanded={String(e.id) === String(notificationReservationId)} />)}</div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} />)}</div>
             ) : ( renderListView() )}
         </div>
         {isChristmasOpsOpen && (()=>{
-          const christmasEvents = eventosActivos.filter(e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''))).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
+          const christmasEvents = eventosActivos.filter(e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''))).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
           const closeChristmas = ()=>{utils.triggerHaptic('light');setExpandedChristmasId(null);setIsChristmasOpsOpen(false)};
           const enabledSantas = Array.from({length: Math.max(1, christmasSantaCapacity)}, (_,i)=>`Santa ${i+1}`);
           const assignedNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')));
@@ -2529,7 +2886,7 @@ export default function App() {
         })()}
         {isAgendaSummaryOpen && (()=>{
           const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6);
-          const weekEvents=eventosActivos.filter(e=>{const ds=new Date(String(e.fecha||'')+'T00:00:00'); return ds>=start&&ds<=end&&!/cancelado|cot/i.test(String(e.estado||''));}).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
+          const weekEvents=eventosActivos.filter(e=>{const ds=new Date(String(e.fecha||'')+'T00:00:00'); return ds>=start&&ds<=end&&!isPendingWebRequest(e)&&!/cancelado|rechaz|cot/i.test(String(e.estado||''));}).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
           const pendientes=weekEvents.reduce((n,e)=>n+Math.max(utils.safeNum(e.total)-utils.safeNum(e.abono),0),0);
           const cobrado=weekEvents.reduce((n,e)=>n+utils.safeNum(e.abono),0);
           return <div className="fixed inset-0 z-[80] bg-slate-950/35 backdrop-blur-sm flex items-end sm:items-center justify-center px-0 sm:px-5 pt-4 pb-[calc(78px+env(safe-area-inset-bottom))] sm:py-5" onClick={()=>setIsAgendaSummaryOpen(false)}><div onClick={e=>e.stopPropagation()} className="w-full sm:max-w-lg h-auto max-h-[calc(100dvh-110px-env(safe-area-inset-bottom))] sm:max-h-[82vh] flex flex-col overflow-hidden rounded-t-[32px] sm:rounded-[32px] bg-[#F8F7FC] shadow-[0_-20px_60px_rgba(15,23,42,.22)] border border-white">
@@ -2734,6 +3091,23 @@ export default function App() {
                </div>
              </div>
 
+             <div className={`${UI.card} p-4 sm:p-6 animate-fadeInUp`} style={{animationDelay: '170ms'}}>
+               <div className="flex items-start justify-between gap-3 mb-4"><div><h4 className="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-2"><Receipt size={21} className="text-rose-500"/> Gastos del período</h4><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mt-1">Registro rápido por categoría</p></div><div className="text-right"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Total interno</p><p className="text-xl font-black text-rose-500">-${finanzasData.gastosInternos.toFixed(2)}</p></div></div>
+               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                 <div className="rounded-[16px] bg-violet-50 border border-violet-100 p-3"><div className="flex items-center gap-2 text-violet-600"><Users size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Personal</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.personal.toFixed(2)}</p></div>
+                 <div className="rounded-[16px] bg-blue-50 border border-blue-100 p-3"><div className="flex items-center gap-2 text-blue-600"><Truck size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Transporte</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.transporte.toFixed(2)}</p></div>
+                 <div className="rounded-[16px] bg-pink-50 border border-pink-100 p-3"><div className="flex items-center gap-2 text-pink-600"><Sparkles size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Globos / mat.</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.globos.toFixed(2)}</p></div>
+                 <div className="rounded-[16px] bg-slate-50 border border-slate-200 p-3"><div className="flex items-center gap-2 text-slate-600"><Receipt size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Otros</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.otros.toFixed(2)}</p></div>
+               </div>
+             </div>
+
+             {financePeriod !== 'anio' && financePeriod !== 'todos' && (
+             <div className="rounded-[26px] bg-white border border-slate-200/80 shadow-[0_12px_34px_rgba(15,23,42,.06)] p-4 sm:p-5 animate-fadeInUp" style={{animationDelay:'185ms'}}>
+               <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><div className="w-11 h-11 rounded-[15px] bg-emerald-50 text-emerald-600 flex items-center justify-center"><FileSpreadsheet size={20}/></div><div><h4 className="font-black text-lg text-slate-900">Cierre mensual automático</h4><p className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-400 mt-1">{NOMBRES_MESES[financeMonth-1]} {financeYear}</p></div></div>{monthlyReport?.finalized && <Badge color="emerald">Cerrado</Badge>}</div>
+               {monthlyReportLoading ? <p className="text-sm font-semibold text-slate-400 mt-4">Revisando reporte…</p> : monthlyReport?.finalized ? <div className="mt-4"><div className="grid grid-cols-3 gap-2"><div className="rounded-[14px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Reservas</p><p className="text-xl font-black text-slate-900 mt-1">{monthlyReport.reservas||0}</p></div><div className="rounded-[14px] bg-emerald-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-emerald-500">Facturado</p><p className="text-xl font-black text-emerald-600 mt-1">${utils.safeNum(monthlyReport.facturado).toFixed(0)}</p></div><div className="rounded-[14px] bg-violet-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-violet-500">Ganancia</p><p className="text-xl font-black text-violet-600 mt-1">${utils.safeNum(monthlyReport.ganancia).toFixed(0)}</p></div></div><p className="text-[10px] font-semibold text-slate-400 mt-3">Reporte archivado automáticamente en la nube. Puedes volver a este mes desde “Otro Mes”.</p></div> : <div className="mt-4 rounded-[16px] bg-blue-50 border border-blue-100 p-3 flex gap-2.5"><Clock size={17} className="text-[#7657FF] shrink-0"/><p className="text-[11px] font-semibold text-slate-600 leading-relaxed">Mes en curso. El reporte se prepara el último día y queda finalizado automáticamente al abrir la app después del cambio de mes.</p></div>}
+             </div>
+             )}
+
              {financePeriod !== 'anio' && financePeriod !== 'todos' && (
              <div className={`${UI.card} p-4 sm:p-6 animate-fadeInUp`} style={{animationDelay: '200ms'}}>
                <div className="flex justify-between items-end mb-3"><div><h4 className="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-2"><Award size={22} className="text-amber-500"/> Meta del Período</h4><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 mt-1">{financePeriod === 'todos' ? 'Progreso histórico acumulado' : `Día ${finanzasMes.diasTranscurridos} de ${finanzasMes.diasTotales} del mes`}</p></div><div className="text-right"><span className="text-3xl font-black text-emerald-500 tracking-tight">${finanzasMes.ingresosEsteMesGlobal.toFixed(0)} <span className="text-base font-bold text-slate-400">/ ${appSettings.metaMensual}</span></span></div></div>
@@ -2797,7 +3171,7 @@ export default function App() {
     const mesActual = eventosActivos.filter(e => {
       const d = String(e.fecha || '');
       const estado = utils.normalizeText(e.estado || '');
-      return d.startsWith(todayStr.slice(0,7)) && !/cancelado|rechazada|cot/.test(estado) && e.deletedLocally !== true;
+      return d.startsWith(todayStr.slice(0,7)) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/.test(estado) && e.deletedLocally !== true;
     });
     const facturadoMes = mesActual.reduce((s,e)=>s+utils.safeNum(e.total),0);
     const avanceMeta = meta > 0 ? Math.min((facturadoMes/meta)*100,100) : 0;
@@ -2965,7 +3339,8 @@ export default function App() {
     <div className="font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.3s ease-out forwards;} .animate-slideLeft{animation:slideLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-slideUp{animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-fadeInUp{animation:fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards;} @keyframes pulse-slow{0%,100%{opacity:0.04;transform:scale(1);}50%{opacity:0.06;transform:scale(1.05);}} .animate-pulse-slow{animation:pulse-slow 10s ease-in-out infinite;} @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin-slow{animation:spin-slow 15s linear infinite;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;} .pb-safe{padding-bottom: env(safe-area-inset-bottom);} button{-webkit-tap-highlight-color:transparent;} @media(max-width:640px){#main-content{background:radial-gradient(circle at 85% 8%,rgba(255,62,165,.055),transparent 24%),radial-gradient(circle at 10% 28%,rgba(118,87,255,.06),transparent 28%),linear-gradient(180deg,#F5F6FB 0%,#FAFAFD 48%,#F4F6FB 100%);} #main-content>div{padding-left:14px;padding-right:14px;} input,select,textarea{font-size:16px!important;} button{touch-action:manipulation;} .animate-fadeIn{animation-duration:.14s!important;} .animate-slideLeft{animation-duration:.18s!important;} .animate-slideUp{animation-duration:.2s!important;} .animate-fadeInUp{animation-duration:.22s!important;} }`}</style>
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} />
+      <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
+      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
