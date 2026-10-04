@@ -24,7 +24,34 @@ const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'dis
 const publicSlot = value => {
   const state = String(value.estado || '').toLowerCase();
   if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
-  return { fecha: String(value.fecha), hora: String(value.hora || '') };
+
+  const slot = {
+    fecha: String(value.fecha),
+    hora: String(value.hora || '')
+  };
+
+  // Preserve the reservation coordinates in disponibilidad_web so the
+  // Santa booking page can recommend nearby delivery times.
+  const lat = Number(value.lat);
+  const lng = Number(value.lng);
+  if (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180 &&
+    !(lat === 0 && lng === 0)
+  ) {
+    slot.lat = lat;
+    slot.lng = lng;
+  }
+
+  // Keep Christmas/Santa metadata when it is present on the event.
+  if (value.esNavidad === true) {
+    slot.esNavidad = true;
+    slot.recursoNavidad = value.recursoNavidad || 'Santa';
+  }
+
+  return slot;
 };
 const clientStatusRef = id => doc(db,'artifacts',appId,'public','data','reservas_cliente',id);
 const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono','fecha','hora','estado','servicio','total','abono'].map(key => [key,String(value[key] ?? '')]));
