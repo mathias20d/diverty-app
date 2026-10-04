@@ -12,7 +12,7 @@ const isNewApp = !getApps().length; const app = isNewApp ? initializeApp(firebas
 if (isNewApp) { enableIndexedDbPersistence(db).catch(() => {}); }
 const auth = getAuth(app); const appId = "diverty-oficial"; const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; const META_MENSUAL = 1500;
 const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
-const ZONAS_TRANSPORTE = { "Panamá Centro": 0, "San Miguelito": 5, "Panamá Norte": 10, "Panamá Este": 10, "Arraiján / Chorrera": 15, "Colón": 25 };
+const ZONAS_TRANSPORTE = { "Ciudad de Panamá": 0, "Panamá Centro": 0, "San Miguelito": 0, "Costa del Este": 5, "Albrook / Clayton": 5, "Panamá Norte (hasta Villa Grecia)": 15, "Panamá Este (hasta Pacora)": 15, "Arraiján": 15, "La Chorrera": 25 };
 const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'config', icon:Settings, text:'Ajustes'} ];
 const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', subcontratos: [], costosSeparados: true, total: '', abono: '', estado: 'Pendiente', colisionAprobada: false, vigenciaCotizacion: 7, fechaEmisionCotizacion: '' });
 const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -127,6 +127,21 @@ const publicSlot = value => {
     if (santa) slot.santaAsignado = santa;
   }
 
+  // Reservas normales: publica solo metadatos logísticos no sensibles.
+  // La web usa esto para comprobar disponibilidad de animadores/payaso
+  // sin tener acceso a datos privados del cliente.
+  if (value.esNavidad !== true) {
+    const rr = value.resourceRequirements && typeof value.resourceRequirements === 'object' ? value.resourceRequirements : {};
+    const animadores = Math.max(0, Math.round(Number(rr.animadores) || 0));
+    const payasos = Math.max(0, Math.round(Number(rr.payasos) || 0));
+    const durationMinutes = Math.max(30, Math.round(Number(rr.durationMinutes || value.duracionMinutos) || 120));
+    if (animadores || payasos || durationMinutes) {
+      slot.resourceRequirements = { animadores, payasos, durationMinutes };
+      slot.duracionMinutos = durationMinutes;
+      slot.tipoReserva = 'normal';
+    }
+  }
+
   return slot;
 };
 
@@ -135,6 +150,68 @@ const isPendingWebRequest = value => {
   const origen = String(value?.origen || '').trim().toLowerCase();
   return estado === 'pendiente' && origen === 'web directa';
 };
+const resourceTimeMinutes = value => {
+  const m = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+};
+const inferResourceRequirements = value => {
+  const explicit = value?.resourceRequirements && typeof value.resourceRequirements === 'object' ? value.resourceRequirements : {};
+  const text = utils.normalizeText([
+    value?.servicio,
+    value?.descripcionEvento,
+    ...(Array.isArray(value?.serviciosSeleccionados) ? value.serviciosSeleccionados.flatMap(x => [x?.nombre, x?.descripcion, ...(Array.isArray(x?.incluye) ? x.incluye : [])]) : [])
+  ].filter(Boolean).join(' '));
+  const findCount = (word) => {
+    const plural = word === 'animador' ? 'animadores?' : 'payasos?';
+    const m = text.match(new RegExp(`(\\d+)\\s*${plural}\\b`));
+    if (m) return Math.max(0, Number(m[1]) || 0);
+    return new RegExp(`\\b${plural}\\b`).test(text) ? 1 : 0;
+  };
+  const serviceDurations = Array.isArray(value?.serviciosSeleccionados)
+    ? value.serviciosSeleccionados.map(x => Math.max(0, Number(x?.duracionHoras) || 0)).filter(Boolean)
+    : [];
+  const durationMinutes = Math.max(
+    30,
+    Math.round(Number(explicit.durationMinutes || value?.duracionMinutos) || ((serviceDurations.length ? Math.max(...serviceDurations) : 2) * 60))
+  );
+  return {
+    animadores: Math.max(0, Math.round(Number(explicit.animadores) || findCount('animador'))),
+    payasos: Math.max(0, Math.round(Number(explicit.payasos) || findCount('payaso'))),
+    durationMinutes
+  };
+};
+const resourcesOverlap = (a, b) => {
+  if (!a?.fecha || !b?.fecha || String(a.fecha) !== String(b.fecha)) return false;
+  const aStart = resourceTimeMinutes(a.hora), bStart = resourceTimeMinutes(b.hora);
+  if (aStart === null || bStart === null) return false;
+  const ar = inferResourceRequirements(a), br = inferResourceRequirements(b);
+  return aStart < bStart + br.durationMinutes && bStart < aStart + ar.durationMinutes;
+};
+const getResourceAvailability = (request, rows, capacity) => {
+  const needed = inferResourceRequirements(request);
+  const cap = {
+    animadores: Math.max(0, Math.round(Number(capacity?.animadores) || 0)),
+    payasos: Math.max(0, Math.round(Number(capacity?.payasos) || 0))
+  };
+  const usage = { animadores:0, payasos:0 };
+  (Array.isArray(rows) ? rows : []).forEach(ev => {
+    if (!ev || ev.id === request?.id || isArchivedReservation(ev) || isPendingWebRequest(ev)) return;
+    if (!resourcesOverlap(request, ev)) return;
+    const r = inferResourceRequirements(ev);
+    usage.animadores += r.animadores;
+    usage.payasos += r.payasos;
+  });
+  const available = {
+    animadores: Math.max(0, cap.animadores - usage.animadores),
+    payasos: Math.max(0, cap.payasos - usage.payasos)
+  };
+  return {
+    needed, usage, available, capacity:cap,
+    feasible: needed.animadores <= available.animadores && needed.payasos <= available.payasos
+  };
+};
+
 const isArchivedReservation = value => {
   const estado = String(value?.estado || '').trim().toLowerCase();
   return estado === 'cancelado' || estado === 'cancelada' || estado.includes('rechaz');
@@ -688,16 +765,21 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity }) {
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
     const [rejecting, setRejecting] = useState(false);
     const [confirmedName, setConfirmedName] = useState('');
     const [rejectedName, setRejectedName] = useState('');
     const [santaAsignado, setSantaAsignado] = useState('Santa 1');
-    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); } }, [isOpen]);
+    const [transportDraft, setTransportDraft] = useState('');
+    const [savingTransport, setSavingTransport] = useState(false);
+    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); setTransportDraft(''); setSavingTransport(false); } }, [isOpen]);
     useEffect(() => {
-        if (selectedRequest) setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
+        if (selectedRequest) {
+            setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
+            setTransportDraft(String(utils.safeNum(selectedRequest.transporte)));
+        }
     }, [selectedRequest]);
     useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && (selectedRequest || confirmedName || rejectedName)) { setSelectedRequest(null); setConfirmedName(''); setRejectedName(''); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest, confirmedName, rejectedName]);
     if (!isOpen) return null;
@@ -706,8 +788,36 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
     const money = v => `$${utils.safeNum(v).toFixed(2)}`;
     const phone = selectedRequest ? String(selectedRequest.telefono || '').replace(/\D/g,'') : '';
+    const resourceStatus = selectedRequest ? getResourceAvailability(selectedRequest, eventosActivos, staffCapacity || {}) : null;
+    const hasResourceNeeds = !!(resourceStatus && (resourceStatus.needed.animadores > 0 || resourceStatus.needed.payasos > 0));
+    const needsTransportReview = !!(selectedRequest?.requiereRevisionUbicacion === true && selectedRequest?.transporteRevisadoEnApp !== true);
+    const saveTransport = async () => {
+        if (!selectedRequest || savingTransport || typeof onUpdateWebRequest !== 'function') return;
+        const nextTransport = Math.max(0, utils.safeNum(transportDraft));
+        const currentTransport = utils.safeNum(selectedRequest.transporte);
+        const currentTotal = utils.safeNum(selectedRequest.total);
+        const nextTotal = Math.max(0, currentTotal - currentTransport + nextTransport);
+        setSavingTransport(true);
+        const updated = await onUpdateWebRequest(selectedRequest, {
+            transporte: String(nextTransport),
+            total: String(nextTotal),
+            transporteAjustadoEnApp: true,
+            transporteRevisadoEnApp: true,
+            transporteOriginalWeb: selectedRequest.transporteOriginalWeb ?? String(currentTransport)
+        });
+        setSavingTransport(false);
+        if (updated) setSelectedRequest(prev => ({...prev, ...updated}));
+    };
     const confirmSelected = async () => {
         if (!selectedRequest || confirming) return;
+        if (hasResourceNeeds && resourceStatus && !resourceStatus.feasible) {
+            window.alert('No hay suficiente personal disponible para este horario. Ajusta la reserva o el personal antes de aceptarla.');
+            return;
+        }
+        if (needsTransportReview) {
+            window.alert('Esta ubicación llegó con transporte por confirmar. Revisa el monto y pulsa “Confirmar transporte” antes de aceptar la reserva.');
+            return;
+        }
         setConfirming(true);
         const currentName = selectedRequest.cliente || 'Cliente';
         const esNavidad = selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''));
@@ -746,12 +856,14 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                     <div className="flex-1 overflow-y-auto p-4 pb-8">
                         <div className="bg-white rounded-[28px] border border-white shadow-[0_16px_45px_rgba(15,23,42,.08)] overflow-hidden"><div className="p-5 bg-gradient-to-br from-[#F7F3FF] via-white to-[#FFF4FA] border-b border-slate-100"><div className="flex justify-between items-center gap-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.12em] text-amber-600"><Zap size={11}/> Nueva solicitud</span><span className="text-[10px] font-black text-slate-500 bg-white px-3 py-1.5 rounded-full shadow-sm">{selectedRequest.fecha?.split('-').reverse().join('/')}</span></div><div className="mt-4 flex justify-between gap-3"><div><h4 className="font-black text-[27px] text-[#10182D] leading-tight">{selectedRequest.cliente}</h4><p className="text-xs font-bold text-slate-500 mt-1">Solicitud recibida directamente desde la página web</p></div>{phone && <div className="flex gap-2"><button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${selectedRequest.cliente}, recibimos tu solicitud de reserva.`)} className="w-11 h-11 rounded-[15px] bg-emerald-50 text-emerald-500 flex items-center justify-center"><MessageCircle size={21}/></button><a href={`tel:${phone}`} className="w-11 h-11 rounded-[15px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center"><Smartphone size={21}/></a></div>}</div></div>
                             <div className="p-4 space-y-3"><div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><CalendarDays size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Fecha</p><p className="text-xs font-black text-slate-800 mt-1">{selectedRequest.fecha?.split('-').reverse().join('/') || '—'}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><Clock size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Hora</p><p className="text-xs font-black text-slate-800 mt-1">{utils.formatTime12h(selectedRequest.hora)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><MapPin size={18} className="text-[#FF3EA5]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Ubicación</p><p className="text-[11px] font-black text-slate-800 mt-1 leading-tight">{selectedRequest.ubicacion || '—'}</p></div></div>
-                            <div className="rounded-[20px] bg-slate-50 p-4"><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400">Dirección</p><p className="font-bold text-slate-700 mt-1 whitespace-pre-wrap">{selectedRequest.direccion || 'No indicada'}</p></div>
+                            <div className="rounded-[20px] bg-slate-50 p-4"><div className="flex items-center justify-between gap-2"><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400">Dirección / referencia</p><span className={`text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-full ${utils.normalizeText(selectedRequest.ubicacionFuente||selectedRequest.locationSource||'').includes('gps')?'bg-emerald-50 text-emerald-600':'bg-amber-50 text-amber-600'}`}>{utils.normalizeText(selectedRequest.ubicacionFuente||selectedRequest.locationSource||'').includes('gps')?'GPS':'Manual'}</span></div><p className="font-bold text-slate-700 mt-1 whitespace-pre-wrap">{selectedRequest.direccion || 'No indicada'}</p>{selectedRequest.referenciaLugar&&<><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400 mt-3">PH / barriada / referencia</p><p className="font-semibold text-slate-600 mt-1 whitespace-pre-wrap">{selectedRequest.referenciaLugar}</p></>}</div>
                             <div className="rounded-[22px] bg-gradient-to-br from-[#F7F3FF] to-white p-4 border border-[#7657FF]/10"><div className="flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-[.12em] font-black text-[#7657FF] flex items-center gap-1.5"><Sparkles size={14}/> Servicio solicitado</p><p className="font-black text-[#10182D] mt-2 whitespace-pre-wrap">{selectedRequest.servicio || '—'}</p></div><span className="shrink-0 h-fit rounded-full bg-[#7657FF]/10 px-3 py-1.5 font-black text-[#7657FF]">{money(selectedRequest.total)}</span></div>{selectedRequest.descripcionEvento && <p className="font-semibold text-slate-600 whitespace-pre-wrap mt-3 text-sm leading-relaxed">{selectedRequest.descripcionEvento}</p>}{selectedRequest.comentarios && <div className="mt-3 pt-3 border-t border-[#7657FF]/10"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400">Comentarios</p><p className="font-semibold text-slate-600 whitespace-pre-wrap mt-1">{selectedRequest.comentarios}</p></div>}</div>
                             {(selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))) && <div className="rounded-[22px] border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4"><div className="flex items-center gap-3 mb-3"><div className="w-11 h-11 rounded-[15px] bg-red-100 flex items-center justify-center text-2xl">🎅</div><div><p className="text-[9px] uppercase tracking-[.14em] font-black text-red-500">Operación Navidad</p><p className="font-black text-[#10182D]">Santa asignado</p></div></div><select value={santaAsignado} onChange={e=>setSantaAsignado(e.target.value)} className="w-full rounded-[16px] border border-red-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none"><option value="Santa 1">Santa 1</option><option value="Santa 2">Santa 2</option><option value="Santa 3">Santa 3</option><option value="Santa 4">Santa 4</option></select><p className="mt-2 text-[10px] font-semibold text-slate-400">Selecciona quién atenderá esta entrega. La asignación quedará guardada en la reserva.</p></div>}
+                            {hasResourceNeeds && resourceStatus && <div className={`rounded-[22px] border p-4 ${resourceStatus.feasible?'border-emerald-100 bg-emerald-50/70':'border-rose-200 bg-rose-50/80'}`}><div className="flex items-center justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${resourceStatus.feasible?'text-emerald-600':'text-rose-600'}`}>Disponibilidad de personal</p><p className="font-black text-slate-900 mt-1">{resourceStatus.feasible?'Personal disponible para este horario':'Personal insuficiente para este horario'}</p></div>{resourceStatus.feasible?<CheckCircle2 size={24} className="text-emerald-500"/>:<AlertTriangle size={24} className="text-rose-500"/>}</div><div className="grid grid-cols-2 gap-2 mt-3"><div className="rounded-[14px] bg-white p-3"><p className="text-[8px] font-black uppercase text-slate-400">Animadores</p><p className="font-black text-slate-900 mt-1">Necesita {resourceStatus.needed.animadores} · libres {resourceStatus.available.animadores}</p></div><div className="rounded-[14px] bg-white p-3"><p className="text-[8px] font-black uppercase text-slate-400">Payasos</p><p className="font-black text-slate-900 mt-1">Necesita {resourceStatus.needed.payasos} · libres {resourceStatus.available.payasos}</p></div></div></div>}
+                            <div className={`rounded-[22px] border p-4 ${needsTransportReview?'border-amber-200 bg-amber-50/80':'border-[#7657FF]/10 bg-[#F8F6FF]'}`}><div className="flex items-center justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${needsTransportReview?'text-amber-600':'text-[#7657FF]'}`}>{needsTransportReview?'Transporte por confirmar':'Transporte de la solicitud'}</p><p className="text-[10px] font-semibold text-slate-500 mt-1">{needsTransportReview?'La ubicación quedó fuera del cálculo automático. Define el transporte final antes de aceptar.':'Si la zona o dirección no concuerda, corrige el monto antes de aceptar.'}</p></div><span className="text-xl font-black text-slate-900">{money(selectedRequest.transporte)}</span></div>{selectedRequest.transporteOriginalWeb!=null&&<p className="mt-2 text-[9px] font-bold text-slate-400">Calculado en web: {money(selectedRequest.transporteOriginalWeb)}</p>}<div className="grid grid-cols-[1fr_auto] gap-2 mt-3"><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">$</span><input type="number" min="0" step="0.01" value={transportDraft} onChange={e=>setTransportDraft(e.target.value)} className="w-full h-12 rounded-[14px] bg-white border border-slate-200 pl-8 pr-3 font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div><button type="button" disabled={savingTransport} onClick={saveTransport} className="px-4 h-12 rounded-[14px] bg-[#7657FF] text-white font-black text-[9px] uppercase tracking-wider disabled:opacity-60">{savingTransport?'Guardando':needsTransportReview?'Confirmar transporte':'Aplicar'}</button></div></div>
                             <div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Transporte</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.transporte)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Descuento</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.descuento)}</p></div><div className="rounded-[18px] bg-emerald-50 p-3"><p className="text-[9px] uppercase font-black text-emerald-500">Total</p><p className="font-black text-emerald-600 mt-1">{money(selectedRequest.total)}</p></div></div></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : 'Aceptar reserva'}</button></div>
+                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting || needsTransportReview || (hasResourceNeeds && resourceStatus && !resourceStatus.feasible)} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : needsTransportReview ? 'Revisa transporte' : 'Aceptar reserva'}</button></div>
                     </div>
                 )}
             </div>
@@ -773,6 +885,13 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
     const sA = printData.serviciosSeleccionados?.length > 0 ? printData.serviciosSeleccionados : [{ nombre: String(printData.servicio || printData.especialidad || 'Servicio General'), precio: subServicios, cantidad: 1, descripcion: String(printData.comentarios || '') }];
     const numRef = isC ? (printData.numeroCotizacion || 'COT-PENDIENTE') : isContratoProv ? (printData.numeroSubcontrato || 'SUB-PENDIENTE') : isContrato ? (printData.numeroContrato || 'CON-PENDIENTE') : (printData.numeroFactura || 'FAC-PENDIENTE');
     const docTitle = isC ? 'COTIZACIÓN' : isContratoProv ? 'SUBCONTRATO DE SERVICIOS' : isContrato ? 'CONTRATO DE SERVICIO' : 'FACTURA COMERCIAL';
+    const providerId = String(printData.identificacion || printData.ruc || '').trim();
+    const providerAddress = String(printData.direccion || '').trim();
+    const providerEmail = String(printData.email || '').trim();
+    const providerPaymentTerms = String(printData.condicionesPago || 'Pago contra prestación satisfactoria del servicio.').trim();
+    const providerServices = Array.isArray(printData.servicios) && printData.servicios.length
+      ? printData.servicios.filter(x=>x && x.activo !== false)
+      : [{ nombre: printData.especialidad || 'Servicios para eventos', costo: utils.safeNum(printData.costoBase) }];
 
     const serviceInfo = (servicio) => {
         const cant = Number(servicio.cantidad) || 1;
@@ -874,7 +993,79 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
         </div><FooterBrand/>
     </>);
 
-    const ProviderContract = () => (<><BrandHeader/><div className="relative z-10 bg-slate-50 border border-slate-100 rounded-2xl p-5 mb-5"><p className="text-[10px] font-black text-[#7657FF] uppercase tracking-widest mb-3">Proveedor contratado</p><p className="text-lg font-black">{cli}</p><p className="text-[10px] text-slate-500 mt-1">{printData.especialidad || 'Servicios para eventos'} · {tel}</p></div><div className="relative z-10 border border-slate-100 rounded-2xl p-5 text-[10px] leading-relaxed text-slate-600 space-y-3"><p><b>1. Objeto:</b> prestación independiente de los servicios formalmente asignados por Diverty Eventos.</p><p><b>2. Independencia:</b> no existe relación laboral, subordinación ni exclusividad entre las partes.</p><p><b>3. Honorarios:</b> se pagará la tarifa acordada para cada evento tras la prestación satisfactoria del servicio.</p><p><b>4. Puntualidad y calidad:</b> el proveedor deberá cumplir horarios, presentación y estándares acordados.</p><p><b>5. Confidencialidad comercial:</b> el proveedor respetará la relación comercial entre Diverty y el cliente final.</p></div><div className="grid grid-cols-2 gap-8 mt-10 relative z-10"><div className="border-t border-slate-300 pt-2 text-center text-[9px] font-black">DIVERTY EVENTOS</div><div className="border-t border-slate-300 pt-2 text-center text-[9px] font-black">{cli}</div></div><FooterBrand/></>);
+    const ProviderContract = () => (<>
+        <BrandHeader/>
+        <div className="relative z-10 grid grid-cols-[1.15fr_.85fr] gap-4 mb-4">
+            <div className="rounded-2xl border border-[#7657FF]/12 bg-gradient-to-br from-[#F7F4FF] via-white to-[#FFF7FB] p-4">
+                <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7657FF]">Proveedor / contratista independiente</p>
+                <p className="text-[18px] leading-tight font-black text-slate-900 mt-2">{cli || 'Proveedor'}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-3 text-[8.5px]">
+                    <p><span className="text-slate-400 font-bold">WhatsApp:</span> <b className="text-slate-700">{tel || '—'}</b></p>
+                    <p><span className="text-slate-400 font-bold">ID / RUC:</span> <b className="text-slate-700">{providerId || '—'}</b></p>
+                    {providerEmail && <p className="col-span-2 truncate"><span className="text-slate-400 font-bold">Correo:</span> <b className="text-slate-700">{providerEmail}</b></p>}
+                    {providerAddress && <p className="col-span-2"><span className="text-slate-400 font-bold">Dirección:</span> <b className="text-slate-700">{providerAddress}</b></p>}
+                </div>
+            </div>
+            <div className="rounded-2xl bg-slate-950 text-white p-4">
+                <p className="text-[8px] font-black uppercase tracking-[.18em] text-white/55">Naturaleza del acuerdo</p>
+                <p className="text-[12px] font-black mt-2">Servicios por evento</p>
+                <p className="text-[8.5px] leading-relaxed text-white/70 mt-2">Acuerdo marco para asignaciones independientes realizadas por Diverty Eventos Panamá, sujeto a disponibilidad y aceptación de cada servicio.</p>
+                <div className="mt-3 pt-3 border-t border-white/10"><p className="text-[7px] uppercase tracking-widest text-white/45 font-black">Emisión</p><p className="text-[10px] font-black">{fechaEmision}</p></div>
+            </div>
+        </div>
+
+        <div className="relative z-10 rounded-2xl border border-slate-100 overflow-hidden mb-4">
+            <div className="px-4 py-2.5 bg-slate-50 flex items-center justify-between">
+                <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7657FF]">Servicios y tarifas registradas</p>
+                <p className="text-[7.5px] font-bold text-slate-400">Las asignaciones concretas pueden acordar una tarifa distinta.</p>
+            </div>
+            <table className="w-full text-[8.5px]"><thead className="bg-white"><tr className="text-[7px] uppercase tracking-wider text-slate-400"><th className="p-2.5 text-left">Servicio</th><th className="p-2.5 text-right w-[28%]">Tarifa base</th></tr></thead><tbody className="divide-y divide-slate-100">
+                {providerServices.slice(0,6).map((srv,i)=><tr key={srv.id||i}><td className="p-2.5 font-bold text-slate-700">{srv.nombre || 'Servicio'}</td><td className="p-2.5 text-right font-black text-slate-900">{utils.safeNum(srv.costo)>0?`B/. ${utils.safeNum(srv.costo).toFixed(2)}`:'Por acordar'}</td></tr>)}
+            </tbody></table>
+        </div>
+
+        <div className="relative z-10 grid grid-cols-[1.35fr_.65fr] gap-4">
+            <div className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7657FF] mb-3 flex items-center gap-1.5"><FileSignature size={11}/> Condiciones del subcontrato</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[7.25px] leading-[1.34] text-slate-600 text-justify">
+                    <p><b className="text-slate-800">1. Objeto.</b> El proveedor prestará de forma independiente los servicios que Diverty le asigne y que este acepte para eventos específicos.</p>
+                    <p><b className="text-slate-800">2. Independencia.</b> Este acuerdo no crea relación laboral, subordinación, exclusividad, sociedad ni representación permanente entre las partes.</p>
+                    <p><b className="text-slate-800">3. Asignaciones.</b> Fecha, horario, lugar, servicio, tarifa y condiciones particulares se comunicarán para cada evento y se entenderán aceptadas al confirmarlas.</p>
+                    <p><b className="text-slate-800">4. Puntualidad.</b> El proveedor deberá presentarse con la anticipación acordada y cumplir íntegramente el horario, vestuario, materiales y funciones asignadas.</p>
+                    <p><b className="text-slate-800">5. Calidad y conducta.</b> Mantendrá trato respetuoso, presentación adecuada y estándares compatibles con eventos infantiles y familiares.</p>
+                    <p><b className="text-slate-800">6. Honorarios.</b> Diverty pagará la tarifa acordada para cada asignación, una vez verificada la prestación satisfactoria, salvo acuerdo escrito diferente.</p>
+                    <p><b className="text-slate-800">7. Cancelaciones.</b> Reprogramaciones, ausencias o cancelaciones deberán comunicarse con la mayor anticipación posible. Los pagos dependerán del servicio efectivamente prestado y de lo acordado para el evento.</p>
+                    <p><b className="text-slate-800">8. Confidencialidad.</b> El proveedor protegerá datos de clientes, precios internos, contactos, logística, fotografías no autorizadas y cualquier información comercial de Diverty.</p>
+                    <p><b className="text-slate-800">9. Relación con clientes.</b> No utilizará una asignación de Diverty para captar directamente al cliente, negociar servicios paralelos o desviar futuras contrataciones sin autorización.</p>
+                    <p><b className="text-slate-800">10. Seguridad y responsabilidad.</b> Cumplirá instrucciones razonables de seguridad y responderá por sus propios equipos, materiales, permisos y actuaciones durante la prestación.</p>
+                    <p><b className="text-slate-800">11. Uso de imagen y marca.</b> No podrá usar el nombre, logotipo o material de Diverty para publicidad propia sin autorización previa.</p>
+                    <p><b className="text-slate-800">12. Aceptación.</b> La firma confirma que las partes comprenden el carácter independiente del acuerdo y aceptan sus condiciones generales.</p>
+                </div>
+            </div>
+            <div className="space-y-3">
+                <div className="rounded-2xl bg-amber-50/70 border border-amber-100 p-3">
+                    <p className="text-[7px] font-black uppercase tracking-wider text-amber-600">Condición de pago</p>
+                    <p className="text-[8px] font-semibold text-slate-600 mt-1.5 leading-relaxed">{providerPaymentTerms}</p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
+                    <p className="text-[7px] font-black uppercase tracking-wider text-[#7657FF]">Coordinación</p>
+                    <p className="text-[8px] font-semibold text-slate-600 mt-1.5 leading-relaxed">Cada evento podrá incluir instrucciones adicionales de horario, contacto, ubicación, uniforme, materiales o protocolo operativo.</p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-3">
+                    <p className="text-[7px] font-black uppercase tracking-wider text-slate-400">Firma Diverty</p>
+                    <div className="h-9 border-b border-slate-300"></div>
+                    <p className="text-[7.5px] text-center font-black text-slate-700 mt-1">{appSettings.empresa.nombreTitular}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-3">
+                    <p className="text-[7px] font-black uppercase tracking-wider text-slate-400">Firma proveedor</p>
+                    <div className="h-9 border-b border-slate-300"></div>
+                    <p className="text-[7.5px] text-center font-black text-slate-700 mt-1">{cli || 'Proveedor'}</p>
+                </div>
+            </div>
+        </div>
+        <div className="relative z-10 mt-3 rounded-xl bg-[#7657FF]/5 border border-[#7657FF]/10 px-4 py-2 text-[7.4px] text-slate-500 font-semibold">Documento marco de coordinación de servicios. Las condiciones particulares de cada evento prevalecen cuando hayan sido aceptadas expresamente por ambas partes.</div>
+        <FooterBrand/>
+    </>);
 
     return (<div className="bg-[#172235] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999]">
         <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}`}</style>
@@ -889,7 +1080,7 @@ const ClientEditModal = memo(function ClientEditModal({ isOpen, oldName, clientK
 });
 
 const ProveedorModal = memo(function ProveedorModal({ isOpen, data, onClose, onSave }) {
-    const empty = { nombre: '', telefono: '', especialidad: '', costoBase: '', activo: true, servicios: [] };
+    const empty = { nombre: '', telefono: '', email: '', identificacion: '', direccion: '', especialidad: '', costoBase: '', condicionesPago: 'Pago contra prestación satisfactoria del servicio.', activo: true, servicios: [] };
     const [form, setForm] = useState(empty);
     const [srv, setSrv] = useState({ nombre: '', costo: '' });
     useEffect(() => { if (isOpen) { const base = data || empty; const legacy = (!base.servicios?.length && base.especialidad) ? [{ id:`srv-legacy`, nombre:base.especialidad, costo:utils.safeNum(base.costoBase), activo:true }] : (base.servicios || []); setForm({...empty, ...base, servicios:legacy}); setSrv({nombre:'',costo:''}); } }, [isOpen, data]);
@@ -897,7 +1088,7 @@ const ProveedorModal = memo(function ProveedorModal({ isOpen, data, onClose, onS
     const addSrv = () => { const nombre=srv.nombre.trim(), costo=utils.safeNum(srv.costo); if(!nombre) return; setForm(prev=>({...prev, servicios:[...(prev.servicios||[]),{id:`srv-${Date.now()}`,nombre,costo,activo:true}], especialidad:prev.especialidad||nombre, costoBase:prev.costoBase||String(costo)})); setSrv({nombre:'',costo:''}); };
     const removeSrv = id => setForm(prev=>({...prev,servicios:(prev.servicios||[]).filter(x=>x.id!==id)}));
     const handleSubmit = (e) => { e.preventDefault(); const servicios=form.servicios||[]; onSave({...form, especialidad:servicios.map(x=>x.nombre).join(', ') || form.especialidad, costoBase:servicios.length===1?String(servicios[0].costo):form.costoBase}); };
-    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-lg w-full p-8 max-h-[92vh] overflow-y-auto`}><div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4"><div className="flex items-center gap-3">{data ? <Edit size={24} className="text-[#7657FF]" /> : <Plus size={24} className="text-[#7657FF]" />}<h3 className="text-xl font-black text-slate-900">{data ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h3></div><button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-100 rounded-lg"><X size={18}/></button></div><form onSubmit={handleSubmit} className="space-y-4"><Field label="Nombre Comercial / Proveedor *" required value={form.nombre} onChange={e=>setForm(prev=>({...prev,nombre:e.target.value}))}/><Field label="Número de WhatsApp *" required value={form.telefono} onChange={e=>setForm(prev=>({...prev,telefono:e.target.value}))}/><div className="rounded-2xl bg-slate-50 border border-slate-200 p-4"><div className="flex items-center justify-between mb-3"><div><p className="text-sm font-black text-slate-900">Servicios y tarifas</p><p className="text-[10px] font-semibold text-slate-400 mt-1">Agrega todos los servicios que este proveedor puede realizar.</p></div><Badge color="blue">{(form.servicios||[]).length}</Badge></div><div className="grid grid-cols-[1fr_110px_auto] gap-2 items-end"><Field label="Servicio" value={srv.nombre} onChange={e=>setSrv(x=>({...x,nombre:e.target.value}))} placeholder="Ej. Pintacaritas"/><Field label="Costo ($)" type="number" value={srv.costo} onChange={e=>setSrv(x=>({...x,costo:e.target.value}))} placeholder="0.00"/><button type="button" onClick={addSrv} className="h-[54px] w-[54px] rounded-xl bg-[#7657FF] text-white flex items-center justify-center"><Plus size={20}/></button></div><div className="space-y-2 mt-4">{(form.servicios||[]).map(x=><div key={x.id} className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-3"><div><p className="font-bold text-slate-800">{x.nombre}</p><p className="text-xs font-black text-emerald-600 mt-0.5">${utils.safeNum(x.costo).toFixed(2)}</p></div><button type="button" onClick={()=>removeSrv(x.id)} className="p-2 text-rose-500 bg-rose-50 rounded-lg"><Trash2 size={16}/></button></div>)}</div></div><label className="flex items-center justify-between rounded-xl border border-slate-200 p-4 bg-white"><span className="font-bold text-sm text-slate-700">Proveedor activo</span><input type="checkbox" checked={form.activo!==false} onChange={e=>setForm(prev=>({...prev,activo:e.target.checked}))}/></label><div className="pt-4"><AppButton type="submit" className="w-full text-xs uppercase tracking-widest">{data ? 'Guardar Cambios' : 'Registrar Proveedor'}</AppButton></div></form></div></div>);
+    return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-lg w-full p-8 max-h-[92vh] overflow-y-auto`}><div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4"><div className="flex items-center gap-3">{data ? <Edit size={24} className="text-[#7657FF]" /> : <Plus size={24} className="text-[#7657FF]" />}<h3 className="text-xl font-black text-slate-900">{data ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h3></div><button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-100 rounded-lg"><X size={18}/></button></div><form onSubmit={handleSubmit} className="space-y-4"><Field label="Nombre Comercial / Proveedor *" required value={form.nombre} onChange={e=>setForm(prev=>({...prev,nombre:e.target.value}))}/><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Número de WhatsApp *" required value={form.telefono} onChange={e=>setForm(prev=>({...prev,telefono:e.target.value}))}/><Field label="Correo" type="email" value={form.email||''} onChange={e=>setForm(prev=>({...prev,email:e.target.value}))}/></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Cédula / RUC / Identificación" value={form.identificacion||''} onChange={e=>setForm(prev=>({...prev,identificacion:e.target.value}))}/><Field label="Dirección / zona" value={form.direccion||''} onChange={e=>setForm(prev=>({...prev,direccion:e.target.value}))}/></div><div className="rounded-2xl bg-slate-50 border border-slate-200 p-4"><div className="flex items-center justify-between mb-3"><div><p className="text-sm font-black text-slate-900">Servicios y tarifas</p><p className="text-[10px] font-semibold text-slate-400 mt-1">Agrega todos los servicios que este proveedor puede realizar.</p></div><Badge color="blue">{(form.servicios||[]).length}</Badge></div><div className="grid grid-cols-[1fr_110px_auto] gap-2 items-end"><Field label="Servicio" value={srv.nombre} onChange={e=>setSrv(x=>({...x,nombre:e.target.value}))} placeholder="Ej. Pintacaritas"/><Field label="Costo ($)" type="number" value={srv.costo} onChange={e=>setSrv(x=>({...x,costo:e.target.value}))} placeholder="0.00"/><button type="button" onClick={addSrv} className="h-[54px] w-[54px] rounded-xl bg-[#7657FF] text-white flex items-center justify-center"><Plus size={20}/></button></div><div className="space-y-2 mt-4">{(form.servicios||[]).map(x=><div key={x.id} className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-3"><div><p className="font-bold text-slate-800">{x.nombre}</p><p className="text-xs font-black text-emerald-600 mt-0.5">${utils.safeNum(x.costo).toFixed(2)}</p></div><button type="button" onClick={()=>removeSrv(x.id)} className="p-2 text-rose-500 bg-rose-50 rounded-lg"><Trash2 size={16}/></button></div>)}</div></div><Field as="textarea" label="Condiciones de pago / acuerdo" value={form.condicionesPago||''} onChange={e=>setForm(prev=>({...prev,condicionesPago:e.target.value}))} placeholder="Ej. Pago al finalizar el evento, contra prestación satisfactoria."/><label className="flex items-center justify-between rounded-xl border border-slate-200 p-4 bg-white"><span className="font-bold text-sm text-slate-700">Proveedor activo</span><input type="checkbox" checked={form.activo!==false} onChange={e=>setForm(prev=>({...prev,activo:e.target.checked}))}/></label><div className="pt-4"><AppButton type="submit" className="w-full text-xs uppercase tracking-widest">{data ? 'Guardar Cambios' : 'Registrar Proveedor'}</AppButton></div></form></div></div>);
 });
 
 const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete, onEdit, onWhatsApp, onContrato, eventosActivos }) {
@@ -966,298 +1157,17 @@ const TransactionItem = memo(function TransactionItem({ ev, isExpanded, onToggle
 });
 
 const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsApp, onViewDoc, onEdit, onDelete, onDuplicate, onMapClick, empresa, utils, onUpdateEstado, onConvertir, onRegistrarAbono, onRegistrarGasto, forceExpanded = false }) {
-    const [swipeX, setSwipeX] = useState(0);
-    const [isDragging, setIsDragging] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(false);
-    const startX = useRef(0);
-    const cardRef = useRef(null);
-
-    useEffect(() => {
-        if (forceExpanded) setIsExpanded(true);
-    }, [forceExpanded]);
-
-    useEffect(() => {
-        const closeOnAppBack = (e) => {
-            if (!isExpanded) return;
-            setIsExpanded(false);
-            if (e?.detail) e.detail.handled = true;
-        };
-        window.addEventListener('diverty:back-layer', closeOnAppBack);
-        return () => window.removeEventListener('diverty:back-layer', closeOnAppBack);
-    }, [isExpanded]);
-
-    useEffect(() => {
-        if (!isExpanded || typeof document === 'undefined') return;
-        const body = document.body;
-        const previousOverflow = body.style.overflow;
-        body.style.overflow = 'hidden';
-        return () => { body.style.overflow = previousOverflow; };
-    }, [isExpanded]);
-
-    const handleTouchStart = useCallback((e) => {
-        if (isExpanded) return;
-        startX.current = e.touches[0].clientX;
-        setIsDragging(true);
-    }, [isExpanded]);
-
-    const handleTouchMove = useCallback((e) => {
-        if (!isDragging || isExpanded) return;
-        const diffX = e.touches[0].clientX - startX.current;
-        setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0);
-    }, [isDragging, isExpanded]);
-
-    const handleTouchEnd = useCallback(() => {
-        setIsDragging(false);
-        if (swipeX > 80) {
-            utils.triggerHaptic('success');
-            onDelete(ev.id);
-        }
-        setSwipeX(0);
-    }, [swipeX, ev.id, onDelete, utils]);
-
-    const estNormalized = utils.normalizeText(ev.estado);
-    const isCotizacion = estNormalized.includes('cotizaci') || estNormalized.includes('cot.');
-    const tot = utils.safeNum(ev.total);
-    const abo = utils.safeNum(ev.abono);
-    const restante = Math.max(0, tot - abo);
-    const gastosInternos = getGastosInternosEvento(ev);
-    const expenseItems = getExpenseItems(ev).slice().reverse();
-    const transporte = utils.safeNum(ev.transporte);
-    const proveedores = Array.isArray(ev.subcontratos) ? ev.subcontratos : [];
+    const [swipeX, setSwipeX] = useState(0), [isDragging, setIsDragging] = useState(false), [isExpanded, setIsExpanded] = useState(false); const startX = useRef(0); const cardRef = useRef(null);
+    useEffect(() => { if (!forceExpanded) return; setIsExpanded(true); const timer = setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 180); return () => clearTimeout(timer); }, [forceExpanded]);
+    useEffect(() => { const closeOnAppBack = (e) => { if (isExpanded) { setIsExpanded(false); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeOnAppBack); return () => window.removeEventListener('diverty:back-layer', closeOnAppBack); }, [isExpanded]);
+    const handleTouchStart = useCallback((e) => { startX.current = e.touches[0].clientX; setIsDragging(true); }, []); const handleTouchMove = useCallback((e) => { if (!isDragging) return; const diffX = e.touches[0].clientX - startX.current; setSwipeX(diffX > 0 ? Math.min(diffX, 120) : 0); }, [isDragging]); const handleTouchEnd = useCallback(() => { setIsDragging(false); if (swipeX > 80) { utils.triggerHaptic('success'); onDelete(ev.id); } setSwipeX(0); }, [swipeX, ev.id, onDelete, utils]);
+    const estNormalized=utils.normalizeText(ev.estado),isCotizacion=estNormalized.includes('cotizaci')||estNormalized.includes('cot.'); const tot=utils.safeNum(ev.total),abo=utils.safeNum(ev.abono),restante=Math.max(0,tot-abo),gastosInternos=getGastosInternosEvento(ev);
     const eventId = String(ev.id || '');
     const isWebReservation = !eventId.startsWith('man-') && !eventId.startsWith('cot-');
-    const fechaTexto = ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha';
-    const horaTexto = ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora';
-    const locationText = [ev.ubicacion, ev.direccion].filter(Boolean).join(' · ') || 'Ubicación no indicada';
-    const expenseLabel = id => EXPENSE_CATEGORIES.find(x => x.id === id)?.label || 'Otro gasto';
-
-    let sideColor = 'bg-slate-200';
-    let dotColor = 'bg-slate-300';
-    let waType = 'agradecimiento';
-    if (estNormalized === 'completado') {
-        sideColor = 'bg-emerald-500'; dotColor = 'bg-emerald-400';
-    } else if (estNormalized.includes('aprobada')) {
-        sideColor = 'bg-teal-500'; dotColor = 'bg-teal-400';
-    } else if (estNormalized.includes('rechazada')) {
-        sideColor = 'bg-slate-400'; dotColor = 'bg-slate-300';
-    } else if (isCotizacion) {
-        sideColor = 'bg-amber-400'; dotColor = 'bg-amber-400'; waType = 'cotizacion';
-    } else if (estNormalized.startsWith('confirmad')) {
-        sideColor = 'bg-[#7657FF]'; dotColor = 'bg-[#7657FF]'; waType = 'recordatorio';
-    } else if (estNormalized === 'pendiente') {
-        sideColor = 'bg-amber-500'; dotColor = 'bg-amber-500'; waType = 'cobro';
-    } else if (estNormalized === 'cancelado' || estNormalized === 'cancelada') {
-        sideColor = 'bg-rose-500'; dotColor = 'bg-rose-500';
-    }
-
-    let diff = null;
-    if (ev.fecha) {
-        const [y,m,d] = String(ev.fecha).split('-');
-        if (y && m && d) diff = Math.ceil((new Date(parseInt(y,10), parseInt(m,10)-1, parseInt(d,10)).getTime() - todayTime) / (1000*60*60*24));
-    }
-
-    const badge = (() => {
-        if (isCotizacion) {
-            if (estNormalized.includes('aprobada')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-teal-50 text-teal-600 border border-teal-100">Cot. aprobada</span>;
-            if (estNormalized.includes('rechazada')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Cot. rechazada</span>;
-            return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">Cotización</span>;
-        }
-        if (diff === 0) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-100">Hoy</span>;
-        if (diff === 1) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100">Mañana</span>;
-        if (estNormalized.includes('rechaz')) return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">Rechazada</span>;
-        if (estNormalized === 'cancelado' || estNormalized === 'cancelada') return <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-600 border border-rose-100">Cancelada</span>;
-        return null;
-    })();
-
-    const openDetails = (e) => {
-        e?.stopPropagation?.();
-        if (swipeX > 10) return;
-        utils.triggerHaptic('light');
-        setIsExpanded(true);
-    };
-
-    const detailOverlay = isExpanded && typeof document !== 'undefined' ? createPortal(
-      <div className="fixed inset-0 z-[90000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 animate-fadeIn" onClick={()=>setIsExpanded(false)}>
-        <section onClick={e=>e.stopPropagation()} className="w-full h-[100dvh] sm:h-[94dvh] sm:max-w-2xl bg-[#F5F6FA] sm:rounded-[32px] shadow-[0_35px_90px_rgba(15,23,42,.40)] overflow-hidden flex flex-col animate-slideUp">
-          <header className="shrink-0 bg-white border-b border-slate-200/80 px-4 sm:px-6 pt-[max(16px,env(safe-area-inset-top))] pb-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></span>
-                  {isWebReservation && !isCotizacion && <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15">Web</span>}
-                  {badge}
-                  <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200">{horaTexto}</span>
-                </div>
-                <h2 className="text-[27px] sm:text-3xl font-black text-slate-950 tracking-[-.03em] leading-tight mt-2 break-words">{String(ev.cliente || 'Reserva')}</h2>
-                <p className="text-[11px] font-bold uppercase tracking-[.12em] text-slate-400 mt-1">{fechaTexto} · {String(ev.estado || (isCotizacion ? 'Cotización' : 'Pendiente'))}</p>
-                <p className="text-[10px] font-semibold text-slate-400 mt-1">Vista completa · desliza para revisar toda la información</p>
-              </div>
-              <button type="button" onClick={()=>setIsExpanded(false)} className="w-11 h-11 rounded-[15px] bg-slate-100 text-slate-500 flex items-center justify-center shrink-0 active:scale-[.96]"><X size={21}/></button>
-            </div>
-          </header>
-
-          <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 pb-[max(28px,env(safe-area-inset-bottom))]">
-            <div className="rounded-[24px] bg-gradient-to-br from-[#17142B] via-[#34256B] to-[#7657FF] text-white p-5 shadow-[0_16px_36px_rgba(118,87,255,.22)]">
-              <p className="text-[9px] font-black uppercase tracking-[.18em] text-white/55">{isCotizacion ? 'Cotización' : 'Reserva completa'}</p>
-              <p className="text-lg font-black mt-1 leading-snug">{String(ev.servicio || ev.tipoEvento || 'Sin paquete asignado')}</p>
-              <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Total</p><p className="text-lg font-black mt-1">${tot.toFixed(2)}</p></div>
-                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Recibido</p><p className="text-lg font-black mt-1">${abo.toFixed(2)}</p></div>
-                <div className="rounded-[16px] bg-white/10 border border-white/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-white/55">Pendiente</p><p className={`text-lg font-black mt-1 ${restante > 0 ? 'text-rose-200' : 'text-emerald-200'}`}>${restante.toFixed(2)}</p></div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div><p className="text-[9px] font-black uppercase tracking-[.16em] text-[#7657FF]">Información del evento</p><h3 className="text-lg font-black text-slate-950 mt-1">Datos principales</h3></div>
-                <button type="button" onClick={()=>onMapClick(ev.direccion, ev.ubicacion, ev)} className="shrink-0 min-h-[44px] px-3.5 rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[10px] uppercase tracking-wider flex items-center gap-2 active:scale-[.97]"><MapPin size={16}/> GPS</button>
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3"><Calendar size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Fecha y hora</p><p className="text-sm font-bold text-slate-800 mt-0.5">{fechaTexto} · {horaTexto}</p></div></div>
-                <div className="flex items-start gap-3"><Sparkles size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Servicio</p><p className="text-sm font-bold text-slate-800 mt-0.5 whitespace-pre-wrap break-words">{String(ev.servicio || 'Sin paquete asignado')}</p>{ev.descripcionEvento && <p className="text-xs font-medium text-slate-500 mt-1 whitespace-pre-wrap">{String(ev.descripcionEvento)}</p>}</div></div>
-                <div className="flex items-start gap-3"><MapPin size={18} className="text-[#7657FF] shrink-0 mt-0.5"/><div className="min-w-0"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Ubicación</p><p className="text-sm font-bold text-slate-800 mt-0.5 break-words whitespace-pre-wrap">{locationText}</p>{ev.referenciaLugar && <p className="text-xs font-medium text-slate-500 mt-1">Referencia: {String(ev.referenciaLugar)}</p>}</div></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Teléfono</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.telefono || 'No indicado')}</p></div>
-                  <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Correo</p><p className="text-sm font-bold text-slate-800 mt-1 break-all">{String(ev.email || 'No indicado')}</p></div>
-                  {ev.ninos !== undefined && String(ev.ninos || '').trim() !== '' && <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Niños</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.ninos)}</p></div>}
-                  {ev.tipoEvento && <div className="rounded-[16px] bg-slate-50 border border-slate-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Tipo de evento</p><p className="text-sm font-bold text-slate-800 mt-1">{String(ev.tipoEvento)}</p></div>}
-                </div>
-                {ev.comentarios && <div className="rounded-[16px] bg-amber-50/70 border border-amber-100 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-amber-600">Comentarios</p><p className="text-sm font-semibold text-slate-700 mt-1 whitespace-pre-wrap">{String(ev.comentarios)}</p></div>}
-              </div>
-            </div>
-
-            {!isCotizacion && (
-              <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div><p className="text-[9px] font-black uppercase tracking-[.16em] text-rose-500">Finanzas de la reserva</p><h3 className="text-lg font-black text-slate-950 mt-1">Pagos y gastos</h3></div>
-                  <div className="text-right"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Gastos</p><p className="text-xl font-black text-rose-500">-${gastosInternos.toFixed(2)}</p></div>
-                </div>
-
-                <div className="mt-4 w-full bg-slate-200 rounded-full h-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0}/></div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                  <div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Total</p><p className="font-black text-slate-900 mt-1">${tot.toFixed(2)}</p></div>
-                  <div className="rounded-[15px] bg-emerald-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-emerald-500">Recibido</p><p className="font-black text-emerald-700 mt-1">${abo.toFixed(2)}</p></div>
-                  <div className="rounded-[15px] bg-rose-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-rose-400">Pendiente</p><p className="font-black text-rose-600 mt-1">${restante.toFixed(2)}</p></div>
-                  <div className="rounded-[15px] bg-violet-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-violet-500">Transporte</p><p className="font-black text-violet-700 mt-1">${transporte.toFixed(2)}</p></div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                  {restante > 0 && <button type="button" onClick={()=>onRegistrarAbono(ev)} className="min-h-[56px] rounded-[17px] bg-gradient-to-r from-[#FF2F9A] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.12em] shadow-[0_12px_28px_rgba(157,74,255,.22)] flex items-center justify-center gap-2 active:scale-[.98]"><DollarSign size={19}/> Registrar abono</button>}
-                  <button type="button" onClick={()=>onRegistrarGasto(ev)} className={`min-h-[56px] rounded-[17px] bg-rose-50 text-rose-600 border border-rose-100 font-black text-[11px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98] ${restante <= 0 ? 'sm:col-span-2' : ''}`}><Receipt size={19}/> Registrar gastos</button>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[.12em] text-slate-500">Detalle de gastos</p><span className="text-[10px] font-bold text-slate-400">{expenseItems.length ? `${expenseItems.length} registrado${expenseItems.length===1?'':'s'}` : 'Sin desglose'}</span></div>
-                  {expenseItems.length > 0 ? (
-                    <div className="space-y-2 mt-3">
-                      {expenseItems.map((item, i) => <div key={item.id || i} className="rounded-[15px] bg-slate-50 border border-slate-100 p-3 flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black text-slate-800">{expenseLabel(item.categoria)}</p><p className="text-[9px] font-semibold text-slate-400 mt-0.5">{item.fecha ? String(item.fecha).split('-').reverse().join('/') : 'Sin fecha'}{item.detalle ? ` · ${String(item.detalle)}` : ''}</p></div><p className="font-black text-rose-500 shrink-0">-${utils.safeNum(item.monto).toFixed(2)}</p></div>)}
-                    </div>
-                  ) : (
-                    <p className="text-xs font-semibold text-slate-400 mt-3">Los gastos nuevos aparecerán aquí separados por personal, transporte, materiales u otros.</p>
-                  )}
-                </div>
-
-                {proveedores.length > 0 && <div className="mt-4 pt-4 border-t border-slate-100"><p className="text-[10px] font-black uppercase tracking-[.12em] text-slate-500">Proveedores</p><div className="space-y-2 mt-3">{proveedores.map((sc,i)=><div key={sc.id||i} className="rounded-[15px] bg-slate-50 border border-slate-100 p-3 flex items-start justify-between gap-3"><div><p className="text-[10px] font-black text-slate-800">{String(sc.nombre||'Proveedor')}</p><p className="text-[9px] font-semibold text-slate-400 mt-0.5">{String(sc.servicio||'Servicio')}</p></div><div className="text-right"><p className="font-black text-rose-500">${utils.safeNum(sc.costo).toFixed(2)}</p><p className={`text-[8px] font-black uppercase mt-0.5 ${sc.pagado?'text-emerald-500':'text-amber-500'}`}>{sc.pagado?'Pagado':'Pendiente'}</p></div></div>)}</div></div>}
-              </div>
-            )}
-
-            {!isCotizacion && (
-              <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
-                <label className="text-[9px] font-black uppercase tracking-[.16em] text-slate-400 block mb-2">Estado de la reserva</label>
-                <select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-3.5 cursor-pointer font-black`}>
-                  <option value="Pendiente">Pendiente</option>
-                  <option value="Confirmado">Confirmado</option>
-                  <option value="Completado">Completado</option>
-                  <option value="Cancelado">Cancelado</option>
-                  <option value="Rechazada">Rechazada</option>
-                </select>
-              </div>
-            )}
-
-            <div className="mt-4 rounded-[24px] bg-white border border-slate-200/80 shadow-sm p-4 sm:p-5">
-              <p className="text-[9px] font-black uppercase tracking-[.16em] text-slate-400">Acciones rápidas</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                <button type="button" onClick={()=>onWhatsApp(ev, waType, empresa)} className="min-h-[54px] rounded-[17px] bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 shadow-sm active:scale-[.98]"><MessageCircle size={19}/> WhatsApp Business</button>
-                <button type="button" onClick={()=>onMapClick(ev.direccion, ev.ubicacion, ev)} className="min-h-[54px] rounded-[17px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><MapPin size={19}/> Abrir GPS</button>
-                {isCotizacion ? (
-                  <button type="button" onClick={()=>onViewDoc(ev,'cotizacion')} className="sm:col-span-2 min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><FileText size={18}/> Ver cotización PDF</button>
-                ) : (
-                  <>
-                    <button type="button" onClick={()=>onViewDoc(ev,'factura')} className="min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><Receipt size={18}/> Factura</button>
-                    <button type="button" onClick={()=>onViewDoc(ev,'contrato')} className="min-h-[54px] rounded-[17px] bg-slate-50 text-slate-700 border border-slate-200 font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><FileSignature size={18}/> Contrato</button>
-                  </>
-                )}
-              </div>
-
-              {isCotizacion && <div className="mt-3 pt-3 border-t border-slate-100">
-                {estNormalized === 'cotizacion' && <div className="grid grid-cols-2 gap-3"><button type="button" onClick={()=>onUpdateEstado(ev.id,'Cot. Aprobada')} className="min-h-[50px] rounded-[16px] bg-emerald-500 text-white font-black text-[10px] uppercase tracking-wider">Aprobar</button><button type="button" onClick={()=>onUpdateEstado(ev.id,'Cot. Rechazada')} className="min-h-[50px] rounded-[16px] bg-slate-100 text-slate-600 border border-slate-200 font-black text-[10px] uppercase tracking-wider">Rechazar</button></div>}
-                {estNormalized.includes('aprobada') && <button type="button" onClick={()=>onConvertir(ev)} className="w-full min-h-[52px] rounded-[16px] bg-gradient-to-r from-[#FF2F9A] to-[#7657FF] text-white font-black text-[10px] uppercase tracking-wider shadow-sm">Convertir en reserva</button>}
-              </div>}
-
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-slate-100">
-                <button type="button" onClick={()=>{setIsExpanded(false);onEdit(ev,isCotizacion);}} className="min-h-[48px] rounded-[14px] bg-slate-50 border border-slate-200 text-slate-700 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Edit size={15}/> Editar</button>
-                <button type="button" onClick={()=>{setIsExpanded(false);onDuplicate(ev);}} className="min-h-[48px] rounded-[14px] bg-[#7657FF]/5 border border-[#7657FF]/10 text-[#7657FF] font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Copy size={15}/> Duplicar</button>
-                <button type="button" onClick={()=>onDelete(ev.id)} className="min-h-[48px] rounded-[14px] bg-rose-50 border border-rose-100 text-rose-600 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5"><Trash2 size={15}/> Eliminar</button>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>,
-      document.body
-    ) : null;
-
-    return (
-      <>
-        <div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode:'both', animationDelay:`${idx*40}ms` }}>
-          <div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}>
-            <Trash2 size={24} className="text-white"/>
-            <span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span>
-          </div>
-
-          <div
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onClick={openDetails}
-            className="relative p-5 sm:p-6 z-10 bg-white/95 cursor-pointer text-slate-900 active:bg-slate-50 transition-colors"
-            style={{ transform:`translateX(${swipeX}px)`, transition:isDragging?'none':'transform .2s ease-out' }}
-          >
-            <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor}`}></div>
-            <div className="pl-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></span>
-                    <h3 className="text-[19px] sm:text-xl font-black text-slate-950 leading-tight tracking-tight break-words">{String(ev.cliente || 'Reserva')}</h3>
-                    {isWebReservation && !isCotizacion && <span className="px-2 py-1 rounded-[9px] text-[8px] font-black uppercase tracking-wider bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15">Web</span>}
-                    {badge}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap mt-2">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-500 bg-slate-100 px-2.5 py-1.5 rounded-[10px]"><Calendar size={13}/> {fechaTexto}</span>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-500 bg-slate-100 px-2.5 py-1.5 rounded-[10px]"><Clock size={13}/> {horaTexto}</span>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xl font-black text-slate-950">${tot.toFixed(2)}</p>
-                  {!isCotizacion && <p className={`text-[10px] font-black uppercase tracking-wider mt-1 ${restante>0?'text-rose-500':'text-emerald-500'}`}>{restante>0?`Debe $${restante.toFixed(0)}`:'Pagado'}</p>}
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <div className="flex items-start gap-2"><Sparkles size={15} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-[13px] font-semibold text-slate-600 break-words">{String(ev.servicio || ev.tipoEvento || 'Sin paquete asignado')}</p></div>
-                {(ev.ubicacion || ev.direccion) && <div className="flex items-start gap-2"><MapPin size={15} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-[12px] font-semibold text-slate-500 line-clamp-2">{locationText}</p></div>}
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-                {!isCotizacion ? <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-slate-400"><Receipt size={14}/>${gastosInternos.toFixed(2)} gastos</div> : <div className="text-[10px] font-black uppercase tracking-wider text-amber-500">Cotización</div>}
-                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-[#7657FF]">Expandir reserva <ChevronRight size={16}/></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        {detailOverlay}
-      </>
-    );
+    let sideColor="bg-slate-200",dotColor="bg-slate-300",waType='agradecimiento'; if(estNormalized==='completado'){sideColor='bg-emerald-500';dotColor='bg-emerald-400';}else if(estNormalized.includes('aprobada')){sideColor='bg-teal-500';dotColor='bg-teal-400';}else if(estNormalized.includes('rechazada')){sideColor='bg-slate-400';dotColor='bg-slate-300';}else if(isCotizacion){sideColor='bg-amber-400';dotColor='bg-amber-400';waType='cotizacion';}else if(estNormalized.startsWith('confirmad')){sideColor='bg-[#7657FF]';dotColor='bg-[#7657FF]';waType='recordatorio';}else if(estNormalized==='pendiente'){sideColor='bg-amber-500';dotColor='bg-amber-500';waType='cobro';}else if(estNormalized==='cancelado'||estNormalized==='cancelada'){sideColor='bg-rose-500';dotColor='bg-rose-500';}
+    let diff=null,dateBadgeContent=null; if(ev.fecha){const[y,m,d]=String(ev.fecha).split('-');if(y&&m&&d){diff=Math.ceil((new Date(parseInt(y,10),parseInt(m,10)-1,parseInt(d,10)).getTime()-todayTime)/(1000*60*60*24));}}
+    if(diff===0&&!isCotizacion)dateBadgeContent=<Badge color="rose"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-sm"></div> HOY</Badge>;else if(diff===1&&!isCotizacion)dateBadgeContent=<Badge color="amber">MAÑANA</Badge>;else if(isCotizacion){ if(estNormalized.includes('aprobada'))dateBadgeContent=<Badge color="teal">COT. Aprobada</Badge>; else if(estNormalized.includes('rechazada'))dateBadgeContent=<Badge color="gray">COT. Rechazada</Badge>; else dateBadgeContent=<Badge color="amberSolid"><FileText size={12}/> Cotización</Badge>; }
+    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{!isCotizacion && estNormalized.includes('rechaz') && (<Badge color="gray">Rechazada</Badge>)}{!isCotizacion && (estNormalized==='cancelado' || estNormalized==='cancelada') && (<Badge color="rose">Cancelada</Badge>)}{dateBadgeContent}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion, ev); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#7657FF]" /></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && (<div className="mt-3 pt-3 border-t border-slate-200/70"><div className="flex items-center justify-between mb-2.5"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gastos registrados</span><span className="text-sm font-black text-rose-500">-${gastosInternos.toFixed(2)}</span></div><div className={`grid gap-2 ${restante > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>{restante > 0 && <AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full py-2.5 px-2 text-[11px]" icon={DollarSign}>+ Abono</AppButton>}<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarGasto(ev); }} variant="default" className="w-full py-2.5 px-2 text-[11px] bg-rose-50 text-rose-600 border-rose-100" icon={Receipt}>+ Gasto</AppButton></div></div>)}</div>{!isCotizacion && (<div className="mb-3" onClick={(e)=>e.stopPropagation()}><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Estado de la reserva</label><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Completado">Completado</option><option value="Cancelado">Cancelado</option><option value="Rechazada">Rechazada</option></select></div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
 });
 
 const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
@@ -1427,6 +1337,14 @@ export default function App() {
   const [isAgendaSummaryOpen, setIsAgendaSummaryOpen] = useState(false);
   const [isChristmasOpsOpen, setIsChristmasOpsOpen] = useState(false);
   const [christmasSantaCapacity, setChristmasSantaCapacity] = useState(1);
+  const [staffCapacity, setStaffCapacity] = useState({ animadores: 3, payasos: 1 });
+  const [christmasModuleVisible, setChristmasModuleVisible] = useState(() => utils.getSafeLocal('diverty_christmas_module_visible') !== 'false');
+  const setChristmasVisibility = useCallback((visible) => {
+      const next = !!visible;
+      setChristmasModuleVisible(next);
+      utils.setSafeLocal('diverty_christmas_module_visible', next ? 'true' : 'false');
+      if (!next) { setExpandedChristmasId(null); setIsChristmasOpsOpen(false); }
+  }, []);
   const christmasAutoAssignBusyRef = useRef(false);
 
   // Operación Navidad es una pantalla completa: bloquea el documento inferior para que
@@ -1532,11 +1450,22 @@ export default function App() {
       (async () => {
           try {
               const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'global'));
-              const n = Number(snap.exists() ? snap.data()?.capacidadSanta : 1);
-              if (alive) setChristmasSantaCapacity(Number.isInteger(n) && n >= 1 && n <= 20 ? n : 1);
+              const cfg = snap.exists() ? (snap.data() || {}) : {};
+              const n = Number(cfg.capacidadSanta ?? 1);
+              const resources = cfg.recursosDisponibles && typeof cfg.recursosDisponibles === 'object' ? cfg.recursosDisponibles : {};
+              if (alive) {
+                  setChristmasSantaCapacity(Number.isInteger(n) && n >= 1 && n <= 20 ? n : 1);
+                  setStaffCapacity({
+                      animadores: Math.max(0, Math.min(50, Math.round(Number(resources.animadores) || 3))),
+                      payasos: Math.max(0, Math.min(50, Math.round(Number(resources.payasos) || 1)))
+                  });
+              }
           } catch (err) {
-              console.warn('No se pudo leer capacidadSanta:', err);
-              if (alive) setChristmasSantaCapacity(1);
+              console.warn('No se pudo leer configuración de recursos:', err);
+              if (alive) {
+                  setChristmasSantaCapacity(1);
+                  setStaffCapacity({animadores:3,payasos:1});
+              }
           }
       })();
       return () => { alive = false; };
@@ -1700,6 +1629,21 @@ export default function App() {
       setToastAlert({ isOpen: true, message: String(message), success }); 
       setTimeout(() => setToastAlert({ isOpen: false, message: '', success: false }), 5000); 
   }, []);
+
+  const saveStaffCapacity = useCallback(async (next) => {
+      const normalized = {
+          animadores: Math.max(0, Math.min(50, Math.round(Number(next?.animadores) || 0))),
+          payasos: Math.max(0, Math.min(50, Math.round(Number(next?.payasos) || 0)))
+      };
+      setStaffCapacity(normalized);
+      try {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'global'), { recursosDisponibles: normalized, updatedAt: new Date().toISOString() }, { merge:true });
+          showAlert('Disponibilidad de personal actualizada en la web.', true);
+      } catch (err) {
+          console.error('No se pudo guardar recursosDisponibles:', err);
+          showAlert('No se pudo guardar la disponibilidad de personal.', false);
+      }
+  }, [showAlert]);
 
   const handleMarcarCobrado = useCallback((ev) => {
       const total = utils.safeNum(ev?.total);
@@ -1933,9 +1877,12 @@ export default function App() {
             }
             
             const isEsteMes = (evYear === currYear && evMonth === currMonth);
-            const isPastOrCurrentMonth = evYear < currYear || (evYear === currYear && evMonth <= currMonth);
+            const eventDateKey = evYear && evMonth && evDay ? `${evYear}-${String(evMonth).padStart(2,'0')}-${String(evDay).padStart(2,'0')}` : '';
+            const isDueAsOfToday = !!eventDateKey && eventDateKey <= todayStr;
             
-            if ((t - a) > 0 && isPastOrCurrentMonth) deudaTotal += (t - a); 
+            // Inicio muestra lo realmente vencido/a cobrar a la fecha. Las reservas futuras
+            // no inflan este indicador aunque todavía tengan saldo pendiente.
+            if ((t - a) > 0 && isDueAsOfToday) deudaTotal += (t - a); 
             if(isHoy) gananciaHoy += p; 
             if(isEsteMes) ingresosEsteMes += p;
             if(evYear && evMonth && evDay) { const eD = new Date(evYear, evMonth - 1, evDay); if (eD >= weekStart && eD <= weekEnd) gananciaSemana += p; } 
@@ -2539,6 +2486,25 @@ export default function App() {
       }
   }, [transitionEventStatus, showAlert]);
 
+  const handleUpdateWebRequest = useCallback(async (event, patch) => {
+      if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return null;
+      try {
+          const saved = await patchEventoAtomic(event.id, {
+              ...patch,
+              decisionSource: 'app',
+              updatedAt: new Date().toISOString()
+          });
+          const merged = { ...event, ...saved, ...patch };
+          setEventos(prev => prev.map(ev => ev.id === event.id ? merged : ev));
+          showAlert('Solicitud actualizada.', true);
+          return merged;
+      } catch (err) {
+          console.error('Error actualizando solicitud web:', err);
+          showAlert('No se pudo actualizar la solicitud.', false);
+          return null;
+      }
+  }, [patchEventoAtomic, showAlert]);
+
   const handleSaveFromModal = useCallback(async (formDataToSave, isCotizacionMode) => {
     if (!formDataToSave.cliente?.trim()) return showAlert("Por favor, ingresa el nombre del cliente."); 
     if (!formDataToSave.fecha) return showAlert("Por favor, selecciona la fecha."); 
@@ -3093,7 +3059,7 @@ export default function App() {
              <button type="button" onClick={() => openModal()} className="relative z-10 mt-5 w-full rounded-[18px] py-3.5 px-5 bg-[linear-gradient(90deg,#FF2F9A_0%,#E42AD8_45%,#8A3DFF_100%)] text-white font-black text-[14px] sm:text-base tracking-wide shadow-[0_14px_34px_rgba(218,42,216,.34)] border border-white/20 flex items-center justify-center gap-3 active:scale-[0.99] transition-transform"><Plus size={22} strokeWidth={3}/> Nueva Reserva <ChevronRight size={20} className="absolute right-5"/></button>
           </div>
 
-          <button type="button" onClick={() => { utils.triggerHaptic('light'); handleTabChange('eventos'); setIsChristmasOpsOpen(true); window.scrollTo(0,0); }} className="w-full rounded-[22px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] p-4 text-white shadow-[0_14px_32px_rgba(217,31,45,.22)] border border-white/20 flex items-center gap-3 active:scale-[.985] transition-transform"><div className="w-11 h-11 rounded-[15px] bg-white/15 border border-white/20 flex items-center justify-center text-2xl shrink-0">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[.16em] text-white/70">Acceso permanente</p><p className="text-[17px] font-black leading-tight">Operación Navidad</p><p className="text-[10px] font-bold text-white/80 mt-0.5">24–25 dic · Santas · rutas · reservas</p></div><ChevronRight size={21} className="shrink-0"/></button>
+          {christmasModuleVisible && <button type="button" onClick={() => { utils.triggerHaptic('light'); handleTabChange('eventos'); setIsChristmasOpsOpen(true); window.scrollTo(0,0); }} className="w-full rounded-[22px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] p-4 text-white shadow-[0_14px_32px_rgba(217,31,45,.22)] border border-white/20 flex items-center gap-3 active:scale-[.985] transition-transform"><div className="w-11 h-11 rounded-[15px] bg-white/15 border border-white/20 flex items-center justify-center text-2xl shrink-0">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[.16em] text-white/70">Temporada navideña</p><p className="text-[17px] font-black leading-tight">Operación Navidad</p><p className="text-[10px] font-bold text-white/80 mt-0.5">24–25 dic · Santas · rutas · reservas</p></div><ChevronRight size={21} className="shrink-0"/></button>}
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <button type="button" className="text-left group" onClick={() => { handleTabChange('eventos'); setViewMode('hoy'); }}>
@@ -3121,7 +3087,7 @@ export default function App() {
                  <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-rose-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-rose-500/10 text-rose-500 border border-rose-500/10 flex items-center justify-center"><TrendingUp size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-rose-500 transition-colors"/></div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Por Cobrar</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Por cobrar a la fecha</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
                  </div>
               </button>
           </div>
@@ -3248,7 +3214,7 @@ export default function App() {
                             <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-gradient-to-br from-[#EEF2FF] to-[#F6EEFF] border border-[#7657FF]/15 flex items-center justify-center shadow-sm"><CalendarDays size={20} className="text-[#7657FF]" strokeWidth={2.5}/></div><div><p className="text-[10px] uppercase tracking-[0.18em] font-black text-slate-400">{viewMode === 'canceladas' ? 'Canceladas / Rechazadas' : (fecha === todayStr ? 'Hoy' : 'Agenda')}</p><h3 className="text-lg sm:text-xl font-black text-slate-950 tracking-tight">{fecha ? String(fecha).split('-').reverse().join('/') : 'Sin fecha'}</h3></div></div>
                             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7657FF] bg-[#7657FF]/8 border border-[#7657FF]/10 px-3 py-2 rounded-full">{grouped[fecha].length} {grouped[fecha].length === 1 ? 'evento' : 'eventos'}</span>
                         </div>
-                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[58px_1fr] sm:grid-cols-[74px_1fr] gap-3 sm:gap-4 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} /></div></div>)}</div>
+                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[44px_1fr] sm:grid-cols-[66px_1fr] gap-2 sm:gap-3 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} /></div></div>)}</div>
                     </div>
                 ))}
             </div>
@@ -3259,7 +3225,7 @@ export default function App() {
       <div className={`${isChristmasOpsOpen ? '' : 'animate-fadeIn'} min-h-full p-4 md:p-8 lg:p-10 max-w-7xl mx-auto space-y-8 pb-32 relative text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]`}>
         <div className="pt-1 sm:pt-3 mb-6 sm:mb-8 flex flex-col gap-3 relative z-10">
             <div className="flex flex-col gap-4"><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Agenda</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Organiza tus eventos con precisión</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsAgendaSummaryOpen(true)}} className="w-full flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] px-5 py-3.5 text-white shadow-[0_16px_34px_rgba(184,61,255,.26)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/15 border border-white/15 flex items-center justify-center shadow-inner"><CalendarDays size={27}/></div><div className="text-left min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumen de agenda</p><p className="text-2xl font-black leading-tight mt-1">{eventosActivos.filter(e=>{const d=String(e.fecha||''); const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6); const ds=new Date(d+'T00:00:00'); return ds>=start&&ds<=end&&!isPendingWebRequest(e)&&!/cancelado|rechaz|cot/i.test(String(e.estado||''));}).length} eventos <span className="text-base font-bold text-white/80">esta semana</span></p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button></div>
-            <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(true)}} className="w-full mt-1 flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] px-5 py-4 text-white shadow-[0_16px_34px_rgba(217,31,45,.22)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/16 border border-white/20 flex items-center justify-center text-2xl">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/75">24 y 25 de diciembre</p><p className="text-xl font-black leading-tight mt-0.5">Operación Navidad</p><p className="text-[11px] font-bold text-white/80 mt-0.5">Santas · horarios · clientes · GPS</p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button>
+            {christmasModuleVisible && <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(true)}} className="w-full mt-1 flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] px-5 py-4 text-white shadow-[0_16px_34px_rgba(217,31,45,.22)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/16 border border-white/20 flex items-center justify-center text-2xl">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/75">24 y 25 de diciembre</p><p className="text-xl font-black leading-tight mt-0.5">Operación Navidad</p><p className="text-[11px] font-bold text-white/80 mt-0.5">Santas · horarios · clientes · GPS</p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button>}
             <div className="flex flex-col lg:flex-row gap-4 mt-3 sm:mt-5">
                  <div className="relative flex-1 group"><div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none z-20"><Search size={22} strokeWidth={2.6} className="text-[#7657FF] group-focus-within:text-[#7657FF] transition-colors" /></div><input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-white/95 backdrop-blur-xl border border-white rounded-[20px] pl-12 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#8B5CF6]/50 focus:ring-4 focus:ring-[#7657FF]/10 transition-all duration-300 shadow-[0_10px_28px_rgba(15,23,42,.06)] placeholder:text-slate-400" />{globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-400 hover:text-slate-700 transition-colors"><X size={18}/></button>}</div>
                  <div className="flex gap-2 overflow-x-auto scrollbar-hide p-1.5 items-center bg-white/70 backdrop-blur-xl rounded-[20px] border border-white shadow-[0_10px_30px_rgba(15,23,42,.05)]">
@@ -3278,34 +3244,133 @@ export default function App() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">{agendaFiltrados.map((e,i)=><EventCardItem key={e.id} ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} />)}</div>
             ) : ( renderListView() )}
         </div>
-        {isChristmasOpsOpen && (()=>{
+        {isChristmasOpsOpen && christmasModuleVisible && (()=>{
           const isChristmasDateEvent = e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || ''));
-          const christmasEvents = eventosActivos.filter(e => isChristmasDateEvent(e) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''))).sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
+          const isDelivered = e => e?.entregaNavidadRealizada === true || utils.normalizeText(e?.estado) === 'completado';
+          const christmasEvents = eventosActivos
+            .filter(e => isChristmasDateEvent(e) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/i.test(String(e.estado || '')))
+            .sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||''))||String(a.hora||'').localeCompare(String(b.hora||'')));
           const pendingChristmasRequests = eventosActivos.filter(e => isChristmasDateEvent(e) && isPendingWebRequest(e));
+          const deliveredCount = christmasEvents.filter(isDelivered).length;
+          const pendingDeliveryCount = Math.max(0, christmasEvents.length - deliveredCount);
           const closeChristmas = ()=>{utils.triggerHaptic('light');setExpandedChristmasId(null);setIsChristmasOpsOpen(false)};
           const enabledSantas = Array.from({length: Math.max(1, christmasSantaCapacity)}, (_,i)=>`Santa ${i+1}`);
           const assignedNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')));
-          // Nunca ocultar una reserva solo porque su Santa fue desactivado. La mostramos
-          // temporalmente y la asignación automática intentará moverla a un Santa activo.
           const santaNames = Array.from(new Set([...enabledSantas, ...assignedNames])).sort((a,b)=>a==='Sin asignar'?1:b==='Sin asignar'?-1:a.localeCompare(b,undefined,{numeric:true}));
-          const toMinutes = christmasTimeMinutes;
           const hasScheduleConflict = (ev, list) => {
-            if ((String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar')==='Sin asignar') return false;
-            return !christmasInsertionPlan(ev, list.filter(other=>other.id!==ev.id)).feasible;
+            if (isDelivered(ev)) return false;
+            if ((String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar') === 'Sin asignar') return true;
+            return !christmasInsertionPlan(ev, list.filter(other=>other.id!==ev.id && !isDelivered(other))).feasible;
           };
-          const reassignSanta = async (ev, santa) => { if (!ev?.id || !santa) return; try { utils.triggerHaptic('light'); await patchEventoAtomic(ev.id, { santaAsignado: santa, esNavidad: true, recursoNavidad: 'Santa' }); showAlert(`Reserva reasignada a ${santa}.`, true); } catch (err) { console.error(err); showAlert('No se pudo reasignar el Santa. Intenta nuevamente.', false); } };
-          const formatChristmasTime = value => { const raw=String(value||'').trim(); const m=raw.match(/^(\d{1,2}):(\d{2})/); if(!m) return raw||'Por definir'; const h=Number(m[1]); return `${h%12||12}:${m[2]} ${h>=12?'PM':'AM'}`; };
+          const reassignSanta = async (ev, santa) => {
+            if (!ev?.id || !santa) return;
+            try {
+              utils.triggerHaptic('light');
+              await patchEventoAtomic(ev.id, { santaAsignado: santa, esNavidad: true, recursoNavidad: 'Santa' });
+              setEventos(prev=>prev.map(x=>String(x.id)===String(ev.id)?{...x,santaAsignado:santa,esNavidad:true,recursoNavidad:'Santa'}:x));
+              showAlert(`Reserva reasignada a ${santa}.`, true);
+            } catch (err) { console.error(err); showAlert('No se pudo reasignar el Santa. Intenta nuevamente.', false); }
+          };
+          const formatChristmasTime = t => utils.formatTime12h(t).replace(' AM','AM').replace(' PM','PM');
           const money = v => `$${utils.safeNum(v).toFixed(2)}`;
           const mapTarget = ev => { const gps=christmasEventGps(ev); if(gps) return `${gps.lat},${gps.lng}`; const raw=String(ev.direccion||'').trim(); return raw || String(ev.referenciaLugar||ev.ubicacion||'').trim(); };
-          const openSantaRoute = stops => { const targets=stops.map(mapTarget).filter(Boolean); if(!targets.length) return showAlert('Estas entregas todavía no tienen GPS disponible.', false); utils.triggerHaptic('light'); if(targets.length===1){ const only=stops[0]; openGoogleMaps(only?.direccion, only?.ubicacion || only?.referenciaLugar, only); return; } const destination=targets[targets.length-1]; const waypoints=targets.slice(0,-1).join('|'); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank'); };
+          const openSantaRoute = stops => {
+            const pendingStops = stops.filter(e=>!isDelivered(e));
+            const nextDate = pendingStops[0]?.fecha || '';
+            const routeStops = nextDate ? pendingStops.filter(e=>String(e.fecha||'')===String(nextDate)) : pendingStops;
+            const targets=routeStops.map(mapTarget).filter(Boolean);
+            if(!targets.length) return showAlert('No quedan entregas pendientes con GPS en esta ruta.', true);
+            utils.triggerHaptic('light');
+            if(targets.length===1){ openGoogleMaps(routeStops[0]?.direccion, routeStops[0]?.ubicacion, routeStops[0]); return; }
+            const destination=targets[targets.length-1];
+            const waypoints=targets.slice(0,-1).join('|');
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank');
+          };
+          const markChristmasDelivered = async (ev) => {
+            if (!ev?.id || isDelivered(ev)) return;
+            try {
+              utils.triggerHaptic('success');
+              const completedAt = new Date().toISOString();
+              const patch = { entregaNavidadRealizada: true, entregaNavidadRealizadaAt: completedAt, estado: 'Completado', esNavidad: true, recursoNavidad: 'Santa' };
+              await patchEventoAtomic(ev.id, patch);
+              setEventos(prev=>prev.map(x=>String(x.id)===String(ev.id)?{...x,...patch}:x));
+              const santa = String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar';
+              const sameSanta = christmasEvents.filter(x=>String(x.id)!==String(ev.id) && (String(x.santaAsignado||'Sin asignar').trim()||'Sin asignar')===santa && !isDelivered(x));
+              const currentMinutes = christmasTimeMinutes(ev.hora) ?? -1;
+              const next = sameSanta.find(x=>(christmasTimeMinutes(x.hora) ?? 9999) > currentMinutes) || sameSanta[0] || null;
+              setExpandedChristmasId(next?.id || null);
+              showAlert(next ? `Entrega realizada. Siguiente: ${next.cliente || 'cliente'} · ${formatChristmasTime(next.hora)}.` : `Entrega realizada. ${santa} terminó sus entregas pendientes.`, true);
+            } catch (err) { console.error(err); showAlert('No se pudo marcar la entrega como realizada.', false); }
+          };
+          const reopenChristmasDelivery = async (ev) => {
+            if (!ev?.id || !isDelivered(ev)) return;
+            try {
+              const patch = { entregaNavidadRealizada: false, entregaNavidadRealizadaAt: '', estado: 'Confirmado' };
+              await patchEventoAtomic(ev.id, patch);
+              setEventos(prev=>prev.map(x=>String(x.id)===String(ev.id)?{...x,...patch}:x));
+              showAlert('Entrega devuelta a pendiente.', true);
+            } catch (err) { console.error(err); showAlert('No se pudo devolver la entrega a pendiente.', false); }
+          };
           const deleteChristmas = ev => showConfirm(`¿Eliminar la reserva navideña de ${ev.cliente || 'este cliente'}? El horario se liberará automáticamente en la web.`, async()=>{ try { utils.triggerHaptic('light'); await deleteEventoSynced(ev.id); await publishSync('evento', ev.id, 'delete'); setEventos(prev=>prev.filter(x=>x.id!==ev.id)); setExpandedChristmasId(null); showAlert('Reserva eliminada y cupo liberado en la web.', true); } catch(err){ console.error(err); showAlert('No se pudo eliminar la reserva. Intenta nuevamente.', false); } });
+          const finishChristmasSeason = () => showConfirm('¿Ocultar Operación Navidad al terminar la temporada? No se borrará ninguna reserva y podrás volver a mostrarla desde Ajustes > Herramientas.', ()=>{ setChristmasVisibility(false); showAlert('Operación Navidad quedó oculta. Tus reservas se conservaron.', true); });
+
           return <div className="fixed left-0 top-0 right-0 bottom-0 w-screen h-[100dvh] max-w-none z-[78] bg-[#F6F7FB] overflow-y-auto overscroll-none [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))] isolate" style={{backgroundColor:'#F6F7FB',backgroundImage:'radial-gradient(circle at top, rgba(239,68,68,.08), transparent 26%)'}}>
             <div className="relative z-20 bg-[linear-gradient(135deg,#7F1D1D_0%,#C62828_42%,#EA580C_100%)] text-white shadow-[0_10px_28px_rgba(127,29,29,.22)] pt-[max(52px,calc(env(safe-area-inset-top)+40px))]">
-              <div className="max-w-4xl mx-auto px-4 pb-4"><button type="button" onClick={closeChristmas} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/25 px-4 py-3 text-[11px] font-black uppercase tracking-[.12em] active:scale-[.97]"><ChevronLeft size={18}/> Agenda</button><div className="mt-3 flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-white/65">24 y 25 de diciembre</p><h2 className="text-3xl sm:text-4xl font-black tracking-[-.035em] mt-1">Operación Navidad</h2><p className="text-sm font-bold text-white/75 mt-1">Entregas organizadas, información completa y rutas por Santa</p></div><div className="w-14 h-14 rounded-[19px] bg-white/12 border border-white/20 flex items-center justify-center text-3xl shrink-0">🎅</div></div><div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4"><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{christmasEvents.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Confirmadas</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsNotifOpen(true)}} className={`text-left rounded-[18px] border p-3 active:scale-[.98] ${pendingChristmasRequests.length?'bg-amber-300/20 border-amber-200/35':'bg-white/10 border-white/10'}`}><p className="text-2xl font-black">{pendingChristmasRequests.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/75">Por revisar</p></button><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{christmasSantaCapacity}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Santas</p></div><div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-lg font-black">24–25</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Diciembre</p></div></div></div>
+              <div className="max-w-4xl mx-auto px-4 pb-4">
+                <button type="button" onClick={closeChristmas} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/25 px-4 py-3 text-[11px] font-black uppercase tracking-[.12em] active:scale-[.97]"><ChevronLeft size={18}/> Agenda</button>
+                <div className="mt-3 flex items-end justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-white/65">24 y 25 de diciembre</p><h2 className="text-3xl sm:text-4xl font-black tracking-[-.035em] mt-1">Operación Navidad</h2><p className="text-sm font-bold text-white/75 mt-1">Entregas, siguiente parada y rutas por Santa</p></div><div className="w-14 h-14 rounded-[19px] bg-white/12 border border-white/20 flex items-center justify-center text-3xl shrink-0">🎅</div></div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                  <div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{pendingDeliveryCount}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Pendientes</p></div>
+                  <div className="rounded-[18px] bg-emerald-300/15 border border-emerald-100/20 p-3"><p className="text-2xl font-black">{deliveredCount}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/75">Realizadas</p></div>
+                  <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsNotifOpen(true)}} className={`text-left rounded-[18px] border p-3 active:scale-[.98] ${pendingChristmasRequests.length?'bg-amber-300/20 border-amber-200/35':'bg-white/10 border-white/10'}`}><p className="text-2xl font-black">{pendingChristmasRequests.length}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/75">Por revisar</p></button>
+                  <div className="rounded-[18px] bg-white/10 border border-white/10 p-3"><p className="text-2xl font-black">{christmasSantaCapacity}</p><p className="text-[8px] uppercase font-black tracking-wider text-white/65">Santas</p></div>
+                </div>
+              </div>
             </div>
-            <div className="max-w-4xl mx-auto p-3.5 sm:p-6">
-              <div className="mb-4 rounded-[24px] bg-white border border-slate-100 shadow-[0_10px_28px_rgba(15,23,42,.06)] p-4 flex items-start gap-3"><div className="w-11 h-11 rounded-[15px] bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Info size={20}/></div><div><p className="font-black text-slate-950">Vista simplificada</p><p className="text-[11px] font-semibold text-slate-500 mt-1">Toca una entrega para ver todos sus datos. Al eliminarla, su cupo se libera en la web automáticamente.</p></div></div>
-              {christmasEvents.length===0?<div className="rounded-[28px] bg-white border border-slate-100 shadow-sm px-6 py-12 text-center"><div className="text-5xl mb-4">🎄</div><h3 className="text-xl font-black text-slate-950">Aún no hay entregas confirmadas</h3><p className="text-sm font-semibold text-slate-500 mt-2">{pendingChristmasRequests.length ? `Tienes ${pendingChristmasRequests.length} ${pendingChristmasRequests.length===1?'solicitud':'solicitudes'} por revisar. Sus horarios permanecen apartados hasta aceptar o rechazar.` : 'Las reservas aceptadas del 24 y 25 aparecerán aquí.'}</p>{pendingChristmasRequests.length>0&&<button type="button" onClick={()=>{utils.triggerHaptic('light');setIsNotifOpen(true)}} className="mt-5 inline-flex items-center justify-center gap-2 rounded-[15px] bg-amber-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.1em] text-white shadow-sm active:scale-[.98]"><BellRing size={16}/> Revisar solicitudes</button>}</div>:<div className="space-y-4">{santaNames.map(santa=>{const stops=christmasEvents.filter(e=>(String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')===santa); if(!stops.length && santa==='Sin asignar') return null; return <section key={santa} className="rounded-[26px] bg-white border border-slate-100 shadow-[0_10px_30px_rgba(15,23,42,.065)] overflow-hidden"><div className={`p-4 border-b flex items-center justify-between gap-3 ${santa==='Sin asignar'?'bg-amber-50 border-amber-100':'bg-gradient-to-r from-red-50 to-orange-50 border-red-100'}`}><div className="flex items-center gap-3 min-w-0"><div className="w-11 h-11 rounded-[15px] bg-white shadow-sm flex items-center justify-center text-2xl shrink-0">{santa==='Sin asignar'?'⚠️':'🎅'}</div><div className="min-w-0"><p className="font-black text-slate-950 truncate">{santa}</p><p className="text-[10px] font-bold text-slate-500">{stops.length} {stops.length===1?'entrega':'entregas'} · ordenadas por hora</p></div></div>{santa!=='Sin asignar' && stops.length>0 && <button type="button" onClick={()=>openSantaRoute(stops)} className="shrink-0 rounded-[13px] bg-slate-950 text-white px-3 py-2.5 text-[9px] font-black uppercase tracking-wider active:scale-[.97] flex items-center gap-1.5"><MapIcon size={14}/> Ruta</button>}</div><div className="p-2.5 space-y-2">{stops.length===0?<p className="text-center text-xs font-bold text-slate-400 py-5">Sin entregas asignadas.</p>:stops.map((ev,idx)=>{const expanded=expandedChristmasId===ev.id;const conflict=hasScheduleConflict(ev,stops);const phone=String(ev.telefono||'').replace(/\D/g,'');const saldo=Math.max(0,utils.safeNum(ev.total)-utils.safeNum(ev.abono));return <article key={ev.id} className={`rounded-[21px] border transition-all overflow-hidden ${expanded?'border-red-200 shadow-[0_12px_30px_rgba(127,29,29,.10)] bg-white':'border-slate-200/80 bg-[#FCFCFD]'}`}><button type="button" onClick={()=>{utils.triggerHaptic('light');setExpandedChristmasId(expanded?null:ev.id)}} className="w-full text-left px-3.5 py-3.5 active:bg-slate-50"><div className="flex items-center gap-3"><div className="w-[78px] h-[58px] rounded-[17px] bg-slate-950 text-white flex flex-col items-center justify-center shrink-0 shadow-sm px-1"><span className="text-[8px] font-black uppercase text-white/55">Hora</span><span className="text-[12px] leading-none font-black whitespace-nowrap tracking-[-.02em]">{formatChristmasTime(ev.hora)}</span></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="text-[9px] font-black uppercase tracking-wider text-red-500">Parada {idx+1}</span>{conflict&&<span className="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">Revisar tiempo</span>}</div><p className="font-black text-[17px] text-slate-950 truncate mt-1">{ev.cliente||'Cliente'}</p><p className="text-[10px] font-bold text-slate-500 truncate mt-1">{ev.referenciaLugar||ev.ubicacion||'Ubicación por revisar'}</p></div><ChevronDown size={20} className={`text-slate-400 shrink-0 transition-transform ${expanded?'rotate-180':''}`}/></div></button>{expanded&&<div className="px-4 pb-4 border-t border-slate-100"><div className="grid grid-cols-2 gap-2 mt-4"><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Fecha</p><p className="font-black text-slate-800 mt-1 text-sm">{String(ev.fecha||'').split('-').reverse().join('/')||'—'}</p></div><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Niños</p><p className="font-black text-slate-800 mt-1 text-sm">{ev.ninos||'No indicado'}</p></div><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Total</p><p className="font-black text-slate-800 mt-1 text-sm">{money(ev.total)}</p></div><div className={`rounded-[15px] p-3 ${saldo>0?'bg-rose-50':'bg-emerald-50'}`}><p className={`text-[8px] font-black uppercase tracking-wider ${saldo>0?'text-rose-400':'text-emerald-500'}`}>Saldo</p><p className={`font-black mt-1 text-sm ${saldo>0?'text-rose-600':'text-emerald-600'}`}>{saldo>0?money(saldo):'Pagado'}</p></div></div><div className="mt-2 rounded-[16px] bg-[#F7F3FF] border border-[#7657FF]/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-[#7657FF]">Servicio</p><p className="text-sm font-black text-slate-900 mt-1 whitespace-pre-wrap">{ev.servicio||'Entrega de Nochebuena'}</p>{ev.descripcionEvento&&<p className="text-[11px] font-semibold text-slate-600 mt-2 whitespace-pre-wrap leading-relaxed">{ev.descripcionEvento}</p>}</div><div className="mt-2 rounded-[16px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Dirección / GPS</p><p className="text-[11px] font-bold text-slate-700 mt-1 break-words whitespace-pre-wrap">{ev.direccion||'No indicada'}</p>{ev.referenciaLugar&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Referencia</p><p className="text-[11px] font-bold text-slate-700 mt-1 whitespace-pre-wrap">{ev.referenciaLugar}</p></>}{ev.comentarios&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Comentarios</p><p className="text-[11px] font-semibold text-slate-600 mt-1 whitespace-pre-wrap">{ev.comentarios}</p></>}</div><div className="mt-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mb-2">Santa asignado</p><div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{enabledSantas.map(name=><button key={name} type="button" onClick={()=>reassignSanta(ev,name)} className={`shrink-0 px-3 py-2.5 rounded-[13px] text-[9px] font-black uppercase tracking-wider border ${String(ev.santaAsignado||'')===name?'bg-red-600 text-white border-red-600':'bg-white text-slate-600 border-slate-200'}`}>{name}</button>)}</div></div><div className="grid grid-cols-2 gap-2 mt-3">{phone?<button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${ev.cliente||''}, te contactamos de Diverty Eventos sobre tu entrega de Navidad.`)} className="min-h-[46px] rounded-[14px] bg-emerald-50 text-emerald-600 border border-emerald-100 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MessageCircle size={16}/> WhatsApp</button>:<div/>}<button type="button" onClick={()=>openSantaRoute([ev])} className="min-h-[46px] rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MapPin size={16}/> GPS</button></div><button type="button" onClick={()=>deleteChristmas(ev)} className="mt-2 w-full min-h-[48px] rounded-[15px] bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98]"><Trash2 size={17}/> Eliminar reserva y liberar cupo</button></div>}</article>})}</div></section>})}</div>}
+
+            <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
+              <div className="rounded-[24px] bg-white border border-slate-100 shadow-sm p-4 flex items-start gap-3"><div className="w-11 h-11 rounded-[15px] bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Info size={21}/></div><div><p className="font-black text-slate-950">Modo operativo</p><p className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">Marca cada visita como <b>Entrega realizada</b>. La ruta deja de incluirla y la siguiente parada queda resaltada automáticamente.</p></div></div>
+
+              {christmasEvents.length===0 ? <div className="rounded-[28px] bg-white border border-slate-100 shadow-sm px-6 py-12 text-center"><div className="text-5xl mb-4">🎄</div><h3 className="text-xl font-black text-slate-950">Aún no hay entregas confirmadas</h3><p className="text-sm font-semibold text-slate-500 mt-2">{pendingChristmasRequests.length ? `Tienes ${pendingChristmasRequests.length} ${pendingChristmasRequests.length===1?'solicitud':'solicitudes'} por revisar. Sus horarios permanecen apartados hasta aceptar o rechazar.` : 'Las reservas aceptadas del 24 y 25 aparecerán aquí.'}</p>{pendingChristmasRequests.length>0&&<button type="button" onClick={()=>{utils.triggerHaptic('light');setIsNotifOpen(true)}} className="mt-5 inline-flex items-center justify-center gap-2 rounded-[15px] bg-amber-500 px-5 py-3 text-[10px] font-black uppercase tracking-[.1em] text-white shadow-sm active:scale-[.98]"><BellRing size={16}/> Revisar solicitudes</button>}</div> :
+              <div className="space-y-4">{santaNames.map(santa=>{
+                const stops=christmasEvents.filter(e=>(String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')===santa);
+                if(!stops.length && santa==='Sin asignar') return null;
+                const pendingStops=stops.filter(e=>!isDelivered(e));
+                const completedStops=stops.filter(isDelivered);
+                const nextStop=pendingStops[0] || null;
+                return <section key={santa} className="rounded-[26px] bg-white border border-slate-100 shadow-[0_10px_30px_rgba(15,23,42,.065)] overflow-hidden">
+                  <div className={`p-4 border-b flex items-center justify-between gap-3 ${santa==='Sin asignar'?'bg-amber-50 border-amber-100':'bg-gradient-to-r from-red-50 to-orange-50 border-red-100'}`}>
+                    <div className="flex items-center gap-3 min-w-0"><div className="w-11 h-11 rounded-[15px] bg-white shadow-sm flex items-center justify-center text-2xl shrink-0">{santa==='Sin asignar'?'⚠️':'🎅'}</div><div className="min-w-0"><p className="font-black text-slate-950 truncate">{santa}</p><p className="text-[10px] font-bold text-slate-500">{pendingStops.length} pendientes · {completedStops.length} realizadas</p></div></div>
+                    {santa!=='Sin asignar' && pendingStops.length>0 ? <button type="button" onClick={()=>openSantaRoute(pendingStops)} className="shrink-0 rounded-[13px] bg-slate-950 text-white px-3 py-2.5 text-[9px] font-black uppercase tracking-wider active:scale-[.97] flex items-center gap-1.5"><MapIcon size={14}/> Ruta pendiente</button> : <span className="shrink-0 rounded-[13px] bg-emerald-50 text-emerald-600 border border-emerald-100 px-3 py-2.5 text-[9px] font-black uppercase tracking-wider">Ruta completa</span>}
+                  </div>
+                  <div className="p-2.5 space-y-2">{stops.length===0 ? <p className="text-center text-xs font-bold text-slate-400 py-5">Sin entregas asignadas.</p> : stops.map((ev,idx)=>{
+                    const expanded=expandedChristmasId===ev.id;
+                    const delivered=isDelivered(ev);
+                    const isNext=!delivered && nextStop?.id===ev.id;
+                    const conflict=hasScheduleConflict(ev,stops);
+                    const phone=String(ev.telefono||'').replace(/\D/g,'');
+                    const saldo=Math.max(0,utils.safeNum(ev.total)-utils.safeNum(ev.abono));
+                    return <article key={ev.id} className={`rounded-[21px] border transition-all overflow-hidden ${delivered?'border-emerald-200 bg-emerald-50/45':isNext?'border-amber-300 shadow-[0_10px_28px_rgba(245,158,11,.10)] bg-amber-50/30':expanded?'border-red-200 shadow-[0_12px_30px_rgba(127,29,29,.10)] bg-white':'border-slate-200/80 bg-[#FCFCFD]'}`}>
+                      <button type="button" onClick={()=>{utils.triggerHaptic('light');setExpandedChristmasId(expanded?null:ev.id)}} className="w-full text-left px-3.5 py-3.5 active:bg-slate-50">
+                        <div className="flex items-center gap-3"><div className={`w-[78px] h-[58px] rounded-[17px] text-white flex flex-col items-center justify-center shrink-0 shadow-sm px-1 ${delivered?'bg-emerald-600':isNext?'bg-amber-500':'bg-slate-950'}`}><span className="text-[8px] font-black uppercase text-white/65">Hora</span><span className="text-[12px] leading-none font-black whitespace-nowrap tracking-[-.02em]">{formatChristmasTime(ev.hora)}</span></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2 flex-wrap"><span className={`text-[9px] font-black uppercase tracking-wider ${delivered?'text-emerald-600':isNext?'text-amber-600':'text-red-500'}`}>Parada {idx+1}</span>{delivered?<span className="text-[8px] font-black uppercase tracking-wider text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">✓ Entregada</span>:isNext?<span className="text-[8px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">Siguiente</span>:<span className="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-50 border border-slate-200 px-2 py-1 rounded-full">Pendiente</span>}{conflict&&<span className="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">Revisar tiempo</span>}</div><p className={`font-black text-[17px] truncate mt-1 ${delivered?'text-slate-500 line-through decoration-emerald-400/50':'text-slate-950'}`}>{ev.cliente||'Cliente'}</p><p className="text-[10px] font-bold text-slate-500 truncate mt-1">{ev.referenciaLugar||ev.ubicacion||'Ubicación por revisar'}</p></div><ChevronDown size={20} className={`text-slate-400 shrink-0 transition-transform ${expanded?'rotate-180':''}`}/></div>
+                      </button>
+                      {expanded&&<div className="px-4 pb-4 border-t border-slate-100">
+                        {isNext && <div className="mt-4 rounded-[16px] bg-amber-50 border border-amber-200 p-3 flex items-center gap-3"><div className="w-9 h-9 rounded-[12px] bg-amber-500 text-white flex items-center justify-center"><ChevronRight size={20}/></div><div><p className="text-[9px] font-black uppercase tracking-wider text-amber-600">Vamos con la siguiente</p><p className="text-sm font-black text-slate-900 mt-0.5">{ev.cliente} · {formatChristmasTime(ev.hora)}</p></div></div>}
+                        {delivered && <div className="mt-4 rounded-[16px] bg-emerald-50 border border-emerald-200 p-3 flex items-center gap-3"><CheckCircle2 size={24} className="text-emerald-500"/><div><p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Entrega realizada</p><p className="text-[11px] font-semibold text-slate-600 mt-0.5">Esta parada ya no se incluye en la ruta pendiente.</p></div></div>}
+                        <div className="grid grid-cols-2 gap-2 mt-4"><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Fecha</p><p className="font-black text-slate-800 mt-1 text-sm">{String(ev.fecha||'').split('-').reverse().join('/')||'—'}</p></div><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Niños</p><p className="font-black text-slate-800 mt-1 text-sm">{ev.ninos||'No indicado'}</p></div><div className="rounded-[15px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Total</p><p className="font-black text-slate-800 mt-1 text-sm">{money(ev.total)}</p></div><div className={`rounded-[15px] p-3 ${saldo>0?'bg-rose-50':'bg-emerald-50'}`}><p className={`text-[8px] font-black uppercase tracking-wider ${saldo>0?'text-rose-400':'text-emerald-500'}`}>Saldo</p><p className={`font-black mt-1 text-sm ${saldo>0?'text-rose-600':'text-emerald-600'}`}>{saldo>0?money(saldo):'Pagado'}</p></div></div>
+                        <div className="mt-2 rounded-[16px] bg-[#F7F3FF] border border-[#7657FF]/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-[#7657FF]">Servicio</p><p className="text-sm font-black text-slate-900 mt-1 whitespace-pre-wrap">{ev.servicio||'Entrega de Nochebuena'}</p>{ev.descripcionEvento&&<p className="text-[11px] font-semibold text-slate-600 mt-2 whitespace-pre-wrap leading-relaxed">{ev.descripcionEvento}</p>}</div>
+                        <div className="mt-2 rounded-[16px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Dirección / GPS</p><p className="text-[11px] font-bold text-slate-700 mt-1 break-words whitespace-pre-wrap">{ev.direccion||'No indicada'}</p>{ev.referenciaLugar&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Referencia</p><p className="text-[11px] font-bold text-slate-700 mt-1 whitespace-pre-wrap">{ev.referenciaLugar}</p></>}{ev.comentarios&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Comentarios</p><p className="text-[11px] font-semibold text-slate-600 mt-1 whitespace-pre-wrap">{ev.comentarios}</p></>}</div>
+                        <div className="mt-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mb-2">Santa asignado</p><div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{enabledSantas.map(name=><button key={name} type="button" onClick={()=>reassignSanta(ev,name)} className={`shrink-0 px-3 py-2.5 rounded-[13px] text-[9px] font-black uppercase tracking-wider border ${String(ev.santaAsignado||'')===name?'bg-red-600 text-white border-red-600':'bg-white text-slate-600 border-slate-200'}`}>{name}</button>)}</div></div>
+                        <div className="grid grid-cols-2 gap-2 mt-3">{phone?<button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${ev.cliente||''}, te contactamos de Diverty Eventos sobre tu entrega de Navidad.`)} className="min-h-[46px] rounded-[14px] bg-emerald-50 text-emerald-600 border border-emerald-100 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MessageCircle size={16}/> WhatsApp</button>:<div/>}<button type="button" onClick={()=>openGoogleMaps(ev.direccion, ev.ubicacion, ev)} className="min-h-[46px] rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MapPin size={16}/> GPS / Waze</button></div>
+                        {!delivered ? <button type="button" onClick={()=>markChristmasDelivered(ev)} className="mt-2 w-full min-h-[52px] rounded-[15px] bg-emerald-500 text-white border border-emerald-500 font-black text-[10px] uppercase tracking-[.12em] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(16,185,129,.18)] active:scale-[.98]"><CheckCircle2 size={18}/> Marcar entrega realizada</button> : <button type="button" onClick={()=>reopenChristmasDelivery(ev)} className="mt-2 w-full min-h-[46px] rounded-[15px] bg-white text-slate-500 border border-slate-200 font-black text-[9px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><RefreshCw size={15}/> Volver a pendiente</button>}
+                        <button type="button" onClick={()=>deleteChristmas(ev)} className="mt-2 w-full min-h-[48px] rounded-[15px] bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98]"><Trash2 size={17}/> Eliminar reserva y liberar cupo</button>
+                      </div>}
+                    </article>;
+                  })}</div>
+                </section>;
+              })}</div>}
+
+              <div className="rounded-[24px] bg-white border border-slate-100 shadow-sm p-4"><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-[14px] bg-slate-100 flex items-center justify-center text-xl">🎄</div><div className="min-w-0 flex-1"><p className="font-black text-slate-950">Cuando termine la temporada</p><p className="text-[11px] font-semibold text-slate-500 mt-1 leading-relaxed">Puedes quitar Operación Navidad de Inicio y Agenda sin borrar las reservas ni el historial.</p></div></div><button type="button" onClick={finishChristmasSeason} className="mt-4 w-full min-h-[48px] rounded-[15px] bg-slate-950 text-white font-black text-[10px] uppercase tracking-[.12em] active:scale-[.98]">Finalizar temporada y ocultar módulo</button></div>
             </div>
           </div>;
         })()}
@@ -3665,9 +3730,28 @@ export default function App() {
       <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[20px] bg-gradient-to-br from-blue-50 to-[#F4F0FF] border border-blue-100 p-5"><FileSpreadsheet size={28} className="text-[#7657FF]"/><h3 className="font-black text-xl text-slate-950 mt-4">Datos centralizados</h3><p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">Los contratos y facturas toman automáticamente la información guardada en Facturación y Banco.</p><button type="button" onClick={()=>go('billing')} className="mt-5 px-4 py-3 rounded-[15px] bg-white text-[#7657FF] border border-[#7657FF]/15 font-black text-[10px] uppercase tracking-wider shadow-sm">Revisar datos</button></div></div>
     </>);
 
+    if (configView === 'resources') return sectionShell(<>
+      {subHeader('Personal disponible','Define cuántos animadores y payasos puedes asignar al mismo tiempo.',Users,'text-amber-500')}
+      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
+        <div className="rounded-[22px] bg-gradient-to-br from-amber-50 via-white to-violet-50 border border-amber-100 p-5 mb-5"><p className="font-black text-slate-950">Capacidad operativa</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">La página usa estos valores para advertir cuando una hora ya no tiene suficiente personal. Las solicitudes pendientes también reservan temporalmente el recurso hasta que las aceptes o rechaces.</p></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-[22px] border border-violet-100 bg-violet-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white text-[#7657FF] flex items-center justify-center shadow-sm"><Users size={20}/></div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Animadores</label><input type="number" min="0" max="50" value={staffCapacity.animadores} onChange={e=>setStaffCapacity(prev=>({...prev,animadores:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-violet-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
+          <div className="rounded-[22px] border border-amber-100 bg-amber-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white text-amber-500 flex items-center justify-center shadow-sm"><Sparkles size={20}/></div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Payasos</label><input type="number" min="0" max="50" value={staffCapacity.payasos} onChange={e=>setStaffCapacity(prev=>({...prev,payasos:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-amber-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
+        </div>
+        <button type="button" onClick={()=>saveStaffCapacity(staffCapacity)} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.13em] shadow-[0_12px_28px_rgba(184,61,255,.22)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><Save size={18}/> Guardar disponibilidad</span></button>
+        <div className="mt-4 rounded-[18px] bg-blue-50 border border-blue-100 p-4 flex gap-3"><Info size={18} className="text-[#7657FF] shrink-0"/><p className="text-xs font-medium text-slate-600 leading-relaxed">La cantidad necesaria se detecta desde el servicio solicitado (por ejemplo “2 animadores” o “1 payaso”). Si un paquete no especifica personal, no se bloquea automáticamente.</p></div>
+      </div>
+    </>);
+
     if (configView === 'tools') return sectionShell(<>
       {subHeader('Herramientas del sistema','Funciones administrativas de uso ocasional.',Settings,'text-[#7657FF]')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
+      <div className="space-y-4">
+        <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
+        <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6">
+          <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-red-50 flex items-center justify-center text-2xl">🎅</div><div className="min-w-0 flex-1"><p className="font-black text-slate-950">Operación Navidad</p><p className="text-xs font-medium text-slate-500 mt-1">Oculta el acceso al terminar la temporada sin borrar ninguna reserva.</p></div></div>
+          <button type="button" onClick={()=>setChristmasVisibility(!christmasModuleVisible)} className={`mt-5 w-full min-h-[52px] rounded-[16px] font-black text-[10px] uppercase tracking-[.12em] border active:scale-[.98] ${christmasModuleVisible?'bg-rose-50 text-rose-600 border-rose-200':'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>{christmasModuleVisible?'Ocultar módulo de Navidad':'Mostrar módulo de Navidad'}</button>
+        </div>
+      </div>
     </>);
 
     if (configView === 'security') return sectionShell(<>
@@ -3688,6 +3772,7 @@ export default function App() {
         {menuItem('billing',FileSpreadsheet,'Facturación y banco','Datos fiscales y cuenta bancaria para documentos.','text-[#7657FF]','bg-[#F2EEFF]',<span className="inline-flex mt-2 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-wider">Completo</span>)}
         {menuItem('goal',Award,'Meta mensual','Objetivo de ventas y seguimiento.','text-amber-500','bg-amber-50',<div className="mt-2 flex items-center gap-2"><div className="h-1.5 flex-1 max-w-[140px] bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] rounded-full" style={{width:`${avanceMeta}%`}}></div></div><span className="text-[9px] font-black text-slate-400">{avanceMeta.toFixed(0)}%</span></div>)}
         {menuItem('notifications',BellRing,'Notificaciones','Push, alertas web y permisos.','text-[#FF3EA5]','bg-rose-50')}
+        {menuItem('resources',Users,'Personal disponible','Animadores y payasos disponibles por horario.','text-amber-500','bg-amber-50',<span className="inline-flex mt-2 px-2.5 py-1 rounded-full bg-violet-50 text-[#7657FF] text-[8px] font-black uppercase tracking-wider">{staffCapacity.animadores} anim. · {staffCapacity.payasos} pay.</span>)}
         {menuItem('documents',FileSpreadsheet,'Documentos','Información para contratos y facturas.','text-blue-500','bg-blue-50')}
         {menuItem('tools',Settings,'Herramientas del sistema','Mantenimiento y numeración.','text-[#7657FF]','bg-[#F2EEFF]')}
         {menuItem('security',Lock,'Seguridad y sesión','Cerrar sesión y gestión de acceso.','text-emerald-500','bg-emerald-50')}
@@ -3766,7 +3851,7 @@ export default function App() {
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
       <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} />
+      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
