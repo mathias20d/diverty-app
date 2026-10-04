@@ -1149,16 +1149,24 @@ export default function App() {
 
   // NAVIDAD: asignación automática con la capacidad configurada. No crea listeners nuevos:
   // reutiliza los eventos que ya llegan por el listener operativo del CRM.
+  // Si se reduce la cantidad de Santas, también reasigna reservas que hayan quedado
+  // apuntando a un Santa desactivado (por ejemplo, Santa 2 cuando solo queda Santa 1).
   useEffect(() => {
     if (!firebaseUser || christmasAutoAssignBusyRef.current) return;
     const isChristmas = e => (e.esNavidad === true || /entregas de nochebuena/i.test(String(e.servicio || ''))) && ['2026-12-24','2026-12-25'].includes(String(e.fecha || '')) && !/cancelado|rechazada|cot/i.test(String(e.estado || ''));
-    const pending = eventosActivos.filter(e => { const a=String(e.santaAsignado || '').trim(); return isChristmas(e) && (!a || a === 'Sin asignar'); });
-    if (!pending.length) return;
-
     const capacity = Math.max(1, Number(christmasSantaCapacity) || 1);
     const santaNames = Array.from({length: capacity}, (_, i) => `Santa ${i + 1}`);
+    const pending = eventosActivos.filter(e => {
+      const a=String(e.santaAsignado || '').trim();
+      return isChristmas(e) && (!a || a === 'Sin asignar' || !santaNames.includes(a));
+    });
+    if (!pending.length) return;
+
     const toMinutes = value => { const m = String(value || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
-    const working = eventosActivos.filter(e => { const a=String(e.santaAsignado || '').trim(); return isChristmas(e) && a && a !== 'Sin asignar'; });
+    const working = eventosActivos.filter(e => {
+      const a=String(e.santaAsignado || '').trim();
+      return isChristmas(e) && santaNames.includes(a);
+    });
 
     christmasAutoAssignBusyRef.current = true;
     (async () => {
@@ -1691,14 +1699,99 @@ export default function App() {
     else guardarReservaFinal(evtId, safeData);
   }, [eventosActivos, closeModal, showAlert, modalConfig, showConfirm, publishSync, ensureDocumentNumber]);
 
+  // NAVIDAD: `slot_santa_*` es un contador auxiliar para evitar sobreventas en la web.
+  // Si una reserva de prueba fue movida/eliminada con una versión anterior de la app,
+  // puede quedar un contador huérfano y bloquear un horario aunque ya no exista la reserva.
+  // Esta reconciliación toma `eventos` como fuente de verdad y reconstruye únicamente
+  // los cupos del 24 y 25 de diciembre, sin tocar reservas de otras fechas.
+  const reconcileChristmasAvailability = useCallback(async () => {
+      if (!firebaseUser) return;
+      const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
+      const availabilityCol = collection(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web');
+      const [eventsSnap, availabilitySnap] = await Promise.all([
+          getDocs(query(eventsRef, where('fecha','>=','2026-12-24'), where('fecha','<=','2026-12-25'))),
+          getDocs(query(availabilityCol, where('fecha','>=','2026-12-24'), where('fecha','<=','2026-12-25')))
+      ]);
+
+      const eventRows = eventsSnap.docs.filter(d => !d.data()?._system).map(d => ({ id:d.id, ...d.data() }));
+      const eventById = new Map(eventRows.map(ev => [String(ev.id), ev]));
+      const isChristmas = ev =>
+          (ev?.esNavidad === true || /entregas de nochebuena/i.test(String(ev?.servicio || ''))) &&
+          ['2026-12-24','2026-12-25'].includes(String(ev?.fecha || ''));
+      const isActiveChristmas = ev => isChristmas(ev) && publicSlot(ev) !== null;
+      const activeChristmas = eventRows.filter(isActiveChristmas);
+      const capacity = Math.max(1, Number(christmasSantaCapacity) || 1);
+
+      const grouped = new Map();
+      activeChristmas.forEach(ev => {
+          if (!ev.hora) return;
+          const safeSlot = `${String(ev.fecha)}_${String(ev.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+          const key = `slot_santa_${safeSlot}`;
+          if (!grouped.has(key)) grouped.set(key, { fecha:String(ev.fecha), hora:String(ev.hora), ids:[] });
+          grouped.get(key).ids.push(String(ev.id));
+      });
+
+      let batch = writeBatch(db);
+      let writes = 0;
+      const commitIfNeeded = async (force = false) => {
+          if (!writes) return;
+          if (!force && writes < 400) return;
+          await batch.commit();
+          batch = writeBatch(db);
+          writes = 0;
+      };
+      const queueSet = async (ref, data) => { batch.set(ref, data); writes++; await commitIfNeeded(false); };
+      const queueDelete = async ref => { batch.delete(ref); writes++; await commitIfNeeded(false); };
+
+      // Repara también los documentos individuales que la web usa para rutas y cupos.
+      for (const ev of eventRows) {
+          const slot = publicSlot(ev);
+          const ref = availabilityRef(ev.id);
+          if (slot) await queueSet(ref, slot);
+          else await queueDelete(ref);
+      }
+
+      // Borra documentos individuales huérfanos del 24/25 que ya no tienen evento.
+      for (const row of availabilitySnap.docs) {
+          if (row.id.startsWith('slot_')) continue;
+          if (!eventById.has(String(row.id))) await queueDelete(row.ref);
+      }
+
+      // Reconstruye los contadores de Santa y elimina contadores fantasmas.
+      const existingSantaSlots = new Map(availabilitySnap.docs
+          .filter(d => d.id.startsWith('slot_santa_'))
+          .map(d => [d.id, d]));
+      for (const [slotId, info] of grouped) {
+          const ids = Array.from(new Set(info.ids));
+          await queueSet(availabilityRef(slotId), {
+              fecha: info.fecha,
+              hora: info.hora,
+              count: ids.length,
+              capacity,
+              reservationIds: ids,
+              updatedAt: new Date().toISOString()
+          });
+          existingSantaSlots.delete(slotId);
+      }
+      for (const stale of existingSantaSlots.values()) await queueDelete(stale.ref);
+      await commitIfNeeded(true);
+  }, [firebaseUser, christmasSantaCapacity]);
+
+  useEffect(() => {
+      if (!firebaseUser || !isChristmasOpsOpen) return;
+      reconcileChristmasAvailability().catch(err => console.warn('No se pudo reconciliar disponibilidad de Navidad:', err));
+  }, [firebaseUser, isChristmasOpsOpen, reconcileChristmasAvailability]);
+
   const deleteEventoSynced = useCallback(async (id) => {
       if (!id) throw new Error('EVENT_ID_REQUIRED');
+      let deletedWasChristmas = false;
       await rawRunTransaction(db, async tx => {
           const eventRef = getDocRef(id);
           const eventSnap = await tx.get(eventRef);
           if (!eventSnap.exists()) return;
           const ev = eventSnap.data() || {};
           const esNavidad = ev.esNavidad === true || /entregas de nochebuena/i.test(String(ev.servicio || ''));
+          deletedWasChristmas = esNavidad;
           let santaSlotRef = null;
           let santaSlotSnap = null;
           if (esNavidad && ev.fecha && ev.hora) {
@@ -1719,7 +1812,14 @@ export default function App() {
               else tx.set(santaSlotRef, { ...slot, count: reconciledCount, reservationIds: ids, updatedAt: new Date().toISOString() });
           }
       });
-  }, []);
+      // Limpia cualquier slot_santa huérfano que haya quedado de pruebas/ediciones anteriores.
+      // La reserva ya fue eliminada; si esta reparación adicional falla por conexión,
+      // no convertimos una eliminación exitosa en un falso mensaje de error.
+      if (deletedWasChristmas) {
+          try { await reconcileChristmasAvailability(); }
+          catch (err) { console.warn('Reserva eliminada; quedó pendiente reconciliar cupos de Navidad:', err); }
+      }
+  }, [reconcileChristmasAvailability]);
 
   const handleDeleteEvento = useCallback((id) => showConfirm("¿Eliminar registro permanentemente?", async () => {
       utils.triggerHaptic('light');
@@ -2253,7 +2353,9 @@ export default function App() {
           const closeChristmas = ()=>{utils.triggerHaptic('light');setExpandedChristmasId(null);setIsChristmasOpsOpen(false)};
           const enabledSantas = Array.from({length: Math.max(1, christmasSantaCapacity)}, (_,i)=>`Santa ${i+1}`);
           const assignedNames = Array.from(new Set(christmasEvents.map(e=>String(e.santaAsignado||'Sin asignar').trim()||'Sin asignar')));
-          const santaNames = Array.from(new Set([...enabledSantas, ...assignedNames.filter(n=>n==='Sin asignar'||enabledSantas.includes(n))])).sort((a,b)=>a==='Sin asignar'?1:b==='Sin asignar'?-1:a.localeCompare(b,undefined,{numeric:true}));
+          // Nunca ocultar una reserva solo porque su Santa fue desactivado. La mostramos
+          // temporalmente y la asignación automática intentará moverla a un Santa activo.
+          const santaNames = Array.from(new Set([...enabledSantas, ...assignedNames])).sort((a,b)=>a==='Sin asignar'?1:b==='Sin asignar'?-1:a.localeCompare(b,undefined,{numeric:true}));
           const toMinutes = value => { const m=String(value||'').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60+Number(m[2]) : null; };
           const hasScheduleConflict = (ev, list) => { if ((String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar')==='Sin asignar') return false; const t=toMinutes(ev.hora); if(t===null) return false; return list.some(other=>other.id!==ev.id && other.fecha===ev.fecha && toMinutes(other.hora)!==null && Math.abs(toMinutes(other.hora)-t)<45); };
           const reassignSanta = async (ev, santa) => { if (!ev?.id || !santa) return; try { utils.triggerHaptic('light'); await patchEventoAtomic(ev.id, { santaAsignado: santa, esNavidad: true, recursoNavidad: 'Santa' }); showAlert(`Reserva reasignada a ${santa}.`, true); } catch (err) { console.error(err); showAlert('No se pudo reasignar el Santa. Intenta nuevamente.', false); } };
