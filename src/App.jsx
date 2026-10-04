@@ -96,13 +96,28 @@ async function prepareDivertyData() {
   if (preparationPromise) return preparationPromise;
   preparationPromise = (async () => {
     if (auth.currentUser?.uid !== ADMIN_UID) throw new Error('ADMIN_REQUIRED');
-    const marker = getConfigRef('migracion_segura_v1');
+    // v2 also reconciles disponibilidad_web. This removes old test reservations and
+    // orphan slot_* locks that could leave dates blocked on the public website.
+    const marker = getConfigRef('migracion_segura_v2');
     if ((await getDoc(marker)).exists()) {preparationComplete=true; return;}
-    // One intentional migration read, never executed by public visitors.
-    const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+
+    // One intentional admin-only reconciliation read. `eventos` is the source of truth.
+    const [snap, availabilitySnap, globalSnap] = await Promise.all([
+      getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos')),
+      getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web')),
+      getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config_web', 'global')).catch(() => null)
+    ]);
     const max = {factura: 0, contrato: 0, cotizacion: 0};
     const fields = {factura: 'numeroFactura', contrato: 'numeroContrato', cotizacion: 'numeroCotizacion'};
     const prefixes = {factura: 'FAC', contrato: 'CON', cotizacion: 'COT'};
+    const activeAvailabilityIds = new Set();
+    const slotGroups = new Map();
+    const globalConfig = globalSnap?.exists?.() ? (globalSnap.data() || {}) : {};
+    const normalCapacity = Number.isInteger(Number(globalConfig.capacidadSimultanea)) && Number(globalConfig.capacidadSimultanea) >= 1
+      ? Number(globalConfig.capacidadSimultanea) : 3;
+    const santaCapacity = Number.isInteger(Number(globalConfig.capacidadSanta)) && Number(globalConfig.capacidadSanta) >= 1
+      ? Number(globalConfig.capacidadSanta) : 1;
+
     let batch = writeBatch(db), size = 0;
     for (const row of snap.docs) {
       const ev = row.data();
@@ -110,10 +125,56 @@ async function prepareDivertyData() {
         const match = String(ev[fields[type]] || '').match(new RegExp('^' + prefixes[type] + '-(\\d+)$', 'i'));
         if (match) max[type] = Math.max(max[type], Number(match[1]));
       }
-      if (!ev._system) { projectEvent(batch, row.ref, ev); size++; }
-      if (size >= 150) { await batch.commit(); batch = writeBatch(db); size = 0; }
+      if (!ev._system) {
+        projectEvent(batch, row.ref, ev);
+        size += 2; // availability + client status (worst case)
+        const slot = publicSlot(ev);
+        if (slot) {
+          activeAvailabilityIds.add(String(row.id));
+          if (slot.fecha && slot.hora) {
+            const isChristmas = ev.esNavidad === true || /entregas de nochebuena/i.test(String(ev.servicio || ''));
+            const safeSlot = `${String(slot.fecha)}_${String(slot.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+            const slotId = `${isChristmas ? 'slot_santa_' : 'slot_'}${safeSlot}`;
+            if (!slotGroups.has(slotId)) slotGroups.set(slotId, {
+              fecha: String(slot.fecha), hora: String(slot.hora), ids: [],
+              capacity: isChristmas ? santaCapacity : normalCapacity
+            });
+            slotGroups.get(slotId).ids.push(String(row.id));
+          }
+        }
+      }
+      if (size >= 300) { await batch.commit(); batch = writeBatch(db); size = 0; }
     }
     if (size) await batch.commit();
+
+    // Keep disponibilidad_web as an exact public projection of active reservations.
+    // Internal slot_* documents are rebuilt from the real events, never treated as events.
+    batch = writeBatch(db); size = 0;
+    const flush = async () => { if (!size) return; await batch.commit(); batch = writeBatch(db); size = 0; };
+    const queueDelete = async ref => { batch.delete(ref); size++; if (size >= 350) await flush(); };
+    const queueSet = async (ref, data) => { batch.set(ref, data); size++; if (size >= 350) await flush(); };
+
+    for (const row of availabilitySnap.docs) {
+      const id = String(row.id);
+      if (id.startsWith('slot_')) {
+        if (!slotGroups.has(id)) await queueDelete(row.ref);
+      } else if (!activeAvailabilityIds.has(id)) {
+        await queueDelete(row.ref);
+      }
+    }
+    for (const [slotId, info] of slotGroups) {
+      const ids = Array.from(new Set(info.ids));
+      await queueSet(availabilityRef(slotId), {
+        fecha: info.fecha,
+        hora: info.hora,
+        count: ids.length,
+        capacity: info.capacity,
+        reservationIds: ids,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    await flush();
+
     await rawRunTransaction(db, async tx => {
       const types = Object.keys(max);
       const refs = types.map(type => getConfigRef('contador_' + type));
@@ -836,6 +897,11 @@ export default function App() {
   }, [publishSync]);
 
   useEffect(() => {
+      if (!firebaseUser || firebaseUser.uid !== ADMIN_UID) return;
+      prepareDivertyData().catch(err => console.warn('No se pudo reconciliar la disponibilidad pública:', err));
+  }, [firebaseUser]);
+
+  useEffect(() => {
       if (!firebaseUser) return;
       let alive = true;
       (async () => {
@@ -1199,7 +1265,7 @@ export default function App() {
     const map = new Map();
     eventosActivos.forEach(e => {
       const es = utils.normalizeText(e.estado);
-      if (!e.fecha || es === 'cancelado' || es.includes('cotizaci') || es.includes('cot.')) return;
+      if (!e.fecha || es === 'cancelado' || es.includes('rechaz') || es.includes('cotizaci') || es.includes('cot.')) return;
       // Normaliza fechas que puedan venir como YYYY-MM-DD, ISO o con espacios.
       const fechaKey = String(e.fecha).trim().slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaKey)) return;
@@ -1343,6 +1409,7 @@ export default function App() {
       return eventosActivos.filter(e => { 
           const es = utils.normalizeText(e.estado); 
           if (es.includes('cotizaci') || es.includes('cot.')) return false; 
+          if ((es === 'cancelado' || es.includes('rechaz')) && viewMode !== 'todas') return false;
           if (deferredGlobalSearch && !String(`${e.cliente} ${e.servicio} ${e.ubicacion} ${e.direccion} ${e.telefono}`).toLowerCase().includes(deferredGlobalSearch.toLowerCase())) return false; 
           if (filterDate && e.fecha !== filterDate) return false; 
           
@@ -1792,29 +1859,28 @@ export default function App() {
           const ev = eventSnap.data() || {};
           const esNavidad = ev.esNavidad === true || /entregas de nochebuena/i.test(String(ev.servicio || ''));
           deletedWasChristmas = esNavidad;
-          let santaSlotRef = null;
-          let santaSlotSnap = null;
-          if (esNavidad && ev.fecha && ev.hora) {
+          let slotRef = null;
+          let slotSnap = null;
+          if (ev.fecha && ev.hora) {
               const safeSlot = `${String(ev.fecha)}_${String(ev.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
-              santaSlotRef = availabilityRef(`slot_santa_${safeSlot}`);
-              santaSlotSnap = await tx.get(santaSlotRef);
+              slotRef = availabilityRef(`${esNavidad ? 'slot_santa_' : 'slot_'}${safeSlot}`);
+              slotSnap = await tx.get(slotRef);
           }
           tx.delete(eventRef);
           tx.delete(availabilityRef(id));
           tx.delete(clientStatusRef(id));
-          if (santaSlotRef && santaSlotSnap?.exists()) {
-              const slot = santaSlotSnap.data() || {};
-              const ids = Array.isArray(slot.reservationIds) ? slot.reservationIds.filter(x => String(x) !== String(id)) : [];
-              const oldCount = Math.max(0, Number(slot.count) || 0);
-              const idWasTracked = Array.isArray(slot.reservationIds) && slot.reservationIds.some(x => String(x) === String(id));
-              const reconciledCount = idWasTracked ? Math.max(ids.length, oldCount - 1) : Math.max(ids.length, oldCount - 1);
-              if (reconciledCount <= 0) tx.delete(santaSlotRef);
-              else tx.set(santaSlotRef, { ...slot, count: reconciledCount, reservationIds: ids, updatedAt: new Date().toISOString() });
+          // Remove this reservation from the internal capacity lock as well. Old versions
+          // only did this for Santa, which left normal dates blocked after deleting tests.
+          if (slotRef && slotSnap?.exists()) {
+              const slot = slotSnap.data() || {};
+              const ids = Array.isArray(slot.reservationIds)
+                  ? slot.reservationIds.map(String).filter(x => x !== String(id))
+                  : [];
+              if (ids.length <= 0) tx.delete(slotRef);
+              else tx.set(slotRef, { ...slot, count: ids.length, reservationIds: ids, updatedAt: new Date().toISOString() });
           }
       });
-      // Limpia cualquier slot_santa huérfano que haya quedado de pruebas/ediciones anteriores.
-      // La reserva ya fue eliminada; si esta reparación adicional falla por conexión,
-      // no convertimos una eliminación exitosa en un falso mensaje de error.
+      // Christmas also keeps its dedicated route/capacity reconciliation.
       if (deletedWasChristmas) {
           try { await reconcileChristmasAvailability(); }
           catch (err) { console.warn('Reserva eliminada; quedó pendiente reconciliar cupos de Navidad:', err); }
@@ -1841,8 +1907,19 @@ export default function App() {
       utils.triggerHaptic('light');
       try {
           // Para una purga total sí se consulta explícitamente toda la colección.
-          const allSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos'));
+          const [allSnap, availabilitySnap] = await Promise.all([
+              getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'eventos')),
+              getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web'))
+          ]);
           await Promise.all(allSnap.docs.filter(d => !d.data()?._system).map(d => deleteDoc(getDocRef(d.id))));
+          // A total wipe must also remove transaction locks (slot_*), otherwise the
+          // public calendar can keep showing dates as occupied with no events left.
+          let cleanupBatch = writeBatch(db), cleanupWrites = 0;
+          for (const row of availabilitySnap.docs) {
+              cleanupBatch.delete(row.ref); cleanupWrites++;
+              if (cleanupWrites >= 350) { await cleanupBatch.commit(); cleanupBatch = writeBatch(db); cleanupWrites = 0; }
+          }
+          if (cleanupWrites) await cleanupBatch.commit();
           historyLoadedRef.current = true;
           setEventos([]);
           utils.triggerHaptic('success');
