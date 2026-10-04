@@ -21,6 +21,79 @@ const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos
 const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
 const isEventRef = ref => ref.path.startsWith(`artifacts/${appId}/public/data/eventos/`);
 const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', id);
+
+// NAVIDAD — motor único de ruta usado por la asignación y por Operación Navidad.
+// Cada visita reserva 25 min + 5 min de margen. El traslado se estima de forma
+// conservadora a partir de la distancia GPS; si falta un pin se usan 15 min.
+const CHRISTMAS_SERVICE_BUFFER_MINUTES = 30;
+const christmasTimeMinutes = value => {
+  const m = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const christmasEventGps = value => {
+  const lat = Number(value?.lat), lng = Number(value?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)) return {lat,lng};
+  const raw = String(value?.direccion || '').trim();
+  const q = raw.match(/[?&]q=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i);
+  if (q) return {lat:Number(q[1]),lng:Number(q[2])};
+  const at = raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (at) return {lat:Number(at[1]),lng:Number(at[2])};
+  return null;
+};
+const christmasDistanceKm = (a, b) => {
+  if (!a || !b) return null;
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b.lat-a.lat)*rad, dLng = (b.lng-a.lng)*rad;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+};
+const christmasTravelMinutes = km => {
+  const d = Math.max(0, Number(km) || 0);
+  if (d <= 2) return 10;
+  if (d <= 5) return 15;
+  if (d <= 8) return 22;
+  if (d <= 12) return 30;
+  if (d <= 18) return 40;
+  return Math.min(70, 40 + Math.ceil((d - 18) * 2));
+};
+const christmasLeg = (from, to) => {
+  const km = christmasDistanceKm(christmasEventGps(from), christmasEventGps(to));
+  return { km, minutes: km === null ? 15 : christmasTravelMinutes(km), estimated: km === null };
+};
+const christmasInsertionPlan = (candidate, existingStops = []) => {
+  const t = christmasTimeMinutes(candidate?.hora);
+  if (t === null) return {feasible:false, score:9999, reason:'time'};
+  const sameDate = existingStops
+    .filter(x => x && x.id !== candidate?.id && String(x.fecha || '') === String(candidate?.fecha || ''))
+    .filter(x => christmasTimeMinutes(x.hora) !== null)
+    .sort((a,b)=>christmasTimeMinutes(a.hora)-christmasTimeMinutes(b.hora));
+  if (sameDate.some(x => christmasTimeMinutes(x.hora) === t)) return {feasible:false, score:9999, reason:'same-time'};
+
+  const previous = [...sameDate].filter(x => christmasTimeMinutes(x.hora) < t).pop() || null;
+  const next = sameDate.find(x => christmasTimeMinutes(x.hora) > t) || null;
+  const legPrev = previous ? christmasLeg(previous, candidate) : null;
+  const legNext = next ? christmasLeg(candidate, next) : null;
+  const fitsPrevious = !previous || christmasTimeMinutes(previous.hora) + CHRISTMAS_SERVICE_BUFFER_MINUTES + legPrev.minutes <= t;
+  const fitsNext = !next || t + CHRISTMAS_SERVICE_BUFFER_MINUTES + legNext.minutes <= christmasTimeMinutes(next.hora);
+
+  let addedTravel = 0;
+  if (previous && next) {
+    const direct = christmasLeg(previous, next).minutes;
+    addedTravel = Math.max(0, legPrev.minutes + legNext.minutes - direct);
+  } else if (previous) addedTravel = legPrev.minutes;
+  else if (next) addedTravel = legNext.minutes;
+
+  const kms = [legPrev?.km, legNext?.km].filter(v => Number.isFinite(v));
+  const nearestKm = kms.length ? Math.min(...kms) : null;
+  const hasGps = !!christmasEventGps(candidate);
+  // Abrir una ruta nueva tiene una pequeña penalización. Esto hace que una entrega
+  // cercana prefiera al Santa que ya trabaja en esa zona, sin forzar recorridos largos.
+  const startRoutePenalty = sameDate.length ? 0 : 25;
+  const gpsPenalty = hasGps ? 0 : 25;
+  const nearbyBonus = nearestKm !== null && nearestKm <= 7 ? 8 : 0;
+  const score = Math.max(0, addedTravel) + sameDate.length * 2 + startRoutePenalty + gpsPenalty - nearbyBonus;
+  return {feasible:fitsPrevious && fitsNext, fitsPrevious, fitsNext, previous, next, legPrev, legNext, nearestKm, addedTravel, score, anchors:sameDate.length};
+};
 const publicSlot = value => {
   const state = String(value.estado || '').toLowerCase();
   if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
@@ -49,6 +122,8 @@ const publicSlot = value => {
   if (value.esNavidad === true) {
     slot.esNavidad = true;
     slot.recursoNavidad = value.recursoNavidad || 'Santa';
+    const santa = String(value.santaAsignado || '').trim();
+    if (santa) slot.santaAsignado = santa;
   }
 
   return slot;
@@ -1228,7 +1303,6 @@ export default function App() {
     });
     if (!pending.length) return;
 
-    const toMinutes = value => { const m = String(value || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
     const working = eventosActivos.filter(e => {
       const a=String(e.santaAsignado || '').trim();
       return isChristmas(e) && santaNames.includes(a);
@@ -1238,21 +1312,20 @@ export default function App() {
     (async () => {
       try {
         for (const ev of pending.sort((a,b)=>String(a.fecha||'').localeCompare(String(b.fecha||'')) || String(a.hora||'').localeCompare(String(b.hora||'')))) {
-          const t = toMinutes(ev.hora);
           const scored = santaNames.map(name => {
             const sameSanta = working.filter(x => String(x.santaAsignado || '').trim() === name && String(x.fecha || '') === String(ev.fecha || ''));
-            const conflict = t !== null && sameSanta.some(x => { const ot = toMinutes(x.hora); return ot !== null && Math.abs(ot - t) < 45; });
-            return { name, conflict, load: sameSanta.length };
-          }).filter(x => !x.conflict).sort((a,b)=>a.load-b.load || a.name.localeCompare(b.name, undefined, {numeric:true}));
+            const plan = christmasInsertionPlan(ev, sameSanta);
+            return { name, load:sameSanta.length, ...plan };
+          }).filter(x => x.feasible).sort((a,b)=>a.score-b.score || a.load-b.load || a.name.localeCompare(b.name, undefined, {numeric:true}));
 
           const chosen = scored[0]?.name;
-          if (!chosen) continue; // Sin asignar solo cuando ningún Santa tiene una ventana viable.
+          if (!chosen) continue; // Ningún Santa puede insertar la visita respetando servicio + traslado.
           await patchEventoAtomic(ev.id, { santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' });
           working.push({ ...ev, santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' });
           setEventos(prev => prev.map(x => x.id === ev.id ? { ...x, santaAsignado: chosen, esNavidad: true, recursoNavidad: 'Santa' } : x));
         }
       } catch (err) {
-        console.warn('Asignación automática de Santa pendiente:', err);
+        console.warn('Asignación inteligente de Santa pendiente:', err);
       } finally {
         christmasAutoAssignBusyRef.current = false;
       }
@@ -2433,12 +2506,15 @@ export default function App() {
           // Nunca ocultar una reserva solo porque su Santa fue desactivado. La mostramos
           // temporalmente y la asignación automática intentará moverla a un Santa activo.
           const santaNames = Array.from(new Set([...enabledSantas, ...assignedNames])).sort((a,b)=>a==='Sin asignar'?1:b==='Sin asignar'?-1:a.localeCompare(b,undefined,{numeric:true}));
-          const toMinutes = value => { const m=String(value||'').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60+Number(m[2]) : null; };
-          const hasScheduleConflict = (ev, list) => { if ((String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar')==='Sin asignar') return false; const t=toMinutes(ev.hora); if(t===null) return false; return list.some(other=>other.id!==ev.id && other.fecha===ev.fecha && toMinutes(other.hora)!==null && Math.abs(toMinutes(other.hora)-t)<45); };
+          const toMinutes = christmasTimeMinutes;
+          const hasScheduleConflict = (ev, list) => {
+            if ((String(ev.santaAsignado||'Sin asignar').trim()||'Sin asignar')==='Sin asignar') return false;
+            return !christmasInsertionPlan(ev, list.filter(other=>other.id!==ev.id)).feasible;
+          };
           const reassignSanta = async (ev, santa) => { if (!ev?.id || !santa) return; try { utils.triggerHaptic('light'); await patchEventoAtomic(ev.id, { santaAsignado: santa, esNavidad: true, recursoNavidad: 'Santa' }); showAlert(`Reserva reasignada a ${santa}.`, true); } catch (err) { console.error(err); showAlert('No se pudo reasignar el Santa. Intenta nuevamente.', false); } };
           const formatChristmasTime = value => { const raw=String(value||'').trim(); const m=raw.match(/^(\d{1,2}):(\d{2})/); if(!m) return raw||'Por definir'; const h=Number(m[1]); return `${h%12||12}:${m[2]} ${h>=12?'PM':'AM'}`; };
           const money = v => `$${utils.safeNum(v).toFixed(2)}`;
-          const mapTarget = ev => { const raw=String(ev.direccion||'').trim(); const q=raw.match(/[?&]q=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i); if(q) return `${q[1]},${q[2]}`; const at=raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/); if(at) return `${at[1]},${at[2]}`; return raw || String(ev.referenciaLugar||ev.ubicacion||'').trim(); };
+          const mapTarget = ev => { const gps=christmasEventGps(ev); if(gps) return `${gps.lat},${gps.lng}`; const raw=String(ev.direccion||'').trim(); return raw || String(ev.referenciaLugar||ev.ubicacion||'').trim(); };
           const openSantaRoute = stops => { const targets=stops.map(mapTarget).filter(Boolean); if(!targets.length) return showAlert('Estas entregas todavía no tienen GPS disponible.', false); utils.triggerHaptic('light'); if(targets.length===1){ window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(targets[0])}`,'_blank'); return; } const destination=targets[targets.length-1]; const waypoints=targets.slice(0,-1).join('|'); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`,'_blank'); };
           const deleteChristmas = ev => showConfirm(`¿Eliminar la reserva navideña de ${ev.cliente || 'este cliente'}? El horario se liberará automáticamente en la web.`, async()=>{ try { utils.triggerHaptic('light'); await deleteEventoSynced(ev.id); await publishSync('evento', ev.id, 'delete'); setEventos(prev=>prev.filter(x=>x.id!==ev.id)); setExpandedChristmasId(null); showAlert('Reserva eliminada y cupo liberado en la web.', true); } catch(err){ console.error(err); showAlert('No se pudo eliminar la reserva. Intenta nuevamente.', false); } });
           return <div className="fixed left-0 top-0 right-0 bottom-0 w-screen h-[100dvh] max-w-none z-[78] bg-[#F6F7FB] overflow-y-auto overscroll-none [-webkit-overflow-scrolling:touch] pb-[calc(92px+env(safe-area-inset-bottom))] isolate" style={{backgroundColor:'#F6F7FB',backgroundImage:'radial-gradient(circle at top, rgba(239,68,68,.08), transparent 26%)'}}>
