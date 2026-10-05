@@ -1767,6 +1767,40 @@ export default function App() {
   useEffect(() => { 
       isSupported().then(s => { if(s) setMessaging(getMessaging(app)); }).catch(()=>{}); 
   }, []);
+
+  // NOTIFICACIONES: conserva el flujo que ya funcionaba y repara silenciosamente
+  // el token FCM si Android/Chrome lo renueva después de una actualización de la PWA.
+  // No pide permisos nuevos ni requiere cambios manuales en Firebase.
+  useEffect(() => {
+      if (!messaging || !firebaseUser || typeof window === 'undefined') return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      if (!('serviceWorker' in navigator)) return;
+      let cancelled = false;
+      (async () => {
+          try {
+              const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+              await navigator.serviceWorker.ready;
+              if (cancelled) return;
+              const token = await getToken(messaging, {
+                  vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ",
+                  serviceWorkerRegistration: swRegistration
+              });
+              if (!token || cancelled) return;
+              await setDoc(doc(db, 'tokens', token), {
+                  token,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  userAgent: navigator.userAgent || '',
+                  enabled: true
+              }, { merge: true });
+          } catch (error) {
+              // No interrumpe el uso de la app: el botón manual de notificaciones
+              // continúa disponible con el mismo comportamiento anterior.
+              console.warn('No se pudo renovar el token de notificaciones:', error);
+          }
+      })();
+      return () => { cancelled = true; };
+  }, [messaging, firebaseUser]);
   
   useEffect(() => {
     const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 8000); 
