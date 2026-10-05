@@ -1922,6 +1922,8 @@ export default function App() {
   }, []);
   
   const openCuentasPorCobrar = useCallback(() => {
+      // El acceso rápido de Inicio representa siempre el mes actual, igual que su tarjeta.
+      setFinancePeriod('mes');
       setFinanceFocus('cobros');
       handleTabChange('finanzas');
       setTimeout(() => {
@@ -2204,12 +2206,10 @@ export default function App() {
             }
             
             const isEsteMes = (evYear === currYear && evMonth === currMonth);
-            const eventDateKey = evYear && evMonth && evDay ? `${evYear}-${String(evMonth).padStart(2,'0')}-${String(evDay).padStart(2,'0')}` : '';
-            const isDueAsOfToday = !!eventDateKey && eventDateKey <= todayStr;
-            
-            // Inicio muestra lo realmente vencido/a cobrar a la fecha. Las reservas futuras
-            // no inflan este indicador aunque todavía tengan saldo pendiente.
-            if ((t - a) > 0 && isDueAsOfToday) deudaTotal += (t - a); 
+            // Inicio y Finanzas deben hablar del mismo período. En Inicio, el indicador
+            // de cuentas por cobrar corresponde al mes calendario actual, incluyendo las
+            // reservas futuras de este mismo mes que todavía tengan saldo pendiente.
+            if ((t - a) > 0 && isEsteMes) deudaTotal += (t - a); 
             if(isHoy) gananciaHoy += p; 
             if(isEsteMes) ingresosEsteMes += p;
             if(evYear && evMonth && evDay) { const eD = new Date(evYear, evMonth - 1, evDay); if (eD >= weekStart && eD <= weekEnd) gananciaSemana += p; } 
@@ -3655,7 +3655,7 @@ export default function App() {
                  <div className="h-full min-h-[118px] rounded-[22px] p-3.5 sm:p-4 bg-white/[0.94] backdrop-blur-2xl border border-white shadow-[0_16px_38px_rgba(15,23,42,.09)] transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-[0_20px_45px_rgba(244,63,94,.12)] relative overflow-hidden">
                     <div className="absolute top-0 inset-x-5 h-px bg-gradient-to-r from-transparent via-rose-400/70 to-transparent"></div>
                     <div className="flex items-start justify-between gap-2"><div className="w-10 h-10 rounded-[14px] bg-rose-500/10 text-rose-500 border border-rose-500/10 flex items-center justify-center"><TrendingUp size={19} strokeWidth={2.4}/></div><ArrowUpRight size={16} className="text-slate-300 group-hover:text-rose-500 transition-colors"/></div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Por cobrar a la fecha</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-3">Por cobrar este mes</p><p className="text-[30px] sm:text-[36px] leading-none font-black text-rose-500 tracking-[-0.05em] mt-2">${stats.deudaTotal.toFixed(0)}</p>
                  </div>
               </button>
           </div>
