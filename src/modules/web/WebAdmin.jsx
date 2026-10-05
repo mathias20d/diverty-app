@@ -30,7 +30,7 @@ function ModalShell({ title, subtitle, onClose, children }) {
         <div className="min-w-0"><h3 className="text-xl font-black text-slate-950 tracking-tight truncate">{title}</h3>{subtitle && <p className="text-xs font-semibold text-slate-400 mt-1">{subtitle}</p>}</div>
         <button type="button" onClick={onClose} className="w-10 h-10 shrink-0 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center active:scale-95"><X size={20}/></button>
       </div>
-      <div className="overflow-y-auto overscroll-contain max-h-[calc(92dvh-82px)] p-5 sm:p-7 pb-8">{children}</div>
+      <div className="overflow-y-auto overscroll-contain max-h-[calc(92dvh-82px)] p-5 sm:p-7 pb-[96px] sm:pb-8">{children}</div>
     </div>
   </div>;
 }
@@ -42,7 +42,7 @@ function ToggleButton({ active, onClick, children, tone='violet' }) {
 function EmptyState({ icon: Icon, text }) { return <div className="rounded-[24px] border border-dashed border-slate-300 p-10 text-center"><Icon size={32} className="mx-auto text-slate-300 mb-3"/><p className="font-black text-slate-700">{text}</p></div>; }
 function StickySaveButton({ disabled, onClick, children, tone='violet' }) {
   const bg = tone === 'pink' ? 'from-pink-500 to-violet-600' : tone === 'rose' ? 'from-rose-500 to-pink-600' : tone === 'amber' ? 'from-amber-500 to-orange-500' : tone === 'emerald' ? 'from-emerald-500 to-teal-600' : 'from-[#FF2A9D] to-[#7657FF]';
-  return <div className="sticky bottom-0 z-30 -mx-5 sm:-mx-7 mt-5 px-5 sm:px-7 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] bg-gradient-to-t from-[#F8F9FD] via-[#F8F9FD] to-[#F8F9FD]/95 border-t border-slate-200/80">
+  return <div className="sticky bottom-[78px] sm:bottom-0 z-40 -mx-5 sm:-mx-7 mt-5 px-5 sm:px-7 pt-3 pb-3 sm:pb-[calc(env(safe-area-inset-bottom)+14px)] bg-gradient-to-t from-[#F8F9FD] via-[#F8F9FD] to-[#F8F9FD]/95 border-t border-slate-200/80 shadow-[0_-10px_24px_rgba(15,23,42,.06)]">
     <button type="button" disabled={disabled} onClick={onClick} className={`w-full min-h-[56px] rounded-[18px] bg-gradient-to-r ${bg} disabled:opacity-50 text-white font-black shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2`}>{children}</button>
   </div>;
 }
