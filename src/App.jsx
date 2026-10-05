@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine, Globe2 } from 'lucide-react';
-import WebAdmin from './modules/web/WebAdmin.jsx';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+
+const WebAdmin = lazy(() => import('./modules/web/WebAdmin.jsx'));
 
 // --- 1. CONFIGURACIÓN FIREBASE Y CONSTANTES ---
 const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
@@ -4475,7 +4476,7 @@ export default function App() {
             {activeTab === 'clientes' && renderClientes()}
             {activeTab === 'proveedores' && renderProveedores()}
             {activeTab === 'finanzas' && (financeLoading || isHistoryLoading ? <p className="p-6">Actualizando período…</p> : financeLoadError ? <p className="p-6 text-red-600">{financeLoadError}</p> : renderFinanzas())}
-            {activeTab === 'web' && <WebAdmin db={db} appId={appId} currentUser={firebaseUser} showAlert={showAlert} />}
+            {activeTab === 'web' && <Suspense fallback={<div className="py-16 text-center text-slate-400 font-bold">Cargando administrador web…</div>}><WebAdmin db={db} appId={appId} currentUser={firebaseUser} showAlert={showAlert} /></Suspense>}
             {activeTab === 'config' && renderConfig()}
           </main>
       </div>
