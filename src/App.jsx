@@ -99,7 +99,7 @@ const christmasInsertionPlan = (candidate, existingStops = []) => {
 };
 const publicSlot = value => {
   const state = String(value.estado || '').toLowerCase();
-  if (!value.fecha || value.deletedLocally === true || /cancelado|rechazada|cot/.test(state)) return null;
+  if (!value.fecha || value.deletedLocally === true || /cancelad|rechaz|cot/.test(state)) return null;
 
   const slot = {
     fecha: String(value.fecha),
@@ -453,9 +453,9 @@ const normalizeLegacyCostsForEdit = (ev) => {
 // sin entrar al formulario completo. `gastos` sigue guardando el total para mantener
 // compatibilidad con versiones anteriores y `gastosItems` conserva el desglose.
 const EXPENSE_CATEGORIES = Object.freeze([
-  { id: 'personal', label: 'Personal' },
+  { id: 'personal', label: 'Personal / animadores' },
   { id: 'transporte', label: 'Transporte' },
-  { id: 'globos', label: 'Globos / materiales' },
+  { id: 'globos', label: 'Adicionales / materiales' },
   { id: 'otros', label: 'Otro gasto' }
 ]);
 const getExpenseItems = (ev) => Array.isArray(ev?.gastosItems)
@@ -658,9 +658,9 @@ const QuickExpenseModal = memo(function QuickExpenseModal({ modal, onClose, onSa
               <p className="text-[9px] font-black uppercase tracking-[.14em] text-slate-400 mb-2">Agregar otro gasto rápido</p>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id:'personal', label:'Personal', icon:Users },
+                  { id:'personal', label:'Personal / animadores', icon:Users },
                   { id:'transporte', label:'Transporte', icon:Truck },
-                  { id:'globos', label:'Globos / materiales', icon:Sparkles },
+                  { id:'globos', label:'Adicionales / materiales', icon:Sparkles },
                   { id:'otros', label:'Otro gasto', icon:Receipt }
                 ].map(opt => {
                   const Ic = opt.icon;
@@ -1656,24 +1656,32 @@ export default function App() {
                   }
               }
 
-              const pending = (Array.isArray(eventos) ? eventos : [])
-                  .filter(isPendingWebRequest)
-                  .sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-              if (!pending.length) return; // Espera al snapshot de Firestore si aún está cargando.
+              const allRows = (Array.isArray(eventos) ? eventos : [])
+                  .filter(ev => ev && ev.deletedLocally !== true)
+                  .sort((a,b) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime());
+              const pending = allRows.filter(isPendingWebRequest);
+              if (!allRows.length) return; // Espera al snapshot de Firestore si aún está cargando.
 
+              // Si el push no trajo ID, intenta reconocer la reserva por el contenido de
+              // la notificación. Ya no se limita a solicitudes pendientes: también puede
+              // abrir una reserva que ya fue aceptada y está en Agenda.
               const notificationText = utils.normalizeText(`${notificationIntent.title || ''} ${notificationIntent.body || ''}`);
               let target = null;
               if (notificationText) {
-                  target = pending.find(ev => {
+                  target = allRows.find(ev => {
                       const name = utils.normalizeText(ev?.cliente || '');
                       const phone = String(ev?.telefono || '').replace(/\D/g,'');
                       const service = utils.normalizeText(ev?.servicio || '');
+                      const date = String(ev?.fecha || '').trim();
                       return (name && notificationText.includes(name)) ||
                           (phone.length >= 6 && notificationText.includes(phone.slice(-6))) ||
-                          (service.length >= 8 && notificationText.includes(service));
+                          (service.length >= 8 && notificationText.includes(service)) ||
+                          (date && notificationText.includes(date));
                   }) || null;
               }
-              openResolvedReservation(target || pending[0]);
+              // Último respaldo: la solicitud web pendiente más reciente. Esto conserva
+              // el comportamiento anterior cuando el proveedor de push envía un mensaje genérico.
+              openResolvedReservation(target || pending[0] || null);
           } catch (err) {
               console.error('No se pudo abrir la reserva desde la notificación:', err);
           }
@@ -2600,19 +2608,31 @@ export default function App() {
   }, [publishSync]);
 
   const handleUpdateEstado = useCallback(async (id, nuevoEstado) => {
-      utils.triggerHaptic('light');
-      const anterior = eventos.find(e => e.id === id)?.estado || 'Pendiente';
-      const nowIso = new Date().toISOString();
-      setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado, updatedAt: nowIso } : e));
-      try {
-          await transitionEventStatus(id, nuevoEstado);
-          showAlert(`Estado actualizado a ${nuevoEstado}`, true);
-      } catch (err) {
-          console.error("Error actualizando estado:", err);
-          setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: anterior } : e));
-          showAlert("No se pudo actualizar el estado de la reserva.", false);
+      const applyStatus = async () => {
+          utils.triggerHaptic('light');
+          const anterior = eventos.find(e => e.id === id)?.estado || 'Pendiente';
+          const nowIso = new Date().toISOString();
+          setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: nuevoEstado, updatedAt: nowIso } : e));
+          try {
+              await transitionEventStatus(id, nuevoEstado);
+              showAlert(`Estado actualizado a ${nuevoEstado}`, true);
+          } catch (err) {
+              console.error("Error actualizando estado:", err);
+              setEventos(prev => prev.map(e => e.id === id ? { ...e, estado: anterior } : e));
+              showAlert("No se pudo actualizar el estado de la reserva.", false);
+          }
+      };
+
+      const normalized = utils.normalizeText(nuevoEstado);
+      const isArchiveAction = normalized === 'cancelado' || normalized === 'cancelada' || normalized.includes('rechaz');
+      if (isArchiveAction) {
+          const ev = eventos.find(e => e.id === id);
+          const label = normalized.includes('rechaz') ? 'rechazada' : 'cancelada';
+          showConfirm(`¿Marcar la reserva de ${ev?.cliente || 'este cliente'} como ${label}? Quedará guardada en Canceladas / Rechazadas y el horario se liberará.`, applyStatus);
+          return;
       }
-  }, [eventos, showAlert, transitionEventStatus]);
+      await applyStatus();
+  }, [eventos, showAlert, transitionEventStatus, showConfirm]);
   
   const handleAdvanceOperational = useCallback((ev) => {
       if (!ev?.id) return;
