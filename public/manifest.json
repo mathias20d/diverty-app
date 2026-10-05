@@ -19,5 +19,9 @@
     }
   ],
   "id": "/",
-  "scope": "/"
+  "scope": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "description": "Administrador Diverty Eventos"
 }
