@@ -799,8 +799,9 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity, focusRequestId = '' }) {
     const [selectedRequest, setSelectedRequest] = useState(null);
+    const focusedRequestRef = useRef('');
     const [confirming, setConfirming] = useState(false);
     const [rejecting, setRejecting] = useState(false);
     const [confirmedName, setConfirmedName] = useState('');
@@ -810,7 +811,17 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const [savingTransport, setSavingTransport] = useState(false);
     const [resourceDraft, setResourceDraft] = useState({ animadores:0, payasos:0, durationMinutes:120 });
     const [savingResources, setSavingResources] = useState(false);
-    useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); setTransportDraft(''); setSavingTransport(false); setResourceDraft({animadores:0,payasos:0,durationMinutes:120}); setSavingResources(false); } }, [isOpen]);
+    useEffect(() => { if (!isOpen) { focusedRequestRef.current = ''; setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); setTransportDraft(''); setSavingTransport(false); setResourceDraft({animadores:0,payasos:0,durationMinutes:120}); setSavingResources(false); } }, [isOpen]);
+    useEffect(() => {
+        if (!isOpen) return;
+        const id = String(focusRequestId || '').trim();
+        if (!id || focusedRequestRef.current === id) return;
+        const target = (Array.isArray(eventosActivos) ? eventosActivos : []).find(ev => String(ev?.id || '') === id && isPendingWebRequest(ev));
+        if (target) {
+            focusedRequestRef.current = id;
+            setSelectedRequest(target);
+        }
+    }, [isOpen, focusRequestId, eventosActivos]);
     useEffect(() => {
         if (selectedRequest) {
             setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
@@ -1358,7 +1369,7 @@ const EventCardItem = memo(function EventCardItem({ ev, idx, todayTime, onWhatsA
     const operationalMeta = !isCotizacion ? getOperationalStatusMeta(ev.estado) : null;
     const nextOperationalState = !isCotizacion && !isArchivedReservation(ev) ? getNextNormalOperationalState(ev.estado) : null;
     const operationalActionLabel = nextOperationalState ? getOperationalActionLabel(ev.estado) : '';
-    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{!isCotizacion && estNormalized.includes('rechaz') && (<Badge color="gray">Rechazada</Badge>)}{!isCotizacion && (estNormalized==='cancelado' || estNormalized==='cancelada') && (<Badge color="rose">Cancelada</Badge>)}{dateBadgeContent}{!isCotizacion && !isArchivedReservation(ev) && operationalMeta && (<span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${operationalMeta.cls}`}>{operationalMeta.label}</span>)}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion, ev); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir en Google Maps"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="bg-slate-100 p-2 rounded-lg border border-slate-200"><MapIcon size={14} className="text-[#7657FF]" /></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && <><button type="button" onClick={(e)=>{e.stopPropagation();onAjustarCobro(ev);}} className="mt-2 text-[9px] font-black uppercase tracking-[.12em] text-[#7657FF] underline underline-offset-2">Corregir pago recibido</button><p className="mt-1 text-[8px] font-semibold text-slate-400">Este ajuste no cambia el precio de la reserva.</p></>}{!isCotizacion && (<div className="mt-3 pt-3 border-t border-slate-200/70"><div className="flex items-center justify-between mb-2.5"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gastos registrados</span><span className="text-sm font-black text-rose-500">-${gastosInternos.toFixed(2)}</span></div><div className={`grid gap-2 ${restante > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>{restante > 0 && <AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full py-2.5 px-2 text-[11px]" icon={DollarSign}>+ Abono</AppButton>}<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarGasto(ev); }} variant="default" className="w-full py-2.5 px-2 text-[11px] bg-rose-50 text-rose-600 border-rose-100" icon={Receipt}>+ Gasto</AppButton></div></div>)}</div>{!isCotizacion && (<div className="mb-3 rounded-[18px] bg-white border border-slate-200/70 p-3.5" onClick={(e)=>e.stopPropagation()}><div className="flex items-center justify-between gap-3 mb-2.5"><div><label className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] block">Estado operativo</label><p className="text-[11px] font-semibold text-slate-500 mt-0.5">Actualiza el avance del evento sin entrar a Editar.</p></div>{operationalMeta&&<span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${operationalMeta.cls}`}>{operationalMeta.label}</span>}</div><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Preparando">Preparando</option><option value="En camino">En camino</option><option value="En el evento">En el evento</option><option value="Completado">Realizado / Completado</option><option value="Cancelado">Cancelado</option><option value="Rechazada">Rechazada</option></select>{nextOperationalState&&<button type="button" onClick={()=>onUpdateEstado(ev.id,nextOperationalState)} className={`mt-2.5 w-full min-h-[46px] rounded-[14px] font-black text-[10px] uppercase tracking-[.11em] flex items-center justify-center gap-2 active:scale-[.98] transition-transform ${nextOperationalState==='Completado'?'bg-emerald-500 text-white shadow-[0_8px_20px_rgba(16,185,129,.18)]':'bg-[#10182D] text-white'}`}><ChevronRight size={16}/>{operationalActionLabel}</button>}</div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
+    return (<div ref={cardRef} data-reservation-id={ev.id} className={`relative w-full ${UI.card} overflow-hidden`} style={{ animationFillMode: 'both', animationDelay: `${idx * 40}ms` }}><div className={`absolute inset-0 bg-gradient-to-r from-rose-500 to-rose-400 flex items-center pl-8 transition-opacity duration-200 ${swipeX > 20 ? 'opacity-100 z-0' : 'opacity-0 -z-10'}`}><Trash2 size={24} className="text-white" /><span className="text-white font-bold ml-3 text-sm uppercase tracking-wider">Eliminar</span></div><div onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} className="relative p-5 sm:p-6 transition-transform duration-200 ease-out z-10 bg-white/95 cursor-pointer text-slate-900" style={{ transform: `translateX(${swipeX}px)`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} onClick={(e) => { e.stopPropagation(); utils.triggerHaptic('light'); setIsExpanded(p => !p); }}><div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-r-full ${sideColor} z-20`}></div><div className="pl-3 relative z-10"><div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3"><div className="flex items-start gap-2 sm:gap-3 min-w-0 flex-wrap flex-1"><div className="flex items-start gap-2 min-w-0 w-full"><div className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0 mt-2`}></div><h3 className="text-[19px] sm:text-lg font-black text-slate-950 leading-tight tracking-tight whitespace-normal break-words pr-1">{String(ev.cliente)}</h3></div><div className="flex items-center gap-2 flex-wrap mt-1 sm:mt-0">{isWebReservation && !isCotizacion && (<Badge color="blue"><Zap size={11}/> WEB</Badge>)}{!isCotizacion && estNormalized.includes('rechaz') && (<Badge color="gray">Rechazada</Badge>)}{!isCotizacion && (estNormalized==='cancelado' || estNormalized==='cancelada') && (<Badge color="rose">Cancelada</Badge>)}{dateBadgeContent}{!isCotizacion && !isArchivedReservation(ev) && operationalMeta && (<span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${operationalMeta.cls}`}>{operationalMeta.label}</span>)}{ev.hora && (<Badge color="gray"><Clock size={12} strokeWidth={2.5}/> {utils.formatTime12h(ev.hora)}</Badge>)}</div></div>{!isExpanded && (<div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pl-4 sm:pl-0"><span className="text-slate-950 font-black text-xl tracking-tight">${tot.toFixed(2)}</span>{isCotizacion ? null : (restante > 0 ? (<div className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-widest border border-rose-200 shadow-sm">Debe ${restante.toFixed(0)}</div>) : (<div className="flex items-center gap-1.5 text-emerald-500"><CheckCircle2 size={16} strokeWidth={2.5}/><span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Pagado</span></div>))}</div>)}</div>{!isExpanded && <div className="mt-4 pl-4 grid gap-2 text-[13px] font-semibold text-slate-500"><div className="flex items-center gap-2 min-w-0"><Sparkles size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.servicio || 'Sin paquete asignado')}</span></div>{(ev.ubicacion || ev.direccion) && <div className="flex items-center gap-2 min-w-0"><MapPin size={15} className="text-[#7657FF] shrink-0"/><span className="whitespace-normal break-words">{String(ev.ubicacion || ev.direccion)}</span></div>}</div>}<div className={`grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isExpanded ? 'grid-rows-[1fr] opacity-100 mt-3' : 'grid-rows-[0fr] opacity-0 mt-0'}`}><div className="overflow-hidden"><div className="flex flex-col gap-2.5 mb-3 pt-1 text-slate-600"><div className="flex items-center gap-3"><Sparkles size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.servicio || 'Sin paquete asignado')}</span></div><div className="flex items-center gap-3"><Calendar size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} • {ev.hora ? utils.formatTime12h(ev.hora) : 'Sin hora'}</span></div><div onClick={(e) => { e.stopPropagation(); onMapClick(ev.direccion, ev.ubicacion, ev); }} className="flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-50 px-2 py-1 -mx-2 rounded-xl transition-colors active:scale-[0.98] border border-transparent hover:border-slate-100" title="Abrir con Google Maps o Waze"><div className="flex items-center gap-3 min-w-0"><MapPin size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium truncate">{String(ev.ubicacion)} {ev.direccion ? `- ${String(ev.direccion)}` : ''}</span></div><div className="shrink-0 bg-[#F3F0FF] px-2.5 py-2 rounded-lg border border-[#7657FF]/15 text-[#7657FF] flex items-center gap-1.5"><MapIcon size={14}/><span className="text-[8px] font-black uppercase tracking-wider">Maps / Waze</span></div></div><div className="flex items-center gap-3"><Smartphone size={18} className="text-[#7657FF]/70 shrink-0" strokeWidth={2} /><span className="text-sm font-medium">{String(ev.telefono || 'Sin teléfono')}</span></div></div><div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/50 mb-3 relative overflow-hidden"><div className="flex justify-between items-end mb-3"><div className="flex flex-col"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Total</span><span className="text-xl font-black text-slate-900 tracking-tight leading-none">${tot.toFixed(2)}</span></div><div className="flex flex-col items-end"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Pendiente</span><span className={`text-xl font-black tracking-tight leading-none ${restante > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>${restante.toFixed(2)}</span></div></div><div className="w-full bg-slate-200 rounded-full h-1.5 mb-2 overflow-hidden shadow-inner"><AnimatedProgress value={tot > 0 ? Math.min((abo / tot) * 100, 100) : 0} /></div><div className="flex justify-between items-center"><p className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5 uppercase tracking-widest">Recibido: <span className="text-slate-800">${abo.toFixed(2)}</span></p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{tot > 0 ? Math.round((abo/tot)*100) : 0}% pagado</p></div>{!isCotizacion && <><button type="button" onClick={(e)=>{e.stopPropagation();onAjustarCobro(ev);}} className="mt-2 text-[9px] font-black uppercase tracking-[.12em] text-[#7657FF] underline underline-offset-2">Corregir pago recibido</button><p className="mt-1 text-[8px] font-semibold text-slate-400">Este ajuste no cambia el precio de la reserva.</p></>}{!isCotizacion && (<div className="mt-3 pt-3 border-t border-slate-200/70"><div className="flex items-center justify-between mb-2.5"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gastos registrados</span><span className="text-sm font-black text-rose-500">-${gastosInternos.toFixed(2)}</span></div><div className={`grid gap-2 ${restante > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>{restante > 0 && <AppButton onClick={(e) => { e.stopPropagation(); onRegistrarAbono(ev); }} variant="primary" className="w-full py-2.5 px-2 text-[11px]" icon={DollarSign}>+ Abono</AppButton>}<AppButton onClick={(e) => { e.stopPropagation(); onRegistrarGasto(ev); }} variant="default" className="w-full py-2.5 px-2 text-[11px] bg-rose-50 text-rose-600 border-rose-100" icon={Receipt}>+ Gasto</AppButton></div></div>)}</div>{!isCotizacion && (<div className="mb-3 rounded-[18px] bg-white border border-slate-200/70 p-3.5" onClick={(e)=>e.stopPropagation()}><div className="flex items-center justify-between gap-3 mb-2.5"><div><label className="text-[9px] font-black text-slate-400 uppercase tracking-[.14em] block">Estado operativo</label><p className="text-[11px] font-semibold text-slate-500 mt-0.5">Actualiza el avance del evento sin entrar a Editar.</p></div>{operationalMeta&&<span className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${operationalMeta.cls}`}>{operationalMeta.label}</span>}</div><select value={ev.estado || 'Pendiente'} onChange={(e)=>onUpdateEstado(ev.id,e.target.value)} className={`${UI.input} py-2.5 cursor-pointer`}><option value="Pendiente">Pendiente</option><option value="Confirmado">Confirmado</option><option value="Preparando">Preparando</option><option value="En camino">En camino</option><option value="En el evento">En el evento</option><option value="Completado">Realizado / Completado</option><option value="Cancelado">Cancelado</option><option value="Rechazada">Rechazada</option></select>{nextOperationalState&&<button type="button" onClick={()=>onUpdateEstado(ev.id,nextOperationalState)} className={`mt-2.5 w-full min-h-[46px] rounded-[14px] font-black text-[10px] uppercase tracking-[.11em] flex items-center justify-center gap-2 active:scale-[.98] transition-transform ${nextOperationalState==='Completado'?'bg-emerald-500 text-white shadow-[0_8px_20px_rgba(16,185,129,.18)]':'bg-[#10182D] text-white'}`}><ChevronRight size={16}/>{operationalActionLabel}</button>}</div>)}<div className="grid grid-cols-2 gap-2"><AppButton onClick={(e) => { e.stopPropagation(); onWhatsApp(ev, waType, empresa); }} className="col-span-2 w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 border-emerald-500 shadow-md text-white py-2.5" icon={MessageCircle}>WhatsApp Business</AppButton>{isCotizacion ? ( <AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'cotizacion'); }} variant="default" className="col-span-2 w-full py-2.5 text-[12px]" icon={FileText}>Ver PDF</AppButton> ) : ( <><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'factura'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={Receipt}>Factura</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onViewDoc(ev, 'contrato'); }} variant="default" className="w-full py-2.5 px-2 text-[12px] whitespace-nowrap" icon={FileSignature}>Contrato</AppButton></> )}</div>{isCotizacion && (<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80">{estNormalized === 'cotizacion' && (<><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Aprobada'); }} variant="success" className="flex-1 text-[11px] py-3 bg-emerald-50 text-white">Aprobar</AppButton><AppButton onClick={(e) => { e.stopPropagation(); onUpdateEstado(ev.id, 'Cot. Rechazada'); }} variant="default" className="flex-1 text-[11px] py-3 text-slate-500 border-slate-200">Rechazar</AppButton></>)}{estNormalized.includes('aprobada') && (<AppButton onClick={(e) => { e.stopPropagation(); onConvertir(ev); }} variant="primary" className="w-full text-xs py-3.5 shadow-md">Convertir en Reserva</AppButton>)}</div>)}<div className="flex gap-2 mt-3 pt-3 border-t border-slate-100/80"><ActionBtn icon={Edit} label="Editar" onClick={(e) => { e.stopPropagation(); onEdit(ev, isCotizacion); }} /><ActionBtn icon={Copy} label="Duplicar" color="blue" onClick={(e) => { e.stopPropagation(); onDuplicate(ev); }} /><ActionBtn icon={Trash2} label="Eliminar" color="rose" onClick={(e) => { e.stopPropagation(); onDelete(ev.id); }} /></div></div></div></div></div></div>);
 });
 
 const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCotizacionMode, onClose, onSave, PAQUETES, onAddCustomService, showAlert, clientesRegistrados, listadoProveedores }) {
@@ -1572,38 +1583,69 @@ export default function App() {
   }, [isChristmasOpsOpen]);
   const [expandedChristmasId, setExpandedChristmasId] = useState(null);
   const [notificationReservationId, setNotificationReservationId] = useState('');
+  const [notificationRequestId, setNotificationRequestId] = useState('');
 
-  // Deep-link de notificaciones: ?reservationId=ID abre Agenda y enfoca la reserva exacta.
+  // Deep-link de notificaciones: abre EXACTAMENTE la solicitud o reserva tocada.
+  // - Solicitud web pendiente -> abre la campana directamente en esa solicitud.
+  // - Reserva ya aceptada -> abre Agenda en su fecha y expande esa tarjeta.
   useEffect(() => {
       if (!firebaseUser || typeof window === 'undefined') return;
       const params = new URLSearchParams(window.location.search);
-      const reservationId = String(params.get('reservationId') || '').trim();
+      const reservationId = String(
+          params.get('reservationId') ||
+          params.get('eventId') ||
+          params.get('reserva') ||
+          params.get('id') ||
+          ''
+      ).trim();
       if (!reservationId) return;
       let cancelled = false;
+      let clearTimer = null;
       (async () => {
           try {
               const snap = await getDoc(getDocRef(reservationId));
               if (cancelled) return;
-              if (snap.exists()) {
-                  const ev = { ...snap.data(), id: snap.id };
-                  setEventos(prev => {
-                      const map = new Map(prev.map(item => [String(item.id), item]));
-                      map.set(String(ev.id), ev);
-                      return [...map.values()];
-                  });
-                  setGlobalSearch('');
-                  setFilterDate('');
-                  setViewMode('todas');
-                  setActiveTab('eventos');
-                  setIsSidebarOpen(false);
-                  setNotificationReservationId(reservationId);
-                  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash);
+              if (!snap.exists()) {
+                  showAlert('La reserva de esta notificación ya no existe o fue eliminada.', false);
+                  return;
               }
+              const ev = { ...snap.data(), id: snap.id };
+              setEventos(prev => {
+                  const map = new Map(prev.map(item => [String(item.id), item]));
+                  map.set(String(ev.id), ev);
+                  return [...map.values()];
+              });
+              setGlobalSearch('');
+              setIsSidebarOpen(false);
+              setIsAgendaSummaryOpen(false);
+              setIsChristmasOpsOpen(false);
+
+              if (isPendingWebRequest(ev)) {
+                  // Las solicitudes pendientes no pertenecen aún a la Agenda.
+                  // Abrir Agenda hacía que se mostrara cualquier fecha antigua (p. ej. abril).
+                  setNotificationReservationId('');
+                  setNotificationRequestId(reservationId);
+                  setIsNotifOpen(true);
+              } else {
+                  setNotificationRequestId('');
+                  setIsNotifOpen(false);
+                  setFilterDate(String(ev.fecha || ''));
+                  setViewMode('');
+                  setActiveTab('eventos');
+                  setNotificationReservationId(reservationId);
+                  clearTimer = setTimeout(() => {
+                      setNotificationReservationId(current => String(current) === reservationId ? '' : current);
+                  }, 3500);
+              }
+
+              // Quita el parámetro sin recargar para que refrescar la app no vuelva a abrirlo.
+              window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash);
           } catch (err) {
               console.error('No se pudo abrir la reserva desde la notificación:', err);
+              showAlert('No pudimos abrir la reserva de esta notificación. Intenta desde la campana.', false);
           }
       })();
-      return () => { cancelled = true; };
+      return () => { cancelled = true; if (clearTimer) clearTimeout(clearTimer); };
   }, [firebaseUser]);
 
   // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
@@ -1695,9 +1737,26 @@ export default function App() {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
+  const configHistoryRef = useRef(['home']);
+  const navigateConfigView = useCallback((view) => {
+      const next = String(view || 'home');
+      const current = String(stateRef.current?.configView || 'home');
+      if (next === current) return;
+      const stack = configHistoryRef.current;
+      if (!stack.length) stack.push('home');
+      if (stack[stack.length - 1] !== current) stack.push(current);
+      if (stack[stack.length - 1] !== next) stack.push(next);
+      setConfigView(next);
+  }, []);
+  const navigateConfigBack = useCallback(() => {
+      const stack = configHistoryRef.current;
+      if (stack.length > 1) stack.pop();
+      const previous = stack[stack.length - 1] || 'home';
+      setConfigView(previous);
+  }, []);
+  const stateRef = useRef({ modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen, expandedChristmasId, isAgendaSummaryOpen, isSidebarOpen, configView });
   useEffect(() => { 
-      stateRef.current = { modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen }; 
+      stateRef.current = { modalConfig, expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen, expandedChristmasId, isAgendaSummaryOpen, isSidebarOpen, configView }; 
   });
   
   useEffect(() => {
@@ -1707,14 +1766,18 @@ export default function App() {
         const s = stateRef.current;
         let blocked = false;
         
-        if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
-        else if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
+        if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
         else if (s.isPrinting) { setIsPrinting(false); blocked = true; }
         else if (s.navigationModal?.isOpen) { setNavigationModal({ isOpen:false, googleUrl:'', wazeUrl:'', label:'' }); blocked = true; }
         else if (s.expenseModal?.isOpen) { setExpenseModal({ isOpen:false, event:null }); blocked = true; }
         else if (s.modalConfig?.isOpen) { setModalConfig(p => ({...p, isOpen: false})); blocked = true; }
         else if (s.clientEditModal?.isOpen) { setClientEditModal({ isOpen: false, oldName: '', clientKey: '' }); blocked = true; }
         else if (s.proveedorModal?.isOpen) { setProveedorModal({ isOpen: false, data: null }); blocked = true; }
+        else if (s.isAgendaSummaryOpen) { setIsAgendaSummaryOpen(false); blocked = true; }
+        else if (s.isSidebarOpen) { setIsSidebarOpen(false); blocked = true; }
+        else if (s.isChristmasOpsOpen && s.expandedChristmasId) { setExpandedChristmasId(null); blocked = true; }
+        else if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
+        else if (s.activeTab === 'config' && s.configView && s.configView !== 'home') { navigateConfigBack(); blocked = true; }
         else {
             // Las tarjetas de Agenda y el detalle de una Solicitud Web manejan primero su propio nivel abierto.
             const detail = { handled: false };
@@ -1743,7 +1806,7 @@ export default function App() {
     };
     window.addEventListener('popstate', handleBack);
     return () => window.removeEventListener('popstate', handleBack);
-  }, []);
+  }, [navigateConfigBack]);
 
   useEffect(() => {
     let inactivityTimer; 
@@ -1797,6 +1860,10 @@ export default function App() {
               if (history[history.length - 1] !== currentTab) history.push(currentTab);
               if (history[history.length - 1] !== tabId) history.push(tabId);
           }
+      }
+      if (currentTab === 'config' && tabId !== 'config') {
+          configHistoryRef.current = ['home'];
+          setConfigView('home');
       }
       setActiveTab(tabId); setIsSidebarOpen(false); 
       // En móvil, cada sección debe abrir siempre desde su encabezado, sin heredar scroll previo.
@@ -3679,7 +3746,7 @@ export default function App() {
                             <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-[15px] bg-gradient-to-br from-[#EEF2FF] to-[#F6EEFF] border border-[#7657FF]/15 flex items-center justify-center shadow-sm"><CalendarDays size={20} className="text-[#7657FF]" strokeWidth={2.5}/></div><div><p className="text-[10px] uppercase tracking-[0.18em] font-black text-slate-400">{viewMode === 'canceladas' ? 'Canceladas / Rechazadas' : (fecha === todayStr ? 'Hoy' : 'Agenda')}</p><h3 className="text-lg sm:text-xl font-black text-slate-950 tracking-tight">{fecha ? String(fecha).split('-').reverse().join('/') : 'Sin fecha'}</h3></div></div>
                             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7657FF] bg-[#7657FF]/8 border border-[#7657FF]/10 px-3 py-2 rounded-full">{grouped[fecha].length} {grouped[fecha].length === 1 ? 'evento' : 'eventos'}</span>
                         </div>
-                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[44px_1fr] sm:grid-cols-[66px_1fr] gap-2 sm:gap-3 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onAjustarCobro={handleAjustarCobro} onRegistrarGasto={handleOpenExpense} /></div></div>)}</div>
+                        <div className="space-y-4">{grouped[fecha].map((e,i)=><div key={e.id} className="grid grid-cols-[44px_1fr] sm:grid-cols-[66px_1fr] gap-2 sm:gap-3 items-stretch"><div className="relative flex flex-col items-center pt-4"><div className="text-center leading-none"><p className="text-[13px] sm:text-sm font-black text-slate-900">{String(e.hora || '--:--').slice(0,5)}</p></div><div className="mt-3 w-3 h-3 rounded-full bg-gradient-to-br from-[#FF3EA5] to-[#7657FF] ring-4 ring-[#F3ECFF] shadow-[0_0_16px_rgba(118,87,255,.28)] z-10"></div>{i < grouped[fecha].length - 1 && <div className="absolute top-[58px] bottom-[-22px] w-px bg-gradient-to-b from-[#CDBDFF] via-[#E8E1FF] to-transparent"></div>}</div><div className="min-w-0"><EventCardItem ev={e} idx={i} todayTime={todayTime} onWhatsApp={sendWhatsAppCall} onViewDoc={handleViewDoc} onEdit={openModal} onDelete={handleDeleteEvento} onDuplicate={handleDuplicateEvento} onMapClick={openGoogleMaps} empresa={appSettings.empresa} utils={utils} onUpdateEstado={handleUpdateEstado} onConvertir={handleConvertirReserva} onRegistrarAbono={handleRegistrarAbono} onAjustarCobro={handleAjustarCobro} onRegistrarGasto={handleOpenExpense} forceExpanded={String(e.id) === String(notificationReservationId)} /></div></div>)}</div>
                     </div>
                 ))}
             </div>
@@ -4144,8 +4211,8 @@ export default function App() {
     const facturadoMes = mesActual.reduce((s,e)=>s+utils.safeNum(e.total),0);
     const avanceMeta = meta > 0 ? Math.min((facturadoMes/meta)*100,100) : 0;
     const empresa = appSettings.empresa || {};
-    const go = (view) => { utils.triggerHaptic('light'); setConfigView(view); };
-    const back = () => { utils.triggerHaptic('light'); setConfigView('home'); };
+    const go = (view) => { utils.triggerHaptic('light'); navigateConfigView(view); };
+    const back = () => { utils.triggerHaptic('light'); navigateConfigBack(); };
     const sectionShell = (children) => (
       <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-4xl mx-auto pb-32 relative z-10 text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
         {children}
@@ -4331,7 +4398,7 @@ export default function App() {
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
       <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} />
+      <NotifModal isOpen={isNotifOpen} focusRequestId={notificationRequestId} onClose={()=>{setIsNotifOpen(false);setNotificationRequestId('')}} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
