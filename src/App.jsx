@@ -799,7 +799,7 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity }) {
+const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity, targetReservationId = '' }) {
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
     const [rejecting, setRejecting] = useState(false);
@@ -823,6 +823,12 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
             });
         }
     }, [selectedRequest]);
+    // Si la app se abrió desde una notificación, entra directamente a esa solicitud web.
+    useEffect(() => {
+        if (!isOpen || !targetReservationId) return;
+        const target = (Array.isArray(eventosActivos) ? eventosActivos : []).find(e => String(e?.id || '') === String(targetReservationId));
+        if (target && isPendingWebRequest(target)) setSelectedRequest(target);
+    }, [isOpen, targetReservationId, eventosActivos]);
     useEffect(() => { const closeSelectedOnBack = (e) => { if (isOpen && (selectedRequest || confirmedName || rejectedName)) { setSelectedRequest(null); setConfirmedName(''); setRejectedName(''); if (e?.detail) e.detail.handled = true; } }; window.addEventListener('diverty:back-layer', closeSelectedOnBack); return () => window.removeEventListener('diverty:back-layer', closeSelectedOnBack); }, [isOpen, selectedRequest, confirmedName, rejectedName]);
     if (!isOpen) return null;
     const reqs = eventosActivos
@@ -1572,39 +1578,107 @@ export default function App() {
   }, [isChristmasOpsOpen]);
   const [expandedChristmasId, setExpandedChristmasId] = useState(null);
   const [notificationReservationId, setNotificationReservationId] = useState('');
+  const [notificationPendingId, setNotificationPendingId] = useState('');
+  const [notificationIntent, setNotificationIntent] = useState(() => {
+      if (typeof window === 'undefined') return null;
+      try {
+          const params = new URLSearchParams(window.location.search);
+          const reservationId = String(
+              params.get('reservationId') || params.get('reservaId') || params.get('eventoId') ||
+              params.get('eventId') || params.get('requestId') || params.get('id') || ''
+          ).trim();
+          const fromNotification = reservationId || params.get('fromNotification') === '1' || params.get('notification') === '1';
+          if (!fromNotification) return null;
+          return {
+              reservationId,
+              title: String(params.get('notificationTitle') || '').trim(),
+              body: String(params.get('notificationBody') || '').trim()
+          };
+      } catch (_) { return null; }
+  });
 
-  // Deep-link de notificaciones: ?reservationId=ID abre Agenda y enfoca la reserva exacta.
+  // NOTIFICACIONES -> RESERVA EXACTA
+  // 1) Si el push trae el ID, abrimos ese documento.
+  // 2) Si el proveedor del push no incluyó el ID, usamos título/cuerpo para identificar
+  //    la solicitud y, como último respaldo, abrimos la solicitud web pendiente más reciente.
+  // Las solicitudes PENDIENTES se abren dentro de Notificaciones (Aceptar/Rechazar);
+  // las ya aceptadas se abren en su fecha exacta de Agenda y con la tarjeta expandida.
   useEffect(() => {
-      if (!firebaseUser || typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      const reservationId = String(params.get('reservationId') || '').trim();
-      if (!reservationId) return;
+      if (!firebaseUser || !notificationIntent || typeof window === 'undefined') return;
       let cancelled = false;
+
+      const clearNotificationUrl = () => {
+          try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash); } catch (_) {}
+      };
+      const mergeEvent = (ev) => setEventos(prev => {
+          const map = new Map(prev.map(item => [String(item.id), item]));
+          map.set(String(ev.id), ev);
+          return [...map.values()];
+      });
+      const openResolvedReservation = (ev) => {
+          if (!ev || cancelled) return;
+          mergeEvent(ev);
+          setGlobalSearch('');
+          setActiveTab('eventos');
+          setIsSidebarOpen(false);
+
+          if (isPendingWebRequest(ev)) {
+              // Una solicitud aún no aceptada NO pertenece a Agenda activa: se abre
+              // directamente en la pantalla donde están Aceptar / Rechazar.
+              setFilterDate('');
+              setViewMode('pendientes');
+              setNotificationReservationId('');
+              setNotificationPendingId(String(ev.id));
+              setIsNotifOpen(true);
+          } else {
+              setIsNotifOpen(false);
+              setNotificationPendingId('');
+              setFilterDate(String(ev.fecha || ''));
+              setViewMode('');
+              setNotificationReservationId(String(ev.id));
+          }
+
+          clearNotificationUrl();
+          setNotificationIntent(null);
+      };
+
       (async () => {
           try {
-              const snap = await getDoc(getDocRef(reservationId));
-              if (cancelled) return;
-              if (snap.exists()) {
-                  const ev = { ...snap.data(), id: snap.id };
-                  setEventos(prev => {
-                      const map = new Map(prev.map(item => [String(item.id), item]));
-                      map.set(String(ev.id), ev);
-                      return [...map.values()];
-                  });
-                  setGlobalSearch('');
-                  setFilterDate('');
-                  setViewMode('todas');
-                  setActiveTab('eventos');
-                  setIsSidebarOpen(false);
-                  setNotificationReservationId(reservationId);
-                  window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash);
+              const explicitId = String(notificationIntent.reservationId || '').trim();
+              if (explicitId) {
+                  const snap = await getDoc(getDocRef(explicitId));
+                  if (cancelled) return;
+                  if (snap.exists()) {
+                      openResolvedReservation({ ...snap.data(), id: snap.id });
+                      return;
+                  }
               }
+
+              const pending = (Array.isArray(eventos) ? eventos : [])
+                  .filter(isPendingWebRequest)
+                  .sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+              if (!pending.length) return; // Espera al snapshot de Firestore si aún está cargando.
+
+              const notificationText = utils.normalizeText(`${notificationIntent.title || ''} ${notificationIntent.body || ''}`);
+              let target = null;
+              if (notificationText) {
+                  target = pending.find(ev => {
+                      const name = utils.normalizeText(ev?.cliente || '');
+                      const phone = String(ev?.telefono || '').replace(/\D/g,'');
+                      const service = utils.normalizeText(ev?.servicio || '');
+                      return (name && notificationText.includes(name)) ||
+                          (phone.length >= 6 && notificationText.includes(phone.slice(-6))) ||
+                          (service.length >= 8 && notificationText.includes(service));
+                  }) || null;
+              }
+              openResolvedReservation(target || pending[0]);
           } catch (err) {
               console.error('No se pudo abrir la reserva desde la notificación:', err);
           }
       })();
+
       return () => { cancelled = true; };
-  }, [firebaseUser]);
+  }, [firebaseUser, notificationIntent, eventos]);
 
   // MULTIDISPOSITIVO: cada instalación tiene un identificador local. Firestore sigue siendo
   // la fuente oficial; este ID solo evita que un dispositivo procese su propia señal dos veces.
@@ -1778,7 +1852,8 @@ export default function App() {
       let cancelled = false;
       (async () => {
           try {
-              const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+              const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' });
+              await swRegistration.update().catch(() => {});
               await navigator.serviceWorker.ready;
               if (cancelled) return;
               const token = await getToken(messaging, {
@@ -3358,7 +3433,7 @@ export default function App() {
 
   const activarNotificaciones = useCallback(async () => {
     if (!messaging) { showAlert("Notificaciones no disponibles.", false); return; }
-    try { if (!('Notification' in window)) { showAlert("Navegador no soporta notificaciones.", false); return; } if (!('serviceWorker' in navigator)) { showAlert("Service Worker no disponible.", false); return; } const permiso = await Notification.requestPermission(); if (permiso !== "granted") { showAlert("Debes permitir notificaciones", false); return; } showAlert("Generando token, espera...", true); const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js'); await navigator.serviceWorker.ready; const token = await getToken(messaging, { vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ", serviceWorkerRegistration: swRegistration }); if (token) { await setDoc(doc(db, "tokens", token), { token: token, createdAt: new Date(), updatedAt: new Date(), userAgent: navigator.userAgent || '', enabled: true }); console.log("Token guardado:", token); showAlert("✅ ¡Notificaciones activadas!", true); } else { showAlert("No se generó ningún token.", false); } } catch (error) { console.error("Error obteniendo token:", error); const detalle = error?.code || error?.name || error?.message || "desconocido"; showAlert(`Error al obtener token: ${detalle}`, false); }
+    try { if (!('Notification' in window)) { showAlert("Navegador no soporta notificaciones.", false); return; } if (!('serviceWorker' in navigator)) { showAlert("Service Worker no disponible.", false); return; } const permiso = await Notification.requestPermission(); if (permiso !== "granted") { showAlert("Debes permitir notificaciones", false); return; } showAlert("Generando token, espera...", true); const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }); await swRegistration.update().catch(() => {}); await navigator.serviceWorker.ready; const token = await getToken(messaging, { vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ", serviceWorkerRegistration: swRegistration }); if (token) { await setDoc(doc(db, "tokens", token), { token: token, createdAt: new Date(), updatedAt: new Date(), userAgent: navigator.userAgent || '', enabled: true }); console.log("Token guardado:", token); showAlert("✅ ¡Notificaciones activadas!", true); } else { showAlert("No se generó ningún token.", false); } } catch (error) { console.error("Error obteniendo token:", error); const detalle = error?.code || error?.name || error?.message || "desconocido"; showAlert(`Error al obtener token: ${detalle}`, false); }
   }, [messaging, showAlert]);
 
   useEffect(() => {
@@ -4365,7 +4440,7 @@ export default function App() {
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
       <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>setIsNotifOpen(false)} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} />
+      <NotifModal isOpen={isNotifOpen} onClose={()=>{setIsNotifOpen(false);setNotificationPendingId('')}} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} targetReservationId={notificationPendingId} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
