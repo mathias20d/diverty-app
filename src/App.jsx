@@ -1489,7 +1489,10 @@ export default function App() {
   }, []);
   
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
-  const [isAuthLoading, setIsAuthLoading] = useState(true); 
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  // Splash visual propio: se mantiene un mínimo para que la apertura se sienta intencional
+  // y no como dos pantallas que parpadean una detrás de otra.
+  const [minStartupSplashDone, setMinStartupSplashDone] = useState(false); 
   const [emailInput, setEmailInput] = useState(''); 
   const [passwordInput, setPasswordInput] = useState('');
   const [firebaseUser, setFirebaseUser] = useState(null); 
@@ -1831,6 +1834,14 @@ export default function App() {
       isSupported().then(s => { if(s) setMessaging(getMessaging(app)); }).catch(()=>{}); 
   }, []);
   
+  useEffect(() => {
+    // Android/PWA muestra un splash del sistema antes de que JavaScript pueda ejecutarse.
+    // Este temporizador hace que nuestro splash de Diverty permanezca el tiempo suficiente
+    // para que la transición sea suave y sea la animación que realmente percibe el usuario.
+    const timer = setTimeout(() => setMinStartupSplashDone(true), 3400);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 8000); 
     const unsubscribe = onAuthStateChanged(auth, (user) => { 
@@ -4327,9 +4338,9 @@ export default function App() {
       </div>
     </>);
   };
-  if (isAuthLoading) return (
+  if (isAuthLoading || !minStartupSplashDone) return (
     <div className="font-outfit min-h-[100dvh] relative overflow-hidden flex items-center justify-center bg-[linear-gradient(155deg,#F8F8FF_0%,#F4F6FF_48%,#FFF8FC_100%)]">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap');.font-outfit{font-family:'Outfit',sans-serif}@keyframes splashFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(1.015)}}@keyframes splashLoad{0%{width:8%}55%{width:64%}100%{width:88%}}@keyframes splashGlow{0%,100%{opacity:.28;transform:scale(.94)}50%{opacity:.48;transform:scale(1.06)}}.splash-logo{animation:splashFloat 3.2s ease-in-out infinite}.splash-load{animation:splashLoad 1.6s ease-in-out forwards}.splash-glow{animation:splashGlow 2.4s ease-in-out infinite}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap');.font-outfit{font-family:'Outfit',sans-serif}@keyframes splashEnter{0%{opacity:.72;transform:scale(.88)}100%{opacity:1;transform:scale(1)}}@keyframes splashFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(1.015)}}@keyframes splashLoad{0%{width:6%}35%{width:38%}72%{width:78%}100%{width:100%}}@keyframes splashGlow{0%,100%{opacity:.28;transform:scale(.94)}50%{opacity:.48;transform:scale(1.06)}}.splash-logo{animation:splashEnter .55s ease-out both,splashFloat 3.2s .55s ease-in-out infinite}.splash-load{animation:splashLoad 3.15s cubic-bezier(.22,.61,.36,1) forwards}.splash-glow{animation:splashGlow 2.4s ease-in-out infinite}`}</style>
       <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#7657FF]/15 blur-2xl"></div>
       <div className="absolute -top-28 left-20 w-72 h-64 rounded-[45%] bg-[#FF3EA5]/10 blur-2xl rotate-12"></div>
       <div className="absolute -bottom-28 -right-24 w-96 h-80 rounded-[45%] bg-gradient-to-tr from-[#7657FF]/25 via-[#FF3EA5]/16 to-amber-300/18 blur-xl"></div>
