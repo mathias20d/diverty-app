@@ -3,7 +3,7 @@
   "short_name": "Diverty",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#F8F8FF",
   "theme_color": "#7c3aed",
   "orientation": "portrait",
   "icons": [
