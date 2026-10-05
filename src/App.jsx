@@ -990,14 +990,30 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
     const subServicios = isC ? selectedServicesSubtotal : Math.max(0, tot - trn);
     const saldo = Math.max(0, tot - abo);
     const numRef = isC ? (printData.numeroCotizacion || 'COT-PENDIENTE') : isContratoProv ? (printData.numeroSubcontrato || 'SUB-PENDIENTE') : isContrato ? (printData.numeroContrato || 'CON-PENDIENTE') : (printData.numeroFactura || 'FAC-PENDIENTE');
-    const docTitle = isC ? 'COTIZACIÓN' : isContratoProv ? 'SUBCONTRATO DE SERVICIOS' : isContrato ? 'CONTRATO DE SERVICIO' : 'FACTURA COMERCIAL';
+    const docTitle = isC ? 'COTIZACIÓN' : isContratoProv ? (printData.contratoEvento === true || !!printData.eventoAsignado ? 'SUBCONTRATO DEL EVENTO' : 'ACUERDO MARCO DE PROVEEDOR') : isContrato ? 'CONTRATO DE SERVICIO' : 'FACTURA COMERCIAL';
     const providerId = String(printData.identificacion || printData.ruc || '').trim();
     const providerAddress = String(printData.direccion || '').trim();
     const providerEmail = String(printData.email || '').trim();
     const providerPaymentTerms = String(printData.condicionesPago || 'Pago contra prestación satisfactoria del servicio.').trim();
-    const providerServices = Array.isArray(printData.servicios) && printData.servicios.length
-      ? printData.servicios.filter(x=>x && x.activo !== false)
-      : [{ nombre: printData.especialidad || 'Servicios para eventos', costo: utils.safeNum(printData.costoBase) }];
+    // Subcontrato de proveedor: si el PDF corresponde a una reserva concreta,
+    // la fuente de verdad son SOLO los servicios de ese proveedor seleccionados en esa reserva.
+    // `printData.servicios` es el catálogo completo del proveedor y se usa únicamente para el contrato marco.
+    const assignedProviderServices = Array.isArray(printData.serviciosAsignados)
+      ? printData.serviciosAsignados.filter(x => x && String(x.nombre || x.servicio || '').trim())
+      : [];
+    const isProviderEventContract = isContratoProv && (assignedProviderServices.length > 0 || printData.contratoEvento === true || !!printData.eventoAsignado);
+    const providerServices = isProviderEventContract
+      ? assignedProviderServices.map((x,i) => ({
+          id: x.id || `asig-${i}`,
+          nombre: String(x.nombre || x.servicio || 'Servicio').trim(),
+          costo: Math.max(0, utils.safeNum(x.costo ?? x.precio)),
+          cantidad: Math.max(1, Number(x.cantidad) || 1)
+        }))
+      : (Array.isArray(printData.servicios) && printData.servicios.length
+          ? printData.servicios.filter(x=>x && x.activo !== false)
+          : [{ nombre: printData.especialidad || 'Servicios para eventos', costo: utils.safeNum(printData.costoBase), cantidad: 1 }]);
+    const providerTotal = providerServices.reduce((sum, srv) => sum + Math.max(0, utils.safeNum(srv?.costo)), 0);
+    const providerEvent = printData.eventoAsignado && typeof printData.eventoAsignado === 'object' ? printData.eventoAsignado : null;
 
     const serviceInfo = (servicio) => {
         const cant = Number(servicio.cantidad) || 1;
@@ -1118,22 +1134,32 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                 </div>
             </div>
             <div className="rounded-2xl bg-slate-950 text-white p-4">
-                <p className="text-[8px] font-black uppercase tracking-[.18em] text-white/55">Naturaleza del acuerdo</p>
-                <p className="text-[12px] font-black mt-2">Servicios por evento</p>
-                <p className="text-[8.5px] leading-relaxed text-white/70 mt-2">Acuerdo marco para asignaciones independientes realizadas por Diverty Eventos Panamá, sujeto a disponibilidad y aceptación de cada servicio.</p>
-                <div className="mt-3 pt-3 border-t border-white/10"><p className="text-[7px] uppercase tracking-widest text-white/45 font-black">Emisión</p><p className="text-[10px] font-black">{fechaEmision}</p></div>
+                {isProviderEventContract ? <>
+                    <p className="text-[8px] font-black uppercase tracking-[.18em] text-white/55">Asignación específica</p>
+                    <p className="text-[12px] font-black mt-2">{providerEvent?.cliente || 'Evento asignado'}</p>
+                    <div className="mt-2 space-y-1 text-[8.2px] text-white/72">
+                        <p><b className="text-white">Fecha:</b> {providerEvent?.fecha ? String(providerEvent.fecha).split('-').reverse().join('/') : '—'}</p>
+                        <p><b className="text-white">Hora:</b> {utils.formatTime12h(providerEvent?.hora || '')}</p>
+                        <p><b className="text-white">Ubicación:</b> {providerEvent?.ubicacion || 'Por definir'}</p>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-white/10 flex items-end justify-between gap-3"><div><p className="text-[7px] uppercase tracking-widest text-white/45 font-black">Emisión</p><p className="text-[10px] font-black">{fechaEmision}</p></div><div className="text-right"><p className="text-[7px] uppercase tracking-widest text-white/45 font-black">Total proveedor</p><p className="text-[16px] font-black">B/. {providerTotal.toFixed(2)}</p></div></div>
+                </> : <>
+                    <p className="text-[8px] font-black uppercase tracking-[.18em] text-white/55">Naturaleza del acuerdo</p>
+                    <p className="text-[12px] font-black mt-2">Contrato marco de servicios</p>
+                    <p className="text-[8.5px] leading-relaxed text-white/70 mt-2">Acuerdo general para futuras asignaciones independientes. Las tarifas listadas corresponden al perfil del proveedor y no representan una reserva concreta.</p>
+                    <div className="mt-3 pt-3 border-t border-white/10"><p className="text-[7px] uppercase tracking-widest text-white/45 font-black">Emisión</p><p className="text-[10px] font-black">{fechaEmision}</p></div>
+                </>}
             </div>
         </div>
 
         <div className="relative z-10 rounded-2xl border border-slate-100 overflow-hidden mb-4">
-            <div className="px-4 py-2.5 bg-slate-50 flex items-center justify-between">
-                <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7657FF]">Servicios y tarifas registradas</p>
-                <p className="text-[7.5px] font-bold text-slate-400">Las asignaciones concretas pueden acordar una tarifa distinta.</p>
+            <div className="px-4 py-2.5 bg-slate-50 flex items-center justify-between gap-3">
+                <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7657FF]">{isProviderEventContract ? 'Servicios seleccionados para este evento' : 'Servicios y tarifas del proveedor'}</p>
+                <p className="text-[7.5px] font-bold text-slate-400 text-right">{isProviderEventContract ? 'Solo se muestran los servicios asignados en la reserva.' : 'Catálogo general del proveedor.'}</p>
             </div>
-            <table className="w-full text-[8.5px]"><thead className="bg-white"><tr className="text-[7px] uppercase tracking-wider text-slate-400"><th className="p-2.5 text-left">Servicio</th><th className="p-2.5 text-right w-[28%]">Tarifa base</th></tr></thead><tbody className="divide-y divide-slate-100">
-                {providerServices.slice(0,6).map((srv,i)=><tr key={srv.id||i}><td className="p-2.5 font-bold text-slate-700">{srv.nombre || 'Servicio'}</td><td className="p-2.5 text-right font-black text-slate-900">{utils.safeNum(srv.costo)>0?`B/. ${utils.safeNum(srv.costo).toFixed(2)}`:'Por acordar'}</td></tr>)}
-            </tbody></table>
-            {providerServices.length > 6 && <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-[7.5px] font-bold text-slate-500">+ {providerServices.length - 6} servicio(s) adicional(es) registrado(s) en el perfil del proveedor.</div>}
+            <table className="w-full text-[8.5px]"><thead className="bg-white"><tr className="text-[7px] uppercase tracking-wider text-slate-400"><th className="p-2.5 text-left">Servicio</th><th className="p-2.5 text-right w-[28%]">{isProviderEventContract ? 'Monto acordado' : 'Tarifa base'}</th></tr></thead><tbody className="divide-y divide-slate-100">
+                {providerServices.length > 0 ? providerServices.map((srv,i)=><tr key={srv.id||i}><td className="p-2.5 font-bold text-slate-700">{srv.nombre || 'Servicio'}{Number(srv.cantidad)>1 ? ` ×${Number(srv.cantidad)}` : ''}</td><td className="p-2.5 text-right font-black text-slate-900">{utils.safeNum(srv.costo)>0?`B/. ${utils.safeNum(srv.costo).toFixed(2)}`:'Por acordar'}</td></tr>) : <tr><td colSpan="2" className="p-4 text-center text-[8px] font-bold text-rose-500">No hay servicios de este proveedor asignados a esta reserva.</td></tr>}
+            </tbody>{isProviderEventContract && <tfoot><tr className="bg-[#7657FF]/5 border-t border-[#7657FF]/10"><td className="p-3 text-right text-[8px] uppercase tracking-[.14em] font-black text-[#7657FF]">Total a pagar</td><td className="p-3 text-right text-[13px] font-black text-slate-950">B/. {providerTotal.toFixed(2)}</td></tr></tfoot>}</table>
         </div>
 
         <div className="relative z-10 grid grid-cols-[1.35fr_.65fr] gap-4">
@@ -1158,6 +1184,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                 <div className="rounded-2xl bg-amber-50/70 border border-amber-100 p-3">
                     <p className="text-[7px] font-black uppercase tracking-wider text-amber-600">Condición de pago</p>
                     <p className="text-[8px] font-semibold text-slate-600 mt-1.5 leading-relaxed">{providerPaymentTerms}</p>
+                    {isProviderEventContract && <div className="mt-2 pt-2 border-t border-amber-200/60 flex justify-between items-center gap-2"><span className="text-[7px] font-black uppercase tracking-wider text-amber-700">Total acordado</span><span className="text-[12px] font-black text-slate-900">B/. {providerTotal.toFixed(2)}</span></div>}
                 </div>
                 <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3">
                     <p className="text-[7px] font-black uppercase tracking-wider text-[#7657FF]">Coordinación</p>
@@ -1175,7 +1202,7 @@ const PdfTemplate = memo(function PdfTemplate({ printData, printType, pdfScale, 
                 </div>
             </div>
         </div>
-        <div className="relative z-10 mt-3 rounded-xl bg-[#7657FF]/5 border border-[#7657FF]/10 px-4 py-2 text-[7.4px] text-slate-500 font-semibold">Documento marco de coordinación de servicios. Las condiciones particulares de cada evento prevalecen cuando hayan sido aceptadas expresamente por ambas partes.</div>
+        <div className="relative z-10 mt-3 rounded-xl bg-[#7657FF]/5 border border-[#7657FF]/10 px-4 py-2 text-[7.4px] text-slate-500 font-semibold">{isProviderEventContract ? 'Este subcontrato corresponde exclusivamente a los servicios seleccionados para el evento indicado. Cualquier servicio adicional deberá acordarse y registrarse por separado.' : 'Documento marco de coordinación de servicios. Las condiciones particulares de cada evento prevalecen cuando hayan sido aceptadas expresamente por ambas partes.'}</div>
         <FooterBrand/>
     </>);
 
@@ -1203,9 +1230,58 @@ const ProveedorModal = memo(function ProveedorModal({ isOpen, data, onClose, onS
     return (<div className="fixed inset-0 z-[100000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"><div className={`${UI.modal} max-w-lg w-full p-8 max-h-[92vh] overflow-y-auto`}><div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4"><div className="flex items-center gap-3">{data ? <Edit size={24} className="text-[#7657FF]" /> : <Plus size={24} className="text-[#7657FF]" />}<h3 className="text-xl font-black text-slate-900">{data ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h3></div><button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-100 rounded-lg"><X size={18}/></button></div><form onSubmit={handleSubmit} className="space-y-4"><Field label="Nombre Comercial / Proveedor *" required value={form.nombre} onChange={e=>setForm(prev=>({...prev,nombre:e.target.value}))}/><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Número de WhatsApp *" required value={form.telefono} onChange={e=>setForm(prev=>({...prev,telefono:e.target.value}))}/><Field label="Correo" type="email" value={form.email||''} onChange={e=>setForm(prev=>({...prev,email:e.target.value}))}/></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Cédula / RUC / Identificación" value={form.identificacion||''} onChange={e=>setForm(prev=>({...prev,identificacion:e.target.value}))}/><Field label="Dirección / zona" value={form.direccion||''} onChange={e=>setForm(prev=>({...prev,direccion:e.target.value}))}/></div><div className="rounded-2xl bg-slate-50 border border-slate-200 p-4"><div className="flex items-center justify-between mb-3"><div><p className="text-sm font-black text-slate-900">Servicios y tarifas</p><p className="text-[10px] font-semibold text-slate-400 mt-1">Agrega todos los servicios que este proveedor puede realizar.</p></div><Badge color="blue">{(form.servicios||[]).length}</Badge></div><div className="grid grid-cols-[1fr_110px_auto] gap-2 items-end"><Field label="Servicio" value={srv.nombre} onChange={e=>setSrv(x=>({...x,nombre:e.target.value}))} placeholder="Ej. Pintacaritas"/><Field label="Costo ($)" type="number" value={srv.costo} onChange={e=>setSrv(x=>({...x,costo:e.target.value}))} placeholder="0.00"/><button type="button" onClick={addSrv} className="h-[54px] w-[54px] rounded-xl bg-[#7657FF] text-white flex items-center justify-center"><Plus size={20}/></button></div><div className="space-y-2 mt-4">{(form.servicios||[]).map(x=><div key={x.id} className="flex justify-between items-center bg-white border border-slate-200 rounded-xl p-3"><div><p className="font-bold text-slate-800">{x.nombre}</p><p className="text-xs font-black text-emerald-600 mt-0.5">${utils.safeNum(x.costo).toFixed(2)}</p></div><button type="button" onClick={()=>removeSrv(x.id)} className="p-2 text-rose-500 bg-rose-50 rounded-lg"><Trash2 size={16}/></button></div>)}</div></div><Field as="textarea" label="Condiciones de pago / acuerdo" value={form.condicionesPago||''} onChange={e=>setForm(prev=>({...prev,condicionesPago:e.target.value}))} placeholder="Ej. Pago al finalizar el evento, contra prestación satisfactoria."/><label className="flex items-center justify-between rounded-xl border border-slate-200 p-4 bg-white"><span className="font-bold text-sm text-slate-700">Proveedor activo</span><input type="checkbox" checked={form.activo!==false} onChange={e=>setForm(prev=>({...prev,activo:e.target.checked}))}/></label><div className="pt-4"><AppButton type="submit" className="w-full text-xs uppercase tracking-widest">{data ? 'Guardar Cambios' : 'Registrar Proveedor'}</AppButton></div></form></div></div>);
 });
 
-const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete, onEdit, onWhatsApp, onContrato, eventosActivos }) {
-    const misEventos = useMemo(() => { return eventosActivos.filter(ev => ev.subcontratos && ev.subcontratos.some(sc => sc.proveedorId === p.id)).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))); }, [eventosActivos, p.id]); const pendientes = misEventos.filter(ev => !isArchivedReservation(ev) && utils.normalizeText(ev.estado) !== 'completado'); const realizados = misEventos.filter(ev => utils.normalizeText(ev.estado) === 'completado'); const phoneClean = String(p.telefono).replace(/\D/g, '');
-    return (<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}><div onClick={(e) => { if(e){e.preventDefault();e.stopPropagation();} utils.triggerHaptic('light'); onToggleExpand(p.id); }} className="p-6 cursor-pointer flex flex-col gap-4 relative z-10 bg-transparent transition-colors duration-200"><div className="flex justify-between items-start"><div className="flex gap-3"><div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#7657FF] shadow-sm shrink-0"><Briefcase size={20}/></div><div className="flex-1 min-w-0"><h4 className="font-extrabold text-lg text-slate-900 tracking-tight capitalize leading-tight truncate">{p.nombre}</h4><span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 truncate block mt-0.5">{p.servicios?.length ? `${p.servicios.length} servicios` : p.especialidad}</span></div></div><button type="button" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 size={18}/></button></div><div className="flex justify-between items-center bg-slate-50/80 rounded-xl p-4 border border-slate-100"><div className="flex items-center gap-3"><Smartphone size={16} className="text-emerald-500"/><span className="font-bold text-slate-700 text-sm">{p.telefono || 'Sin teléfono'}</span></div>{p.costoBase && <span className="text-xs font-black text-slate-900 bg-emerald-100/50 px-2.5 py-1 rounded-lg border border-emerald-200/50">${p.costoBase}</span>}</div><div className="flex gap-2.5 mt-2"><ActionBtn icon={MessageCircle} label="WhatsApp" color="emerald" onClick={(e) => { e.stopPropagation(); onWhatsApp(phoneClean, `¡Hola ${p.nombre}!`); }} /><ActionBtn icon={Handshake} label="Contrato" color="blue" onClick={(e) => { e.stopPropagation(); onContrato(p); }} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e) => { e.stopPropagation(); onEdit(p); }} /></div></div>{isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-5 bg-slate-50/50 rounded-b-[24px]"><h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7657FF] mb-4 flex items-center gap-2"><CalendarDays size={14}/> Eventos Asignados</h5><div className="space-y-5"><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pendientes ({pendientes.length})</p>{pendientes.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos pendientes.</p>) : (<div className="space-y-2">{pendientes.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-white p-3.5 rounded-xl border border-slate-200/60 shadow-sm flex flex-col gap-1.5 transition-all hover:border-blue-200"><div className="flex justify-between items-start"><span className="font-extrabold text-slate-900 text-[13px] capitalize truncate max-w-[160px]">{ev.cliente}</span>{subC?.costo && <span className={`font-bold text-[11px] px-2 py-0.5 rounded-md border ${(subC.pagado===true||utils.normalizeText(subC.estadoPago)==='pagado')?'text-emerald-600 bg-emerald-50 border-emerald-100':'text-rose-500 bg-rose-50 border-rose-100'}`}>${subC.costo} · {(subC.pagado===true||utils.normalizeText(subC.estadoPago)==='pagado')?'Pagado':'Pendiente'}</span>}</div><div className="flex gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider"><span className="flex items-center gap-1"><Calendar size={11} className="text-[#7657FF]"/> {ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span className="flex items-center gap-1"><Clock size={11} className="text-[#7657FF]"/> {utils.formatTime12h(ev.hora)}</span></div><div className="text-[10px] font-semibold text-slate-400 truncate flex items-center gap-1 mt-0.5"><MapPin size={10}/> {ev.ubicacion}</div></div>); })}</div>)}</div><div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Realizados ({realizados.length})</p>{realizados.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos completados.</p>) : (<div className="space-y-2 opacity-75">{realizados.map(ev => { const subC = ev.subcontratos?.find(sc => sc.proveedorId === p.id); return (<div key={ev.id} className="bg-slate-100/50 p-3 rounded-xl border border-slate-200/50 flex flex-col gap-1.5"><div className="flex justify-between items-start"><span className="font-bold text-slate-700 text-[12px] capitalize truncate">{ev.cliente}</span>{subC?.costo && <span className={`font-bold text-[10px] ${(subC.pagado===true||utils.normalizeText(subC.estadoPago)==='pagado')?'text-emerald-600':'text-amber-600'}`}>${subC.costo} · {(subC.pagado===true||utils.normalizeText(subC.estadoPago)==='pagado')?'Pagado':'Pendiente'}</span>}</div><div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider"><span>{ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span><span>{utils.formatTime12h(ev.hora)}</span></div></div>); })}</div>)}</div></div></div>)}</div>);
+const ProveedorCardItem = memo(function ProveedorCardItem({ p, idx, isExpanded, onToggleExpand, utils, onDelete, onEdit, onWhatsApp, onContrato, onContratoEvento, eventosActivos }) {
+    const misEventos = useMemo(() => {
+        return eventosActivos
+          .filter(ev => ev.subcontratos && ev.subcontratos.some(sc => sc.proveedorId === p.id))
+          .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    }, [eventosActivos, p.id]);
+    const pendientes = misEventos.filter(ev => !isArchivedReservation(ev) && utils.normalizeText(ev.estado) !== 'completado');
+    const realizados = misEventos.filter(ev => utils.normalizeText(ev.estado) === 'completado');
+    const phoneClean = String(p.telefono).replace(/\D/g, '');
+
+    const EventAssignment = ({ ev, completed = false }) => {
+        const assignments = (Array.isArray(ev.subcontratos) ? ev.subcontratos : []).filter(sc => sc.proveedorId === p.id);
+        const totalAsignado = assignments.reduce((sum, sc) => sum + utils.safeNum(sc.costo), 0);
+        const allPaid = assignments.length > 0 && assignments.every(sc => sc.pagado === true || utils.normalizeText(sc.estadoPago) === 'pagado');
+        const nombres = assignments.map(sc => sc.servicio || 'Servicio').filter(Boolean);
+        return <div className={`${completed ? 'bg-slate-100/50 border-slate-200/50' : 'bg-white border-slate-200/60'} p-3.5 rounded-xl border shadow-sm flex flex-col gap-2 transition-all hover:border-blue-200`}>
+            <div className="flex justify-between items-start gap-3">
+                <div className="min-w-0">
+                    <span className={`${completed ? 'font-bold text-slate-700 text-[12px]' : 'font-extrabold text-slate-900 text-[13px]'} capitalize truncate block`}>{ev.cliente}</span>
+                    <p className="text-[10px] font-bold text-[#7657FF] mt-1 leading-snug">{nombres.join(' + ') || 'Servicio asignado'}</p>
+                </div>
+                {totalAsignado > 0 && <span className={`font-bold text-[10px] px-2 py-1 rounded-md border shrink-0 ${allPaid?'text-emerald-600 bg-emerald-50 border-emerald-100':'text-rose-500 bg-rose-50 border-rose-100'}`}>${totalAsignado.toFixed(2)} · {allPaid?'Pagado':'Pendiente'}</span>}
+            </div>
+            <div className="flex gap-3 text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider flex-wrap">
+                <span className="flex items-center gap-1"><Calendar size={11} className="text-[#7657FF]"/> {ev.fecha ? ev.fecha.split('-').reverse().join('/') : ''}</span>
+                <span className="flex items-center gap-1"><Clock size={11} className="text-[#7657FF]"/> {utils.formatTime12h(ev.hora)}</span>
+            </div>
+            <div className="text-[10px] font-semibold text-slate-400 truncate flex items-center gap-1"><MapPin size={10}/> {ev.ubicacion}</div>
+            <button type="button" onClick={(e)=>{e.stopPropagation();onContratoEvento?.(p,ev);}} className="mt-1 w-full min-h-[40px] rounded-[12px] bg-[#7657FF]/10 border border-[#7657FF]/15 text-[#7657FF] font-black text-[9px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98]"><FileSignature size={14}/> Contrato de este evento</button>
+        </div>;
+    };
+
+    return (<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}>
+        <div onClick={(e) => { if(e){e.preventDefault();e.stopPropagation();} utils.triggerHaptic('light'); onToggleExpand(p.id); }} className="p-6 cursor-pointer flex flex-col gap-4 relative z-10 bg-transparent transition-colors duration-200">
+            <div className="flex justify-between items-start">
+                <div className="flex gap-3"><div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-[#7657FF] shadow-sm shrink-0"><Briefcase size={20}/></div><div className="flex-1 min-w-0"><h4 className="font-extrabold text-lg text-slate-900 tracking-tight capitalize leading-tight truncate">{p.nombre}</h4><span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 truncate block mt-0.5">{p.servicios?.length ? `${p.servicios.length} servicios disponibles` : p.especialidad}</span></div></div>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} className="text-slate-300 hover:text-rose-500 transition-colors p-1"><Trash2 size={18}/></button>
+            </div>
+            <div className="flex justify-between items-center bg-slate-50/80 rounded-xl p-4 border border-slate-100"><div className="flex items-center gap-3"><Smartphone size={16} className="text-emerald-500"/><span className="font-bold text-slate-700 text-sm">{p.telefono || 'Sin teléfono'}</span></div>{p.costoBase && <span className="text-xs font-black text-slate-900 bg-emerald-100/50 px-2.5 py-1 rounded-lg border border-emerald-200/50">${p.costoBase}</span>}</div>
+            <div className="flex gap-2.5 mt-2"><ActionBtn icon={MessageCircle} label="WhatsApp" color="emerald" onClick={(e) => { e.stopPropagation(); onWhatsApp(phoneClean, `¡Hola ${p.nombre}!`); }} /><ActionBtn icon={Handshake} label="Contrato" color="blue" onClick={(e) => { e.stopPropagation(); const eventosProveedor=[...pendientes,...realizados]; if(eventosProveedor.length===1){ onContratoEvento?.(p,eventosProveedor[0]); } else if(eventosProveedor.length>1){ onToggleExpand(p.id); } else { onContrato(p); } }} /><ActionBtn icon={PenLine} label="Editar" color="white" onClick={(e) => { e.stopPropagation(); onEdit(p); }} /></div>
+            <p className="text-[9px] font-semibold text-slate-400 -mt-1">Si hay una sola reserva asignada, “Contrato” abre directamente ese evento. Si hay varias, despliega la lista para que elijas la reserva correcta.</p>
+        </div>
+        {isExpanded && (<div className="relative z-10 px-5 pb-5 animate-fadeIn border-t border-slate-100/50 mt-1 pt-5 bg-slate-50/50 rounded-b-[24px]">
+            <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7657FF] mb-4 flex items-center gap-2"><CalendarDays size={14}/> Eventos Asignados</h5>
+            <div className="space-y-5">
+                <div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pendientes ({pendientes.length})</p>{pendientes.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos pendientes.</p>) : (<div className="space-y-2">{pendientes.map(ev => <EventAssignment key={ev.id} ev={ev}/>)}</div>)}</div>
+                <div><p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Realizados ({realizados.length})</p>{realizados.length === 0 ? (<p className="text-[11px] text-slate-400 italic">No hay eventos completados.</p>) : (<div className="space-y-2 opacity-80">{realizados.map(ev => <EventAssignment key={ev.id} ev={ev} completed/>)}</div>)}</div>
+                <button type="button" onClick={(e)=>{e.stopPropagation();onContrato(p);}} className="w-full min-h-[42px] rounded-[14px] bg-white border border-slate-200 text-slate-500 font-black text-[9px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98]"><Handshake size={14}/> Acuerdo marco general</button>
+                <p className="text-[9px] font-semibold text-slate-400 text-center">El acuerdo marco es general y sí contiene el catálogo del proveedor. Para pagar una reserva usa el botón “Contrato de este evento”.</p>
+            </div>
+        </div>)}
+    </div>);
 });
 
 const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onToggleExpand, utils, openModal, onDeleteClient, onEditClient, historial = [] }) {
@@ -2703,6 +2779,69 @@ export default function App() {
     return result;
   }, []);
 
+
+  // Subcontrato POR EVENTO: usa exclusivamente los servicios de este proveedor
+  // que fueron agregados a `subcontratos` dentro de la reserva. Si hay varios,
+  // todos aparecen en el mismo PDF y el total a pagar es la suma de esos costos.
+  const ensureProviderEventContractNumber = useCallback(async (providerData, eventData) => {
+    if (!providerData?.id || !eventData?.id) throw new Error('PROVIDER_EVENT_REQUIRED');
+    const result = await rawRunTransaction(db, async tx => {
+      const eventRef = getDocRef(eventData.id);
+      const counterRef = getConfigRef('contador_subcontrato');
+      const eventSnap = await tx.get(eventRef);
+      if (!eventSnap.exists()) throw new Error('EVENT_NOT_FOUND');
+      const current = eventSnap.data();
+      const currentSubs = Array.isArray(current.subcontratos) ? current.subcontratos : [];
+      const providerSubs = currentSubs.filter(sc => sc?.proveedorId === providerData.id);
+      if (!providerSubs.length) throw new Error('PROVIDER_NOT_ASSIGNED');
+
+      let numero = providerSubs.map(sc => String(sc?.numeroSubcontratoEvento || '').trim()).find(Boolean) || '';
+      if (!numero) {
+        const counterSnap = await tx.get(counterRef);
+        const next = (Number(counterSnap.data()?.ultimo) || 0) + 1;
+        numero = `SUB-${String(next).padStart(5,'0')}`;
+        tx.set(counterRef, { ultimo: next }, { merge:true });
+      }
+
+      const patchedSubs = currentSubs.map(sc => sc?.proveedorId === providerData.id
+        ? { ...sc, numeroSubcontratoEvento: numero }
+        : sc);
+      const patch = { subcontratos: patchedSubs, updatedAt: new Date().toISOString(), _rev: (Number(current._rev)||0)+1 };
+      tx.set(eventRef, patch, { merge:true });
+      return { event: { ...current, ...patch, id:eventData.id }, numero };
+    });
+
+    setEventos(prev => prev.map(ev => ev.id === result.event.id ? result.event : ev));
+    const asignados = (Array.isArray(result.event.subcontratos) ? result.event.subcontratos : [])
+      .filter(sc => sc?.proveedorId === providerData.id)
+      .map((sc, i) => ({
+        id: sc.id || `asig-${i}`,
+        nombre: sc.servicio || 'Servicio',
+        costo: Math.max(0, utils.safeNum(sc.costo)),
+        cantidad: 1,
+        estadoPago: sc.estadoPago || (sc.pagado ? 'Pagado' : 'Pendiente')
+      }));
+
+    return {
+      ...providerData,
+      numeroSubcontrato: result.numero,
+      contratoEvento: true,
+      serviciosAsignados: asignados,
+      totalAsignado: asignados.reduce((sum, x) => sum + utils.safeNum(x.costo), 0),
+      eventoAsignado: {
+        id: result.event.id,
+        cliente: result.event.cliente || '',
+        fecha: result.event.fecha || '',
+        hora: result.event.hora || '',
+        ubicacion: result.event.ubicacion || '',
+        direccion: result.event.direccion || '',
+        referenciaLugar: result.event.referenciaLugar || '',
+        tipoEvento: result.event.tipoEvento || '',
+        servicioCliente: result.event.servicio || ''
+      }
+    };
+  }, []);
+
   const handleConvertirReserva = useCallback((e) => { 
       utils.triggerHaptic('light'); setModalConfig({ isOpen: true, isCotizacion: false, initialData: { ...e, estado: 'Pendiente' } }); showAlert("Confirma los datos para crear la reserva.", true); 
   }, [showAlert]);
@@ -3830,7 +3969,20 @@ export default function App() {
                {provFiltered.length === 0 ? (
                    <div className="col-span-full rounded-[30px] bg-white/95 border border-dashed border-slate-300 p-10 text-center shadow-sm"><div className="w-20 h-20 rounded-[24px] bg-violet-50 text-[#7657FF] flex items-center justify-center mx-auto mb-5"><Truck size={36}/></div><h3 className="text-2xl font-black text-slate-950">Sin Proveedores</h3><p className="text-slate-500 font-medium mt-2">No hay proveedores para este filtro.</p><button type="button" onClick={()=>setProveedorModal({isOpen:true,data:null})} className="mt-6 h-[54px] px-8 rounded-[18px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] text-white font-black"><Plus size={18} className="inline mr-2"/> Registrar Ahora</button></div>
                ) : provFiltered.map((p, idx) => (
-                   <ProveedorCardItem key={p.id} p={p} idx={idx} isExpanded={expandedProvId === p.id} onToggleExpand={handleToggleProv} utils={utils} onDelete={handleDeleteProveedor} onEdit={(data)=>setProveedorModal({isOpen:true,data})} onWhatsApp={utils.openWhatsAppBusiness} onContrato={async (prov)=>{try{const numbered=await ensureProviderContractNumber(prov);setPrintData(numbered);setPrintType('contrato_proveedor');setIsPrinting(true);}catch(err){console.error('No se pudo numerar el subcontrato:',err);showAlert('No se pudo preparar el contrato del proveedor. Intenta nuevamente.',false);}}} eventosActivos={eventosActivos}/>
+                   <ProveedorCardItem
+                     key={p.id}
+                     p={p}
+                     idx={idx}
+                     isExpanded={expandedProvId === p.id}
+                     onToggleExpand={handleToggleProv}
+                     utils={utils}
+                     onDelete={handleDeleteProveedor}
+                     onEdit={(data)=>setProveedorModal({isOpen:true,data})}
+                     onWhatsApp={utils.openWhatsAppBusiness}
+                     onContrato={async (prov)=>{try{const numbered=await ensureProviderContractNumber(prov);setPrintData(numbered);setPrintType('contrato_proveedor');setIsPrinting(true);}catch(err){console.error('No se pudo numerar el contrato marco:',err);showAlert('No se pudo preparar el contrato marco del proveedor. Intenta nuevamente.',false);}}}
+                     onContratoEvento={async (prov,ev)=>{try{const selected=(Array.isArray(ev?.subcontratos)?ev.subcontratos:[]).filter(sc=>sc?.proveedorId===prov?.id && String(sc?.servicio||'').trim());if(!selected.length){showAlert('Esta reserva no tiene servicios seleccionados de este proveedor.',false);return;}const numbered=await ensureProviderEventContractNumber(prov,ev);setPrintData(numbered);setPrintType('contrato_proveedor');setIsPrinting(true);}catch(err){console.error('No se pudo preparar el subcontrato del evento:',err);showAlert('No se pudo preparar el subcontrato de este evento. Verifica que el proveedor tenga servicios asignados en la reserva.',false);}}}
+                     eventosActivos={eventosActivos}
+                   />
                ))}
            </div>
            {providerFilter === 'inactivos' && inactivosCount === 0 && proveedores.length > 0 && <p className="text-center text-[10px] font-bold text-slate-400 mt-4">No hay proveedores marcados como inactivos.</p>}
