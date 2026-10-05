@@ -1,63 +1,71 @@
-// Diverty - Firebase Messaging Service Worker
-// El clic se controla antes de cargar Firebase para evitar que FCM abra otro origen.
-
-const DEFAULT_ICON = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
-
-self.addEventListener('notificationclick', (event) => {
-  // Evita que otro listener de Firebase procese el mismo clic.
-  if (typeof event.stopImmediatePropagation === 'function') {
-    event.stopImmediatePropagation();
-  }
-
-  event.notification.close();
-
-  const notificationData = event.notification?.data || {};
-  const fcmMessage = notificationData.FCM_MSG || {};
-  const messageData = fcmMessage.data || {};
-
-  const reservationId = String(
-    notificationData.reservationId ||
-    messageData.reservationId ||
-    ''
-  ).trim();
-
-  // SIEMPRE abre el mismo origen donde está instalada esta PWA.
-  // Así funciona aunque Vercel cambie el dominio/alias del deployment.
-  const targetUrl = reservationId
-    ? `${self.location.origin}/?reservationId=${encodeURIComponent(reservationId)}`
-    : `${self.location.origin}/`;
-
-  event.waitUntil((async () => {
-    const windows = await clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    });
-
-    for (const client of windows) {
-      try {
-        if (new URL(client.url).origin === self.location.origin) {
-          if ('navigate' in client) {
-            await client.navigate(targetUrl);
-          }
-          return await client.focus();
-        }
-      } catch (_) {}
-    }
-
-    return await clients.openWindow(targetUrl);
-  })());
-});
-
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0',
-  authDomain: 'diverty-eventos.firebaseapp.com',
-  projectId: 'diverty-eventos',
-  storageBucket: 'diverty-eventos.firebasestorage.app',
-  messagingSenderId: '491130670516',
-  appId: '1:491130670516:web:8c80abd09ccc92c194f6e1'
+  apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0",
+  authDomain: "diverty-eventos.firebaseapp.com",
+  projectId: "diverty-eventos",
+  storageBucket: "diverty-eventos.firebasestorage.app",
+  messagingSenderId: "491130670516",
+  appId: "1:491130670516:web:8c80abd09ccc92c194f6e1"
 });
 
-firebase.messaging();
+const messaging = firebase.messaging();
+const CRM_URL = 'https://diverty-app.vercel.app/';
+const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
+
+// IMPORTANTE:
+// El Worker de Cloudflare debe enviar un mensaje DATA-ONLY para que este Service Worker
+// sea quien construya la notificación y controle de forma fiable el clic en Android.
+messaging.onBackgroundMessage((payload) => {
+  const data = payload?.data || {};
+  const reservationId = String(data.reservationId || '').trim();
+  const title = data.title || '🎉 Nueva reserva Diverty';
+  const body = data.body || 'Tienes una nueva reserva.';
+  const targetUrl = data.url || (reservationId
+    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
+    : CRM_URL);
+
+  return self.registration.showNotification(title, {
+    body,
+    icon: ICON_URL,
+    badge: ICON_URL,
+    tag: reservationId ? `diverty-reserva-${reservationId}` : 'diverty-notificacion',
+    renotify: false,
+    data: {
+      url: targetUrl,
+      reservationId
+    }
+  });
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const data = event.notification?.data || {};
+  const reservationId = String(data.reservationId || '').trim();
+  const targetUrl = data.url || (reservationId
+    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
+    : CRM_URL);
+
+  event.waitUntil((async () => {
+    const absoluteTarget = new URL(targetUrl, CRM_URL).href;
+    const target = new URL(absoluteTarget);
+    const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+    for (const client of clientList) {
+      try {
+        const current = new URL(client.url);
+        if (current.origin === target.origin) {
+          if ('navigate' in client) {
+            await client.navigate(absoluteTarget);
+          }
+          await client.focus();
+          return;
+        }
+      } catch (_) {}
+    }
+
+    await clients.openWindow(absoluteTarget);
+  })());
+});
