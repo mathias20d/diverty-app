@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine } from 'lucide-react';
+import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine, Globe2 } from 'lucide-react';
+import WebAdmin from './modules/web/WebAdmin.jsx';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -13,7 +14,7 @@ if (isNewApp) { enableIndexedDbPersistence(db).catch(() => {}); }
 const auth = getAuth(app); const appId = "diverty-oficial"; const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; const META_MENSUAL = 1500;
 const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
 const ZONAS_TRANSPORTE = { "Ciudad de Panamá": 0, "Panamá Centro": 0, "San Miguelito": 0, "Punta Pacífica": 5, "Costa del Este": 5, "Albrook / Clayton": 5, "Panamá Norte (hasta Villa Grecia)": 15, "Panamá Este (después de Megamall hasta Pacora)": 15, "Arraiján / Panamá Pacífico": 15, "Costa Verde / hasta 3 km": 20, "La Chorrera (fuera de 3 km de Costa Verde)": 25 };
-const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'config', icon:Settings, text:'Ajustes'} ];
+const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'web', icon:Globe2, text:'Web'}, {id:'config', icon:Settings, text:'Ajustes'} ];
 const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', subcontratos: [], costosSeparados: true, total: '', abono: '', estado: 'Pendiente', colisionAprobada: false, vigenciaCotizacion: 7, fechaEmisionCotizacion: '' });
 const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id); const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id); const getProvRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'proveedores', id);
@@ -4474,6 +4475,7 @@ export default function App() {
             {activeTab === 'clientes' && renderClientes()}
             {activeTab === 'proveedores' && renderProveedores()}
             {activeTab === 'finanzas' && (financeLoading || isHistoryLoading ? <p className="p-6">Actualizando período…</p> : financeLoadError ? <p className="p-6 text-red-600">{financeLoadError}</p> : renderFinanzas())}
+            {activeTab === 'web' && <WebAdmin db={db} appId={appId} currentUser={firebaseUser} showAlert={showAlert} />}
             {activeTab === 'config' && renderConfig()}
           </main>
       </div>
@@ -4482,9 +4484,9 @@ export default function App() {
          {NAV_ITEMS.map(i => {
             const Ic = i.icon; const a = activeTab === i.id;
             return (
-              <button key={i.id} onClick={() => handleTabChange(i.id)} className={`relative flex flex-col items-center justify-center gap-1 w-16 h-[58px] rounded-[16px] transition-all duration-300 ${a ? 'text-[#FF3EA5] -translate-y-0.5 bg-gradient-to-b from-[#FF3EA5]/[0.055] to-[#7657FF]/[0.035]' : 'text-slate-400 hover:text-slate-700'}`}>
+              <button key={i.id} onClick={() => handleTabChange(i.id)} className={`relative flex flex-1 min-w-0 flex-col items-center justify-center gap-1 h-[58px] rounded-[14px] transition-all duration-300 ${a ? 'text-[#FF3EA5] -translate-y-0.5 bg-gradient-to-b from-[#FF3EA5]/[0.055] to-[#7657FF]/[0.035]' : 'text-slate-400 hover:text-slate-700'}`}>
                  {a && <span className="absolute top-0 w-7 h-[3px] rounded-full bg-gradient-to-r from-[#FF3EA5] to-[#7657FF] shadow-[0_3px_10px_rgba(255,62,165,.28)]"></span>}<Ic size={a?23:21} strokeWidth={a?2.6:2.1} className={a ? 'drop-shadow-sm' : ''}/>
-                 <span className={`text-[9px] uppercase tracking-[0.08em] ${a?'font-black':'font-bold'}`}>{i.text}</span>
+                 <span className={`max-w-full truncate text-[8px] sm:text-[9px] uppercase tracking-[0.04em] ${a?'font-black':'font-bold'}`}>{i.text}</span>
               </button>
             )
          })}
