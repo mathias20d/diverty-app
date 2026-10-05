@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Check, ChevronLeft, Copy,
   Edit3, ExternalLink, Eye, FolderOpen, Globe2, ImagePlus, Images, Loader2,
@@ -107,11 +107,123 @@ export default function WebAdmin({ db, appId, currentUser, showAlert }) {
   const [categoryForm, setCategoryForm] = useState(EMPTY_CATEGORY), [packageForm, setPackageForm] = useState(EMPTY_PACKAGE), [campaignForm, setCampaignForm] = useState(EMPTY_CAMPAIGN), [themeForm, setThemeForm] = useState(EMPTY_THEME), [couponForm, setCouponForm] = useState(EMPTY_COUPON);
   const [serviceDraft, setServiceDraft] = useState('');
 
+  // Navegación interna WebAdmin + botón Atrás de Android.
+  // La app principal ya emite `diverty:back-layer` antes de cambiar de pestaña.
+  // Aquí consumimos ese Atrás cuando hay un modal abierto o cuando estamos
+  // dentro de Catálogos/Paquetes/etc. y restauramos el scroll anterior.
+  const webStateRef = useRef({});
+  const webHistoryRef = useRef([{ view: 'home', scrollTop: 0 }]);
+
+  useEffect(() => {
+    webStateRef.current = {
+      view,
+      categoryModal,
+      packageModal,
+      campaignModal,
+      themeModal,
+      couponModal,
+    };
+  });
+
+  const getMainContent = useCallback(() => (
+    typeof document !== 'undefined' ? document.getElementById('main-content') : null
+  ), []);
+
+  const restoreMainScroll = useCallback((top = 0) => {
+    const restore = () => {
+      const main = getMainContent();
+      if (main) main.scrollTo({ top: Math.max(0, Number(top) || 0), left: 0, behavior: 'auto' });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+    setTimeout(restore, 80);
+  }, [getMainContent]);
+
+  const openWebView = useCallback((nextView) => {
+    if (!nextView || nextView === webStateRef.current.view) return;
+    const main = getMainContent();
+    const history = webHistoryRef.current;
+    const currentView = webStateRef.current.view || 'home';
+    const currentTop = main?.scrollTop || 0;
+
+    if (!history.length) history.push({ view: currentView, scrollTop: currentTop });
+    else if (history[history.length - 1]?.view === currentView) history[history.length - 1].scrollTop = currentTop;
+    else history.push({ view: currentView, scrollTop: currentTop });
+
+    history.push({ view: nextView, scrollTop: 0 });
+    setView(nextView);
+    restoreMainScroll(0);
+  }, [getMainContent, restoreMainScroll]);
+
+  const closeWebLayer = useCallback(() => {
+    const state = webStateRef.current || {};
+
+    // Primero cierra exactamente lo que está encima, igual que el resto del CRM.
+    if (state.couponModal) { setCouponModal(null); return true; }
+    if (state.themeModal) { setThemeModal(null); return true; }
+    if (state.campaignModal) { setCampaignModal(null); return true; }
+    if (state.packageModal) { setPackageModal(null); return true; }
+    if (state.categoryModal) { setCategoryModal(null); return true; }
+
+    // Luego retrocede una pantalla dentro de Web y restaura donde estaba el usuario.
+    if ((state.view || 'home') !== 'home') {
+      const main = getMainContent();
+      const history = webHistoryRef.current;
+      if (history.length) {
+        const current = history[history.length - 1];
+        if (current?.view === state.view) current.scrollTop = main?.scrollTop || 0;
+        if (history.length > 1) history.pop();
+      }
+      const previous = history[history.length - 1] || { view: 'home', scrollTop: 0 };
+      setView(previous.view || 'home');
+      restoreMainScroll(previous.scrollTop || 0);
+      return true;
+    }
+    return false;
+  }, [getMainContent, restoreMainScroll]);
+
+  useEffect(() => {
+    const handleAndroidBackLayer = (event) => {
+      if (!closeWebLayer()) return;
+      if (event?.detail && typeof event.detail === 'object') event.detail.handled = true;
+    };
+    window.addEventListener('diverty:back-layer', handleAndroidBackLayer);
+    return () => window.removeEventListener('diverty:back-layer', handleAndroidBackLayer);
+  }, [closeWebLayer]);
+
   const packageServices = useMemo(() => String(packageForm.serviciosLista || '').split('\n').map(v=>v.trim()).filter(Boolean), [packageForm.serviciosLista]);
 
   const colRef = useCallback(name => collection(db, 'artifacts', appId, 'public', 'data', name), [db, appId]);
   const itemRef = useCallback((name, id) => doc(db, 'artifacts', appId, 'public', 'data', name, id), [db, appId]);
   const notify = useCallback((message, success = true) => { if (showAlert) showAlert(message, success); }, [showAlert]);
+
+  // Enlaces directos compatibles con el administrador web original.
+  // ?plan=<id> abre directamente un paquete/servicio y ?categoria=<id> abre un catálogo.
+  const copyDirectLink = useCallback(async (kind, id, label = '') => {
+    try {
+      const url = new URL(PUBLIC_SITE_URL);
+      if (kind === 'plan') url.searchParams.set('plan', id);
+      else if (kind === 'categoria') url.searchParams.set('categoria', id);
+      else return;
+      const link = url.toString();
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      notify(`Enlace de ${label || (kind === 'plan' ? 'paquete' : 'catálogo')} copiado.`);
+    } catch (error) {
+      console.error('Direct link copy error', error);
+      notify('No se pudo copiar el enlace.', false);
+    }
+  }, [notify]);
 
   const refresh = useCallback(async () => {
     if (!db || !currentUser) return;
@@ -220,16 +332,16 @@ export default function WebAdmin({ db, appId, currentUser, showAlert }) {
       <div className="grid grid-cols-4 gap-2 mt-6"><div className="rounded-2xl bg-white/10 p-3"><p className="text-[8px] uppercase font-black text-white/45">Catálogos</p><p className="text-xl font-black mt-1">{categories.length}</p><p className="text-[8px] font-bold text-emerald-300">{activeCategories} activos</p></div><div className="rounded-2xl bg-white/10 p-3"><p className="text-[8px] uppercase font-black text-white/45">Paquetes</p><p className="text-xl font-black mt-1">{packages.length}</p><p className="text-[8px] font-bold text-amber-300">{featuredCount} inicio</p></div><div className="rounded-2xl bg-white/10 p-3"><p className="text-[8px] uppercase font-black text-white/45">Campañas</p><p className="text-xl font-black mt-1">{campaigns.length}</p><p className="text-[8px] font-bold text-rose-200">{activeCampaigns} activas</p></div><div className="rounded-2xl bg-white/10 p-3"><p className="text-[8px] uppercase font-black text-white/45">Cupones</p><p className="text-xl font-black mt-1">{coupons.length}</p><p className="text-[8px] font-bold text-emerald-300">{activeCoupons} activos</p></div></div>
       <button type="button" onClick={()=>window.open(PUBLIC_SITE_URL,'_blank','noopener,noreferrer')} className="mt-4 min-h-[46px] px-4 rounded-2xl bg-white text-[#5E43D2] font-black text-[10px] uppercase tracking-[.14em] flex items-center justify-center gap-2 active:scale-[.98]"><Eye size={17}/> Ver página pública <ExternalLink size={14}/></button>
     </section>
-    <div className="grid sm:grid-cols-2 gap-3">{cards.map(({id,title,desc,count,Icon,tone})=><button key={id} type="button" onClick={()=>setView(id)} className="text-left bg-white border border-slate-200/80 rounded-[24px] p-4 shadow-sm active:scale-[.99]"><div className={`w-11 h-11 rounded-2xl ${toneClasses[tone]} flex items-center justify-center mb-3`}><Icon size={22}/></div><div className="flex items-center justify-between gap-3"><div><h3 className="font-black text-lg text-slate-950">{title}</h3><p className="text-[11px] font-semibold text-slate-400 mt-1">{desc}</p></div><span className="text-xl font-black text-slate-700">{count}</span></div></button>)}</div>
-    <div className="rounded-[24px] bg-emerald-50 border border-emerald-100 p-4 flex gap-3"><Check size={20} className="text-emerald-500 shrink-0 mt-0.5"/><div><p className="font-black text-sm text-emerald-900">Fase 2 integrada</p><p className="text-xs font-semibold text-emerald-800/70 mt-1">Catálogos, paquetes, campañas, temas, galería, cupones y banner ya se administran desde la app. El administrador web anterior sigue disponible como respaldo durante las pruebas.</p></div></div>
+    <div className="grid sm:grid-cols-2 gap-3">{cards.map(({id,title,desc,count,Icon,tone})=><button key={id} type="button" onClick={()=>openWebView(id)} className="text-left bg-white border border-slate-200/80 rounded-[24px] p-4 shadow-sm active:scale-[.99]"><div className={`w-11 h-11 rounded-2xl ${toneClasses[tone]} flex items-center justify-center mb-3`}><Icon size={22}/></div><div className="flex items-center justify-between gap-3"><div><h3 className="font-black text-lg text-slate-950">{title}</h3><p className="text-[11px] font-semibold text-slate-400 mt-1">{desc}</p></div><span className="text-xl font-black text-slate-700">{count}</span></div></button>)}</div>
+    <div className="rounded-[24px] bg-emerald-50 border border-emerald-100 p-4 flex gap-3"><Check size={20} className="text-emerald-500 shrink-0 mt-0.5"/><div><p className="font-black text-sm text-emerald-900">Administrador integrado</p><p className="text-xs font-semibold text-emerald-800/70 mt-1">Catálogos, paquetes, campañas, temas, galería, cupones y banner ya se administran desde la app. El botón Atrás de Android ahora cierra primero la edición, vuelve a la sección anterior y conserva tu posición.</p></div></div>
   </div>;
 
   return <div className="pb-6 animate-fadeIn">
-    <div className="flex items-center justify-between gap-3 mb-5"><button type="button" onClick={()=>setView('home')} className="w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-600 shadow-sm flex items-center justify-center active:scale-95"><ChevronLeft size={21}/></button><div className="flex-1 min-w-0"><p className="text-[9px] font-black uppercase tracking-[.17em] text-[#7657FF]">Página Web</p><h2 className="text-2xl sm:text-3xl font-black tracking-[-.035em] text-slate-950">{titles[view]}</h2></div><button type="button" onClick={refresh} className="w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center"><RefreshCw size={18} className={loading?'animate-spin':''}/></button></div>
+    <div className="flex items-center justify-between gap-3 mb-5"><button type="button" onClick={closeWebLayer} className="w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-600 shadow-sm flex items-center justify-center active:scale-95"><ChevronLeft size={21}/></button><div className="flex-1 min-w-0"><p className="text-[9px] font-black uppercase tracking-[.17em] text-[#7657FF]">Página Web</p><h2 className="text-2xl sm:text-3xl font-black tracking-[-.035em] text-slate-950">{titles[view]}</h2></div><button type="button" onClick={refresh} className="w-11 h-11 rounded-2xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center"><RefreshCw size={18} className={loading?'animate-spin':''}/></button></div>
 
-    {view==='categories' && <><button onClick={()=>openCategory(null)} className="w-full min-h-[58px] rounded-[20px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] text-white font-black flex items-center justify-center gap-2 mb-5"><Plus size={20}/> Nuevo Catálogo</button><div className="space-y-3">{categories.map((item,index)=>{const hidden=item.activo===false||item.visible===false||item.visibilidad==='oculto';return <div key={item.id} className="bg-white rounded-[22px] border border-slate-200 p-3.5 flex items-center gap-3"><div className="w-14 h-14 rounded-[16px] bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center text-violet-600">{item.imagen?<img src={item.imagen} alt="" className="w-full h-full object-cover"/>:<FolderOpen size={23}/>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="font-black text-sm truncate">{item.nombre}</h3><span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase ${hidden?'bg-rose-50 text-rose-500':item.visibilidad==='temporada'?'bg-amber-50 text-amber-600':'bg-emerald-50 text-emerald-600'}`}>{hidden?'Oculto':item.visibilidad==='temporada'?'Temporada':'Activo'}</span></div><p className="text-[10px] font-semibold text-slate-400 mt-1">Orden #{index+1}</p></div><div className="flex gap-1"><div className="flex flex-col gap-1"><button disabled={index===0} onClick={()=>moveCategory(index,-1)} className="w-8 h-7 rounded-lg bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowUp size={13}/></button><button disabled={index===categories.length-1} onClick={()=>moveCategory(index,1)} className="w-8 h-7 rounded-lg bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowDown size={13}/></button></div><button onClick={()=>openCategory(item)} className="w-10 h-14 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><Edit3 size={17}/></button><button onClick={()=>deleteCategory(item)} className="w-10 h-14 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center"><Trash2 size={17}/></button></div></div>})}{!loading&&!categories.length&&<EmptyState icon={FolderOpen} text="No hay catálogos todavía."/>}</div></>}
+    {view==='categories' && <><button onClick={()=>openCategory(null)} className="w-full min-h-[58px] rounded-[20px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] text-white font-black flex items-center justify-center gap-2 mb-5"><Plus size={20}/> Nuevo Catálogo</button><div className="space-y-3">{categories.map((item,index)=>{const hidden=item.activo===false||item.visible===false||item.visibilidad==='oculto';return <div key={item.id} className="bg-white rounded-[22px] border border-slate-200 p-3.5 flex items-center gap-3"><div className="w-14 h-14 rounded-[16px] bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center text-violet-600">{item.imagen?<img src={item.imagen} alt="" className="w-full h-full object-cover"/>:<FolderOpen size={23}/>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="font-black text-sm truncate">{item.nombre}</h3><span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase ${hidden?'bg-rose-50 text-rose-500':item.visibilidad==='temporada'?'bg-amber-50 text-amber-600':'bg-emerald-50 text-emerald-600'}`}>{hidden?'Oculto':item.visibilidad==='temporada'?'Temporada':'Activo'}</span></div><p className="text-[10px] font-semibold text-slate-400 mt-1">Orden #{index+1}</p></div><div className="flex gap-1"><div className="flex flex-col gap-1"><button disabled={index===0} onClick={()=>moveCategory(index,-1)} className="w-8 h-7 rounded-lg bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowUp size={13}/></button><button disabled={index===categories.length-1} onClick={()=>moveCategory(index,1)} className="w-8 h-7 rounded-lg bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowDown size={13}/></button></div><button onClick={()=>copyDirectLink('categoria',item.id,'catálogo')} title="Copiar enlace directo" className="w-10 h-14 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center"><Copy size={17}/></button><button onClick={()=>openCategory(item)} className="w-10 h-14 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><Edit3 size={17}/></button><button onClick={()=>deleteCategory(item)} className="w-10 h-14 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center"><Trash2 size={17}/></button></div></div>})}{!loading&&!categories.length&&<EmptyState icon={FolderOpen} text="No hay catálogos todavía."/>}</div></>}
 
-    {view==='packages' && <><button onClick={()=>openPackage(null)} disabled={!categories.length} className="w-full min-h-[58px] rounded-[20px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] disabled:from-slate-300 disabled:to-slate-300 text-white font-black flex items-center justify-center gap-2 mb-4"><Plus size={20}/> Nuevo Paquete</button><div className="relative mb-3"><Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/><input value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Buscar paquete…" className={`${inputClass('pl-11')} shadow-sm`}/></div><div className="flex gap-2 overflow-x-auto pb-3">{[{id:'all',nombre:'Todos'},{id:'destacados',nombre:'Destacados'},{id:'ofertas',nombre:'Ofertas'},...categories].map(c=><button key={c.id} onClick={()=>setCategoryFilter(c.id)} className={`shrink-0 px-4 py-2 rounded-full text-[10px] font-black uppercase ${categoryFilter===c.id?'bg-violet-600 text-white':'bg-white border border-slate-200 text-slate-500'}`}>{c.nombre}</button>)}</div><div className="grid sm:grid-cols-2 gap-3">{filteredPackages.map(item=>{const cat=categories.find(c=>c.id===item.categoria),inCat=!['all','destacados','ofertas'].includes(categoryFilter);return <div key={item.id} className="bg-white rounded-[24px] border border-slate-200 overflow-hidden"><div className="flex gap-3 p-3.5"><div className="w-20 h-20 rounded-[18px] overflow-hidden bg-slate-100 shrink-0">{(item.imagenTarjeta||item.imagen)?<img src={item.imagenTarjeta||item.imagen} alt="" className="w-full h-full object-cover"/>:<Package className="m-auto mt-7 text-slate-300"/>}</div><div className="min-w-0 flex-1"><div className="flex gap-1">{item.oferta&&<span className="text-[8px] font-black bg-pink-50 text-pink-500 px-2 py-0.5 rounded-full">OFERTA</span>}{item.destacado&&<span className="text-[8px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full">★ INICIO</span>}</div><h3 className="font-black text-sm truncate mt-1">{item.nombre}</h3><div className="flex items-baseline gap-2 mt-1">{item.oferta&&item.precioOriginal&&<span className="text-[10px] line-through text-slate-400">${money(item.precioOriginal)}</span>}<span className="text-lg font-black text-emerald-500">${money(item.precio)}</span></div><p className="text-[9px] font-bold uppercase text-slate-400 truncate">{cat?.nombre||item.categoria||'Sin categoría'} · {item.tipoCobro||'paquete'}</p></div></div><div className="border-t border-slate-100 p-2.5 flex gap-2">{inCat&&<><button onClick={()=>movePackage(item,-1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><ArrowUp size={14}/></button><button onClick={()=>movePackage(item,1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><ArrowDown size={14}/></button></>}<button onClick={()=>openPackage(item)} className="flex-1 h-9 rounded-xl bg-violet-50 text-violet-600 text-[10px] font-black flex items-center justify-center gap-1"><Edit3 size={14}/> Editar</button><button onClick={()=>deletePackage(item)} className="w-10 h-9 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center"><Trash2 size={14}/></button></div></div>})}</div>{!loading&&!filteredPackages.length&&<EmptyState icon={Package} text="No hay paquetes para este filtro."/>}</>}
+    {view==='packages' && <><button onClick={()=>openPackage(null)} disabled={!categories.length} className="w-full min-h-[58px] rounded-[20px] bg-gradient-to-r from-[#FF2A9D] to-[#7657FF] disabled:from-slate-300 disabled:to-slate-300 text-white font-black flex items-center justify-center gap-2 mb-4"><Plus size={20}/> Nuevo Paquete</button><div className="relative mb-3"><Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/><input value={queryText} onChange={e=>setQueryText(e.target.value)} placeholder="Buscar paquete…" className={`${inputClass('pl-11')} shadow-sm`}/></div><div className="flex gap-2 overflow-x-auto pb-3">{[{id:'all',nombre:'Todos'},{id:'destacados',nombre:'Destacados'},{id:'ofertas',nombre:'Ofertas'},...categories].map(c=><button key={c.id} onClick={()=>setCategoryFilter(c.id)} className={`shrink-0 px-4 py-2 rounded-full text-[10px] font-black uppercase ${categoryFilter===c.id?'bg-violet-600 text-white':'bg-white border border-slate-200 text-slate-500'}`}>{c.nombre}</button>)}</div><div className="grid sm:grid-cols-2 gap-3">{filteredPackages.map(item=>{const cat=categories.find(c=>c.id===item.categoria),inCat=!['all','destacados','ofertas'].includes(categoryFilter);return <div key={item.id} className="bg-white rounded-[24px] border border-slate-200 overflow-hidden"><div className="flex gap-3 p-3.5"><div className="w-20 h-20 rounded-[18px] overflow-hidden bg-slate-100 shrink-0">{(item.imagenTarjeta||item.imagen)?<img src={item.imagenTarjeta||item.imagen} alt="" className="w-full h-full object-cover"/>:<Package className="m-auto mt-7 text-slate-300"/>}</div><div className="min-w-0 flex-1"><div className="flex gap-1">{item.oferta&&<span className="text-[8px] font-black bg-pink-50 text-pink-500 px-2 py-0.5 rounded-full">OFERTA</span>}{item.destacado&&<span className="text-[8px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full">★ INICIO</span>}</div><h3 className="font-black text-sm truncate mt-1">{item.nombre}</h3><div className="flex items-baseline gap-2 mt-1">{item.oferta&&item.precioOriginal&&<span className="text-[10px] line-through text-slate-400">${money(item.precioOriginal)}</span>}<span className="text-lg font-black text-emerald-500">${money(item.precio)}</span></div><p className="text-[9px] font-bold uppercase text-slate-400 truncate">{cat?.nombre||item.categoria||'Sin categoría'} · {item.tipoCobro||'paquete'}</p></div></div><div className="border-t border-slate-100 p-2.5"><button onClick={()=>copyDirectLink('plan',item.id,'paquete')} className="w-full h-9 mb-2 rounded-xl bg-cyan-50 text-cyan-700 text-[10px] font-black flex items-center justify-center gap-1.5 border border-cyan-100"><Copy size={14}/> Copiar enlace directo</button><div className="flex gap-2">{inCat&&<><button onClick={()=>movePackage(item,-1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><ArrowUp size={14}/></button><button onClick={()=>movePackage(item,1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center"><ArrowDown size={14}/></button></>}<button onClick={()=>openPackage(item)} className="flex-1 h-9 rounded-xl bg-violet-50 text-violet-600 text-[10px] font-black flex items-center justify-center gap-1"><Edit3 size={14}/> Editar</button><button onClick={()=>deletePackage(item)} className="w-10 h-9 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center"><Trash2 size={14}/></button></div></div></div>})}</div>{!loading&&!filteredPackages.length&&<EmptyState icon={Package} text="No hay paquetes para este filtro."/>}</>}
 
     {view==='campaigns' && <><button onClick={()=>openCampaign(null)} className="w-full min-h-[58px] rounded-[20px] bg-gradient-to-r from-rose-500 to-pink-600 text-white font-black flex items-center justify-center gap-2 mb-5"><Plus size={20}/> Nueva Campaña</button><div className="space-y-3">{campaigns.map((item,index)=><div key={item.id} className="bg-white rounded-[24px] border border-slate-200 p-3.5"><div className="flex gap-3"><div className="w-20 h-20 rounded-[18px] overflow-hidden bg-slate-100 shrink-0">{item.imagen?<img src={item.imagen} alt="" className="w-full h-full object-cover"/>:<Megaphone className="m-auto mt-7 text-slate-300"/>}</div><div className="flex-1 min-w-0"><div className="flex flex-wrap gap-1">{item.destacada&&<span className="text-[8px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full">⭐ DESTACADA</span>}<span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${item.activo!==false?'bg-emerald-50 text-emerald-600':'bg-slate-100 text-slate-500'}`}>{item.activo!==false?'ACTIVA':'INACTIVA'}</span></div><h3 className="font-black text-sm truncate mt-1">{item.titulo}</h3><div className="mt-1">{item.precioOriginal&&Number(item.precioOriginal)>Number(item.precio||0)&&<span className="text-[10px] line-through text-slate-400 mr-2">${money(item.precioOriginal)}</span>}{item.precio!==null&&item.precio!==undefined?<span className="text-lg font-black text-emerald-500">${money(item.precio)}</span>:<span className="text-xs text-slate-400">Sin precio</span>}</div><p className="text-[9px] font-bold text-slate-400 mt-1">{item.fechaInicio||'—'} → {item.fechaFin||'—'} · Orden {index+1}</p></div></div><div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2 mt-3 pt-3 border-t border-slate-100"><button disabled={index===0} onClick={()=>moveCampaign(index,-1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowUp size={14}/></button><button disabled={index===campaigns.length-1} onClick={()=>moveCampaign(index,1)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 disabled:opacity-25 flex items-center justify-center"><ArrowDown size={14}/></button><button onClick={()=>toggleCampaign(item)} className={`h-9 rounded-xl text-[10px] font-black ${item.activo!==false?'bg-slate-100 text-slate-600':'bg-emerald-50 text-emerald-600'}`}>{item.activo!==false?'Desactivar':'Activar'}</button><button onClick={()=>duplicateCampaign(item)} className="w-9 h-9 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center"><Copy size={14}/></button><button onClick={()=>openCampaign(item)} className="w-9 h-9 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center"><Edit3 size={14}/></button></div><button onClick={()=>deleteCampaign(item)} className="w-full mt-2 h-9 rounded-xl bg-rose-50 text-rose-500 text-[10px] font-black flex items-center justify-center gap-1"><Trash2 size={14}/> Eliminar</button></div>)}{!loading&&!campaigns.length&&<EmptyState icon={Megaphone} text="No hay campañas creadas."/>}</div></>}
 
