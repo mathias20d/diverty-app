@@ -11,7 +11,7 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
-const CRM_URL = 'https://diverty-app.vercel.app/';
+const CRM_URL = `${self.location.origin}/`;
 const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
 
 // IMPORTANTE:
@@ -34,7 +34,8 @@ const buildTargetUrl = (payload = {}) => {
   const body = String(data.body || notification.body || '').trim();
   const suppliedUrl = data.url || data.link || data.click_action || notification.click_action || '';
   try {
-    const url = new URL(suppliedUrl || CRM_URL, CRM_URL);
+    const requested = new URL(suppliedUrl || CRM_URL, CRM_URL);
+    const url = new URL(`${requested.pathname}${requested.search}${requested.hash}`, CRM_URL);
     if (reservationId) url.searchParams.set('reservationId', reservationId);
     url.searchParams.set('fromNotification', '1');
     if (title) url.searchParams.set('notificationTitle', title);
@@ -89,20 +90,46 @@ self.addEventListener('notificationclick', (event) => {
     const absoluteTarget = new URL(targetUrl, CRM_URL).href;
     const target = new URL(absoluteTarget);
     const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const sameOriginClients = clientList.filter(client => {
+      try { return new URL(client.url).origin === target.origin; } catch (_) { return false; }
+    });
 
-    for (const client of clientList) {
+    const isStandaloneClient = (client) => new Promise((resolve) => {
       try {
-        const current = new URL(client.url);
-        if (current.origin === target.origin) {
-          if ('navigate' in client) {
-            await client.navigate(absoluteTarget);
-          }
-          await client.focus();
-          return;
-        }
-      } catch (_) {}
+        const channel = new MessageChannel();
+        const timer = setTimeout(() => resolve(false), 220);
+        channel.port1.onmessage = (messageEvent) => {
+          clearTimeout(timer);
+          resolve(messageEvent?.data?.standalone === true);
+        };
+        client.postMessage({ type: 'DIVERTY_QUERY_DISPLAY_MODE' }, [channel.port2]);
+      } catch (_) { resolve(false); }
+    });
+
+    // Si la PWA instalada ya está abierta o en segundo plano, priorizarla y no el navegador.
+    for (const client of sameOriginClients) {
+      if (await isStandaloneClient(client)) {
+        try { if ('navigate' in client) await client.navigate(absoluteTarget); } catch (_) {}
+        try { await client.focus(); } catch (_) {}
+        return;
+      }
     }
 
-    await clients.openWindow(absoluteTarget);
+    // No enfocamos una pestaña normal del navegador primero. En Chrome Android,
+    // openWindow() puede entregar el enlace al PWA instalado dentro de su scope.
+    try {
+      const opened = await clients.openWindow(absoluteTarget);
+      if (opened) {
+        try { await opened.focus(); } catch (_) {}
+        return;
+      }
+    } catch (_) {}
+
+    // Último recurso: reutilizar una pestaña web existente si el sistema no abrió la PWA.
+    const fallback = sameOriginClients[0];
+    if (fallback) {
+      try { if ('navigate' in fallback) await fallback.navigate(absoluteTarget); } catch (_) {}
+      try { await fallback.focus(); } catch (_) {}
+    }
   })());
 });
