@@ -17,14 +17,45 @@ const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
 // IMPORTANTE:
 // El Worker de Cloudflare debe enviar un mensaje DATA-ONLY para que este Service Worker
 // sea quien construya la notificación y controle de forma fiable el clic en Android.
+const getReservationId = (payload = {}) => {
+  const data = payload?.data || {};
+  const notification = payload?.notification || {};
+  return String(
+    data.reservationId || data.reservaId || data.eventoId || data.eventId ||
+    data.requestId || data.id || notification.reservationId || ''
+  ).trim();
+};
+
+const buildTargetUrl = (payload = {}) => {
+  const data = payload?.data || {};
+  const notification = payload?.notification || {};
+  const reservationId = getReservationId(payload);
+  const title = String(data.title || notification.title || '').trim();
+  const body = String(data.body || notification.body || '').trim();
+  const suppliedUrl = data.url || data.link || data.click_action || notification.click_action || '';
+  try {
+    const url = new URL(suppliedUrl || CRM_URL, CRM_URL);
+    if (reservationId) url.searchParams.set('reservationId', reservationId);
+    url.searchParams.set('fromNotification', '1');
+    if (title) url.searchParams.set('notificationTitle', title);
+    if (body) url.searchParams.set('notificationBody', body);
+    return url.href;
+  } catch (_) {
+    const params = new URLSearchParams({ fromNotification: '1' });
+    if (reservationId) params.set('reservationId', reservationId);
+    if (title) params.set('notificationTitle', title);
+    if (body) params.set('notificationBody', body);
+    return `${CRM_URL}?${params.toString()}`;
+  }
+};
+
 messaging.onBackgroundMessage((payload) => {
   const data = payload?.data || {};
-  const reservationId = String(data.reservationId || '').trim();
-  const title = data.title || '🎉 Nueva reserva Diverty';
-  const body = data.body || 'Tienes una nueva reserva.';
-  const targetUrl = data.url || (reservationId
-    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
-    : CRM_URL);
+  const notification = payload?.notification || {};
+  const reservationId = getReservationId(payload);
+  const title = data.title || notification.title || '🎉 Nueva reserva Diverty';
+  const body = data.body || notification.body || 'Tienes una nueva reserva.';
+  const targetUrl = buildTargetUrl(payload);
 
   return self.registration.showNotification(title, {
     body,
@@ -43,10 +74,16 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification?.data || {};
-  const reservationId = String(data.reservationId || '').trim();
-  const targetUrl = data.url || (reservationId
-    ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}`
-    : CRM_URL);
+  const reservationId = String(data.reservationId || data.reservaId || data.eventoId || data.eventId || data.requestId || data.id || '').trim();
+  let targetUrl = data.url || CRM_URL;
+  try {
+    const url = new URL(targetUrl, CRM_URL);
+    if (reservationId) url.searchParams.set('reservationId', reservationId);
+    url.searchParams.set('fromNotification', '1');
+    targetUrl = url.href;
+  } catch (_) {
+    targetUrl = reservationId ? `${CRM_URL}?reservationId=${encodeURIComponent(reservationId)}&fromNotification=1` : `${CRM_URL}?fromNotification=1`;
+  }
 
   event.waitUntil((async () => {
     const absoluteTarget = new URL(targetUrl, CRM_URL).href;
