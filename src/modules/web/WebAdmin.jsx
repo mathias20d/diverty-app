@@ -204,6 +204,12 @@ export default function WebAdmin({ db, appId, currentUser, showAlert }) {
       if (kind === 'plan') url.searchParams.set('plan', id);
       else if (kind === 'categoria') url.searchParams.set('categoria', id);
       else return;
+
+      // WhatsApp/Facebook guardan en caché la vista previa de una URL.
+      // Este valor no cambia la navegación del cliente; solo obliga al crawler
+      // social a pedir nuevamente foto, nombre y precio actualizados.
+      url.searchParams.set('pv', Date.now().toString(36));
+
       const link = url.toString();
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(link);
