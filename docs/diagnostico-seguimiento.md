@@ -2,6 +2,8 @@
 
 Fecha: 6 de octubre de 2026 (UTC). Repositorios: `diverty-app` y `Diverty-`.
 
+Actualización posterior: se recibieron las reglas y se completó su auditoría en el emulador. Consultar [diagnostico-firebase-reglas.md](diagnostico-firebase-reglas.md) para los hallazgos y las reglas propuestas.
+
 Se conservaron el formulario, las pantallas y las funciones existentes. Las reservas utilizadas en las pruebas son ficticias y se guardaron exclusivamente en memoria. Las consultas a Firebase real fueron de lectura y sin sesión.
 
 ## 1. Conexión de la web con la app
