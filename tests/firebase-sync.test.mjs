@@ -1,0 +1,100 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
+
+const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+const production = extract('const publicSlot = value => {', 'const isPendingWebRequest') +
+  extract('const clientStatusRef = id =>', 'let preparationPromise = null;') +
+  extract('  const transitionEventStatus = useCallback', '  const handleUpdateEstado');
+const base = 'artifacts/diverty-oficial/public/data/';
+
+function fixture() {
+  const rows = new Map();
+  const ref = (collection, id) => ({ id, path: base + collection + '/' + id });
+  const rawRunTransaction = async (_db, callback) => {
+    const writes = [];
+    const tx = {
+      get: async r => {
+        assert.equal(writes.length, 0, 'Firestore reads must precede writes');
+        return { exists: () => rows.has(r.path), data: () => rows.get(r.path) };
+      },
+      set: (r, data, options) => writes.push(() => rows.set(r.path,
+        options?.merge ? { ...rows.get(r.path), ...data } : structuredClone(data))),
+      delete: r => writes.push(() => rows.delete(r.path))
+    };
+    await callback(tx);
+    writes.forEach(write => write());
+  };
+  const ctx = {
+    db: {}, appId: 'diverty-oficial',
+    doc: (_db, ...parts) => ({ id: parts.at(-1), path: parts.join('/') }),
+    isEventRef: r => r.path.startsWith(base + 'eventos/'),
+    availabilityRef: id => ref('disponibilidad_web', id), getDocRef: id => ref('eventos', id),
+    rawRunTransaction, rawSetDoc: async () => {}, rawDeleteDoc: async () => {},
+    writeBatch: () => { throw new Error('not used in this test'); },
+    useCallback: fn => fn, publishSync: async () => {}, setEventos() {},
+    utils: { normalizeText: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(production + '\nthis.api = { setDoc, runTransaction, transitionEventStatus };', ctx);
+  return { rows, ref, api: ctx.api };
+}
+
+const event = {
+  id: 'web-1', ownerUid: 'customer', origen: 'Web Directa', estado: 'Pendiente',
+  cliente: 'Cliente ficticio', telefono: '60000000', fecha: '2026-11-10', hora: '10:00',
+  servicio: 'Animación', total: '100', abono: '0', _rev: 1,
+  resourceRequirements: { animadores: 1, payasos: 0, durationMinutes: 120 }
+};
+
+test('confirmation updates the event, customer status and public operational projection atomically', async () => {
+  const f = fixture();
+  f.rows.set(f.ref('eventos', event.id).path, event);
+  await f.api.transitionEventStatus(event.id, 'Confirmado', { requirePendingWeb: true });
+  assert.equal(f.rows.get(f.ref('eventos', event.id).path).estado, 'Confirmado');
+  const customer = f.rows.get(f.ref('reservas_cliente', event.id).path);
+  assert.equal(customer.estado, 'Confirmado');
+  assert.equal(customer.ownerUid, event.ownerUid);
+  const publicData = f.rows.get(f.ref('disponibilidad_web', event.id).path);
+  assert.equal(publicData.resourceRequirements.animadores, 1);
+  for (const field of ['cliente', 'telefono', 'ownerUid', 'total', 'abono']) assert.equal(field in publicData, false);
+  await assert.rejects(f.api.transitionEventStatus(event.id, 'Confirmado', { requirePendingWeb: true }), /ALREADY_PROCESSED/);
+});
+
+test('changing date and time republishes availability and customer tracking together', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  await f.api.setDoc(f.ref('eventos', event.id), { fecha: '2026-11-12', hora: '15:00' }, { merge: true });
+  for (const collection of ['eventos', 'disponibilidad_web', 'reservas_cliente']) {
+    const row = f.rows.get(f.ref(collection, event.id).path);
+    assert.equal(row.fecha, '2026-11-12');
+    assert.equal(row.hora, '15:00');
+  }
+  assert.equal(f.rows.get(f.ref('eventos', event.id).path).total, '100');
+});
+
+test('cancellation preserves the event and customer status while freeing its public slot and lock', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  const lock = f.ref('disponibilidad_web', 'slot_2026-11-10_10-00');
+  f.rows.set(lock.path, { reservationIds: [event.id], count: 1, capacity: 1 });
+  await f.api.transitionEventStatus(event.id, 'Cancelado');
+  assert.equal(f.rows.get(f.ref('eventos', event.id).path).estado, 'Cancelado');
+  assert.equal(f.rows.get(f.ref('reservas_cliente', event.id).path).estado, 'Cancelado');
+  assert.equal(f.rows.has(f.ref('disponibilidad_web', event.id).path), false);
+  assert.equal(f.rows.has(lock.path), false);
+});
+
+test('rejection frees only the rejected reservation, keeping other IDs in a shared slot', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  const lock = f.ref('disponibilidad_web', 'slot_2026-11-10_10-00');
+  f.rows.set(lock.path, { reservationIds: [event.id, 'other'], count: 2, capacity: 3 });
+  await f.api.transitionEventStatus(event.id, 'Rechazada', { requirePendingWeb: true });
+  assert.equal(f.rows.has(f.ref('disponibilidad_web', event.id).path), false);
+  const remaining = f.rows.get(lock.path);
+  assert.equal(remaining.count, 1);
+  assert.deepEqual(Array.from(remaining.reservationIds), ['other']);
+});
