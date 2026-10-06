@@ -7,7 +7,10 @@ import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
 
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
 import { loadPdfLibrary } from './lib/pdf.mjs';
+import { bookingControlDates } from './lib/booking-control.mjs';
+import { pendingRequests, requestReview, transportPending } from './lib/web-request-review.mjs';
 import { peakResourceUsage } from './lib/resource-usage.mjs';
+const confirmCentralRequest = async (...args) => args[0]?.centralBookingVersion === 1 ? (await import('./lib/central-booking.mjs')).confirmCentralRequest(...args) : null;
 const PdfTemplate = lazy(() => import('./modules/documents/PdfTemplate.jsx'));
 
 const WebAdmin = lazy(() => import('./modules/web/WebAdmin.jsx'));
@@ -315,6 +318,23 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
     lock.ref = availabilityRef(lock.id);
     if (!readValues.has(lock.ref.path)) await read(lock.ref);
   }
+  const controls = [];
+  if (events.size) {
+    const cfgRef = doc(database, 'artifacts', appId, 'public', 'data', 'config_web', 'global');
+    const cfgSnap = await read(cfgRef);
+    if (cfgSnap.data()?.centralBookingValidation === true) {
+      const dates = new Set();
+      for (const {ref, value} of events.values()) {
+        bookingControlDates(readValues.get(ref.path)).forEach(d=>dates.add(d));
+        bookingControlDates(value).forEach(d=>dates.add(d));
+      }
+      for (const date of dates) {
+        const controlRef = doc(database, 'artifacts', appId, 'public', 'data', 'booking_control', date);
+        const control = await read(controlRef);
+        controls.push({ref:controlRef,revision:Number(control.data()?.revision||0)+1});
+      }
+    }
+  }
   for (const write of writes) {
     if (write.deleted) tx.delete(write.ref);
     else if (write.options) tx.set(write.ref, write.value, write.options);
@@ -339,6 +359,7 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
     if (next.count > 0) tx.set(lock.ref, {...next, updatedAt:new Date().toISOString()});
     else if (old) tx.delete(lock.ref);
   }
+  controls.forEach(control=>tx.set(control.ref,{revision:control.revision,updatedAt:new Date().toISOString()}));
   return result;
 });
 const setDoc = async (ref, value, options) => {
@@ -866,6 +887,7 @@ const SkeletonCard = memo(function SkeletonCard() {
 });
 
 const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity, christmasSantaCapacity = 1, targetReservationId = '' }) {
+    const [requestFilter, setRequestFilter] = useState('all');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
     const [rejecting, setRejecting] = useState(false);
@@ -907,9 +929,9 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         if (christmas && !availableSantaNames.includes(santaAsignado)) setSantaAsignado(availableSantaNames[0] || 'Santa 1');
     }, [isOpen, selectedRequest, christmasSantaCapacity, santaAsignado]);
     if (!isOpen) return null;
-    const reqs = eventosActivos
-        .filter(isPendingWebRequest)
-        .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+    const allRequests = pendingRequests(eventosActivos);
+    const reqs = pendingRequests(eventosActivos, requestFilter);
+    const requestFilters = [['all','Todas'],['review','Por revisar'],['soon','Próximas'],['deposit','Falta abono']];
     const money = v => `$${utils.safeNum(v).toFixed(2)}`;
     const phone = selectedRequest ? String(selectedRequest.telefono || '').replace(/\D/g,'') : '';
     const isChristmasRequest = !!(selectedRequest && (selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))));
@@ -924,8 +946,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     } : null;
     const resourceStatus = resourcePreviewRequest ? getResourceAvailability(resourcePreviewRequest, eventosActivos, staffCapacity || {}) : null;
     const showResourcePanel = !!(selectedRequest && !isChristmasRequest && resourceStatus);
-    const inferredTransportReview = !!(selectedRequest && /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(selectedRequest.ubicacion || '')));
-    const needsTransportReview = !!((selectedRequest?.requiereRevisionUbicacion === true || inferredTransportReview) && selectedRequest?.transporteRevisadoEnApp !== true);
+    const needsTransportReview = transportPending(selectedRequest);
     const needsLocationReview=isChristmasRequest && !christmasEventGps(selectedRequest);
     const saveLocation=async()=>{
         if(!selectedRequest || savingLocation) return;
@@ -1004,6 +1025,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         <button key={e.id} type="button" onClick={()=>setSelectedRequest(e)} className="w-full text-left bg-white rounded-[24px] p-5 border border-slate-200/80 shadow-[0_10px_30px_rgba(15,23,42,.055)] active:scale-[0.985] transition-all group relative overflow-hidden">
             <span className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-400"/>
             <div className="flex justify-between items-center gap-3 mb-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.12em] text-amber-600"><Zap size={11}/> Nueva solicitud</span><span className="text-[10px] font-black text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full">{e.fecha?.split('-').reverse().join('/')}</span></div>
+            <div className="flex flex-wrap gap-1.5 mb-3">{requestReview(e).issues.map(issue=><span key={issue} className="rounded-lg bg-amber-50 text-amber-800 px-2 py-1 text-[10px] font-bold">Revisar {issue.toLowerCase()}</span>)}{requestReview(e).missingDeposit&&<span className="rounded-lg bg-slate-100 text-slate-600 px-2 py-1 text-[10px] font-bold">Falta abono</span>}</div>
             <div className="flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="font-black text-[19px] text-[#10182D] truncate">{e.cliente}</h4><p className="mt-2 text-xs font-bold text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1"><span className="inline-flex items-center gap-1.5"><Clock size={14} className="text-[#7657FF]"/>{utils.formatTime12h(e.hora)}</span><span className="inline-flex items-center gap-1.5"><MapPin size={14} className="text-[#FF3EA5]"/>{e.ubicacion || 'Sin ubicación'}</span></p>{e.servicio && <p className="mt-2 text-[11px] font-black uppercase tracking-wide text-slate-500 truncate">{e.servicio}</p>}</div><span className="shrink-0 w-11 h-11 rounded-full bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center group-active:translate-x-1 transition-transform"><ChevronRight size={21}/></span></div>
         </button>
     );
@@ -1017,7 +1039,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                 {(confirmedName || rejectedName) ? (
                     <div className="flex-1 p-5 flex items-center justify-center"><div className="w-full bg-white rounded-[30px] p-7 text-center shadow-[0_20px_55px_rgba(15,23,42,.12)] border border-white"><div className={`mx-auto w-24 h-24 rounded-[30px] flex items-center justify-center relative ${rejectedName ? 'bg-gradient-to-br from-rose-50 to-slate-100' : 'bg-gradient-to-br from-[#F3EEFF] to-[#E9E2FF]'}`}>{rejectedName ? <X size={46} className="text-rose-500"/> : <CalendarDays size={45} className="text-[#7657FF]"/>}<span className={`absolute -right-2 -bottom-2 w-10 h-10 rounded-full text-white flex items-center justify-center border-4 border-white ${rejectedName ? 'bg-rose-500' : 'bg-[#7657FF]'}`}>{rejectedName ? <X size={20}/> : <Check size={20}/>}</span></div><h4 className="font-black text-3xl text-[#10182D] mt-6">{rejectedName ? 'Reserva rechazada' : '¡Reserva confirmada!'}</h4><p className="text-slate-500 font-semibold mt-2">{rejectedName ? <>La solicitud de <b className="text-slate-700">{rejectedName}</b> se guardó en Canceladas / Rechazadas y el horario quedó liberado.</> : <>La reserva de <b className="text-slate-700">{confirmedName}</b> quedó confirmada correctamente y ya aparece en la agenda.</>}</p><button onClick={onClose} className={`mt-7 w-full py-4 rounded-[18px] text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.18)] ${rejectedName ? 'bg-gradient-to-r from-rose-500 to-rose-600' : 'bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF]'}`}>Cerrar</button></div></div>
                 ) : !selectedRequest ? (
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-5"><div className="bg-white/80 rounded-[24px] p-2 mb-4 border border-white shadow-sm"><div className="grid grid-cols-2 gap-2"><div className="rounded-[18px] bg-gradient-to-r from-[#7657FF] to-[#9A5CFF] text-white px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black opacity-75">Pendientes</p><p className="text-2xl font-black">{reqs.length}</p></div><div className="rounded-[18px] bg-slate-50 px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black text-slate-400">Canal</p><p className="text-sm font-black text-slate-700 mt-1">Página Web</p></div></div></div><div className="space-y-3">{reqs.length === 0 ? <div className="bg-white rounded-[28px] p-10 text-center border border-slate-200/70 shadow-sm mt-5"><div className="w-20 h-20 rounded-[26px] bg-emerald-50 mx-auto flex items-center justify-center"><CheckCircle2 size={38} className="text-emerald-500"/></div><p className="font-black text-[#10182D] text-xl mt-5">Todo al día</p><p className="font-semibold text-slate-400 text-sm mt-1">No hay nuevas solicitudes web.</p></div> : reqs.map(webCard)}</div></div>
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-5"><div className="bg-white/80 rounded-[24px] p-2 mb-4 border border-white shadow-sm"><div className="grid grid-cols-2 gap-2"><div className="rounded-[18px] bg-gradient-to-r from-[#7657FF] to-[#9A5CFF] text-white px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black opacity-75">Pendientes</p><p className="text-2xl font-black">{allRequests.length}</p></div><div className="rounded-[18px] bg-slate-50 px-4 py-3"><p className="text-[9px] uppercase tracking-[.15em] font-black text-slate-400">Canal</p><p className="text-sm font-black text-slate-700 mt-1">Página Web</p></div></div></div><div className="flex flex-wrap gap-2 mb-4" aria-label="Filtrar solicitudes">{requestFilters.map(([key,label])=><button key={key} type="button" aria-pressed={requestFilter===key} onClick={()=>setRequestFilter(key)} className={`rounded-full px-3 py-2 text-[11px] font-bold border ${requestFilter===key?'bg-[#7657FF] text-white border-[#7657FF]':'bg-white text-slate-600 border-slate-200'}`}>{label} ({pendingRequests(eventosActivos,key).length})</button>)}</div><div className="space-y-3">{reqs.length === 0 ? <div className="bg-white rounded-[28px] p-10 text-center border border-slate-200/70 shadow-sm mt-5"><div className="w-20 h-20 rounded-[26px] bg-emerald-50 mx-auto flex items-center justify-center"><CheckCircle2 size={38} className="text-emerald-500"/></div><p className="font-black text-[#10182D] text-xl mt-5">{allRequests.length?'Sin resultados en este filtro':'Todo al día'}</p><p className="font-semibold text-slate-400 text-sm mt-1">{allRequests.length?'Elige Todas para ver las demás solicitudes.':'No hay nuevas solicitudes web.'}</p></div> : reqs.map(webCard)}</div></div>
                 ) : (
                     <div className="flex-1 overflow-y-auto p-4 pb-8">
                         <div className="bg-white rounded-[28px] border border-white shadow-[0_16px_45px_rgba(15,23,42,.08)] overflow-hidden"><div className="p-5 bg-gradient-to-br from-[#F7F3FF] via-white to-[#FFF4FA] border-b border-slate-100"><div className="flex justify-between items-center gap-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.12em] text-amber-600"><Zap size={11}/> Nueva solicitud</span><span className="text-[10px] font-black text-slate-500 bg-white px-3 py-1.5 rounded-full shadow-sm">{selectedRequest.fecha?.split('-').reverse().join('/')}</span></div><div className="mt-4 flex justify-between gap-3"><div><h4 className="font-black text-[27px] text-[#10182D] leading-tight">{selectedRequest.cliente}</h4><p className="text-xs font-bold text-slate-500 mt-1">Solicitud recibida directamente desde la página web</p></div>{phone && <div className="flex gap-2"><button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${selectedRequest.cliente}, recibimos tu solicitud de reserva.`)} className="w-11 h-11 rounded-[15px] bg-emerald-50 text-emerald-500 flex items-center justify-center"><MessageCircle size={21}/></button><a href={`tel:${phone}`} className="w-11 h-11 rounded-[15px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center"><Smartphone size={21}/></a></div>}</div></div>
@@ -2782,22 +2804,22 @@ export default function App({ firebaseUser }) {
 
   const handleConfirmWebRequest = useCallback(async (event, santaAsignado = '') => {
       if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return false;
-      const needsTransportReview = event?.requiereRevisionUbicacion === true || /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(event?.ubicacion || ''));
+      const needsTransportReview = transportPending(event);
       if (needsTransportReview && event?.transporteRevisadoEnApp !== true) {
           showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
           return false;
       }
       try {
           utils.triggerHaptic('light');
-          let confirmedData = null;
-          await runTransaction(db, async tx => {
+          let confirmedData = await confirmCentralRequest(event, santaAsignado, db);
+          if (!confirmedData) await runTransaction(db, async tx => {
               const ref = getDocRef(event.id);
               const snap = await tx.get(ref);
               if (!snap.exists()) throw new Error('EVENT_NOT_FOUND');
               const remote = snap.data();
               if (utils.normalizeText(remote.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
               if (utils.normalizeText(remote.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
-              const remoteNeedsTransportReview = remote.requiereRevisionUbicacion === true || /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(remote.ubicacion || ''));
+              const remoteNeedsTransportReview = transportPending(remote);
               if (remoteNeedsTransportReview && remote.transporteRevisadoEnApp !== true) throw new Error('TRANSPORT_REVIEW_REQUIRED');
               const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
               if(esNavidad && !christmasEventGps(remote)) throw new Error('LOCATION_REVIEW_REQUIRED');
@@ -2822,6 +2844,7 @@ export default function App({ firebaseUser }) {
           if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
           else if (err?.message === 'LOCATION_REVIEW_REQUIRED') showAlert('Confirma el punto de entrega de Santa antes de aceptar la reserva.', false);
           else if (err?.message === 'TRANSPORT_REVIEW_REQUIRED') showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
+          else if(err?.details?.reason) showAlert(err.message || 'Revisa la disponibilidad y los datos de la solicitud.', false);
           else showAlert('No se pudo confirmar la reserva. Revisa la conexión e intenta nuevamente.', false);
           return false;
       }
@@ -4222,7 +4245,7 @@ export default function App({ firebaseUser }) {
       <div className="flex-1 flex flex-col min-w-0 relative z-10 h-[100dvh] overflow-hidden">
           <header style={{backgroundColor:'rgba(7,17,38,0.985)'}} className="backdrop-blur-2xl border-b border-white/10 px-4 sm:px-6 py-3 flex justify-between items-center z-40 sticky top-0 shadow-[0_10px_28px_rgba(2,6,23,0.22)]">
              <div className="flex items-center gap-3"><div className="bg-white/[0.08] p-1.5 rounded-[13px] border border-white/10 shadow-sm ring-1 ring-white/[0.03]"><img src={LOGO_URL} alt="Logo" className="h-7 w-7 object-contain" /></div><h1 className="text-[19px] sm:text-xl font-black text-white tracking-[-0.025em] flex items-center gap-2">Diverty CRM {!isOnline && <Cloud size={18} className="text-amber-500 animate-pulse"/>}</h1></div>
-             <button onClick={() => setIsNotifOpen(true)} className="relative p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-[14px] transition-all">
+             <button aria-label="Solicitudes web" onClick={() => setIsNotifOpen(true)} className="relative p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-[14px] transition-all">
                 <BellRing size={22} />
                 {eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa').length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-[#FF2F9A] text-white text-[9px] font-black rounded-full border-2 border-[#071126] flex items-center justify-center shadow-md">{Math.min(99,eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa').length)}</span>}
              </button>

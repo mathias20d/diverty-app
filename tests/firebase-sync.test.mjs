@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { transportPending } from '../src/lib/web-request-review.mjs';
+import { bookingControlDates } from '../src/lib/booking-control.mjs';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
@@ -30,7 +32,7 @@ function fixture() {
     writes.forEach(write => write());
   };
   const ctx = {
-    db: {}, appId: 'diverty-oficial',
+    db: {}, appId: 'diverty-oficial', transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
     doc: (_db, ...parts) => ({ id: parts.at(-1), path: parts.join('/') }),
     isEventRef: r => r.path.startsWith(base + 'eventos/'),
     availabilityRef: id => ref('disponibilidad_web', id), getDocRef: id => ref('eventos', id),
@@ -42,7 +44,7 @@ function fixture() {
   };
   vm.createContext(ctx);
   vm.runInContext(production + '\nthis.api = { setDoc, deleteDoc, runTransaction, transitionEventStatus, handleConfirmWebRequest };', ctx);
-  return { rows, ref, api: ctx.api };
+  return { rows, ref, api: ctx.api, ctx };
 }
 
 const event = {
@@ -189,4 +191,22 @@ test('a stale device cannot accept a manual Christmas request before its exact l
   assert.equal(await f.api.handleConfirmWebRequest({...pending,lat:9,lng:-79},'Santa 1'),true);
   assert.equal(f.rows.get(f.ref('eventos',event.id).path).estado,'Confirmado');
   assert.equal(f.rows.get(f.ref('disponibilidad_web',event.id).path).lat,9);
+});
+
+
+test('admin edits coordinate the original and new dates with central booking transactions',async()=>{
+  const f=fixture();
+  f.rows.set(f.ref('config_web','global').path,{centralBookingValidation:true});
+  f.rows.set(f.ref('eventos',event.id).path,event);
+  await f.api.setDoc(f.ref('eventos',event.id),{...event,fecha:'2026-11-11',hora:'23:30'});
+  for(const date of ['2026-11-09','2026-11-10','2026-11-11','2026-11-12'])assert.equal(f.rows.get(f.ref('booking_control',date).path).revision,1);
+  assert.equal(f.rows.get(f.ref('reservas_cliente',event.id).path).fecha,'2026-11-11');
+});
+test('central approval uses returned server event and errors cannot fall back to client confirmation',async()=>{
+  const f=fixture(),central={...event,centralBookingVersion:1};
+  f.ctx.rawRunTransaction=async()=>assert.fail('Central approval cannot use a direct client transaction');
+  f.ctx.confirmCentralRequest=async()=>({...central,estado:'Confirmado'});
+  assert.equal(await f.api.handleConfirmWebRequest(central),true);
+  f.ctx.confirmCentralRequest=async()=>{throw Object.assign(new Error('Horario ocupado'),{details:{reason:'SLOT_FULL'}});};
+  assert.equal(await f.api.handleConfirmWebRequest(central),false);
 });
