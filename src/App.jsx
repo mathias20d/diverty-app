@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo, useDeferredValue, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine, Globe2 } from 'lucide-react';
-import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
 
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
 import { loadPdfLibrary } from './lib/pdf.mjs';
+import { peakResourceUsage } from './lib/resource-usage.mjs';
 const PdfTemplate = lazy(() => import('./modules/documents/PdfTemplate.jsx'));
 
 const WebAdmin = lazy(() => import('./modules/web/WebAdmin.jsx'));
 
 // --- 1. CONFIGURACIÓN FIREBASE Y CONSTANTES ---
-const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0", authDomain: "diverty-eventos.firebaseapp.com", projectId: "diverty-eventos", storageBucket: "diverty-eventos.firebasestorage.app", messagingSenderId: "491130670516", appId: "1:491130670516:web:8c80abd09ccc92c194f6e1" };
-const isNewApp = !getApps().length; const app = isNewApp ? initializeApp(firebaseConfig) : getApp(); const db = getFirestore(app); 
-if (isNewApp) { enableIndexedDbPersistence(db).catch(() => {}); }
-const auth = getAuth(app); const appId = "diverty-oficial"; const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png'; const META_MENSUAL = 1500;
+const db = getFirestore(app);
+enableIndexedDbPersistence(db).catch(() => {});
+const appId = 'diverty-oficial'; const META_MENSUAL = 1500;
 const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
 const ZONAS_TRANSPORTE = { "Ciudad de Panamá": 0, "Panamá Centro": 0, "San Miguelito": 0, "Punta Pacífica": 5, "Costa del Este": 5, "Albrook / Clayton": 5, "Panamá Norte (hasta Villa Grecia)": 15, "Panamá Este (después de Megamall hasta Pacora)": 15, "Arraiján / Panamá Pacífico": 15, "Costa Verde / hasta 3 km": 20, "La Chorrera (fuera de 3 km de Costa Verde)": 25 };
 const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'web', icon:Globe2, text:'Web'}, {id:'config', icon:Settings, text:'Ajustes'} ];
@@ -24,7 +24,6 @@ const NOMBRES_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'J
 const getDocRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'eventos', id); const getConfigRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'configuracion', id); const getProvRef = (id) => doc(db, 'artifacts', appId, 'public', 'data', 'proveedores', id);
 
 
-const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
 const isEventRef = ref => ref.path.startsWith(`artifacts/${appId}/public/data/eventos/`);
 const availabilityRef = id => doc(db, 'artifacts', appId, 'public', 'data', 'disponibilidad_web', id);
 
@@ -201,14 +200,12 @@ const getResourceAvailability = (request, rows, capacity) => {
     animadores: Math.max(0, Math.round(Number(capacity?.animadores) || 0)),
     payasos: Math.max(0, Math.round(Number(capacity?.payasos) || 0))
   };
-  const usage = { animadores:0, payasos:0 };
-  (Array.isArray(rows) ? rows : []).forEach(ev => {
-    if (!ev || ev.id === request?.id || isArchivedReservation(ev) || isPendingWebRequest(ev)) return;
-    if (!resourcesOverlap(request, ev)) return;
-    const r = inferResourceRequirements(ev);
-    usage.animadores += r.animadores;
-    usage.payasos += r.payasos;
-  });
+  const windows = (Array.isArray(rows) ? rows : []).filter(ev =>
+    ev && ev.id !== request?.id && publicSlot(ev) && ev.esNavidad !== true &&
+    !isPendingWebRequest(ev) && resourcesOverlap(request, ev)
+  ).map(ev => ({ start:resourceTimeMinutes(ev.hora), ...inferResourceRequirements(ev) }))
+    .map(window => ({...window, duration:window.durationMinutes}));
+  const usage = peakResourceUsage(resourceTimeMinutes(request?.hora), needed.durationMinutes, windows);
   const available = {
     animadores: Math.max(0, cap.animadores - usage.animadores),
     payasos: Math.max(0, cap.payasos - usage.payasos)
@@ -264,21 +261,82 @@ const projectEvent = (writer, ref, value) => {
   if (slot) writer.set(availabilityRef(ref.id), slot);
   else writer.delete(availabilityRef(ref.id));
 };
+// Queue writes so event projections and both capacity locks can be read first.
+// Firestore rejects reads made after the first write in a transaction.
+const eventLock = value => {
+  if (!value || !publicSlot(value) || !value.hora) return null;
+  const santa = value.esNavidad === true || /entregas de nochebuena/i.test(String(value.servicio || ''));
+  const key = `${String(value.fecha)}_${String(value.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
+  return { id: `${santa ? 'slot_santa_' : 'slot_'}${key}`, fecha: value.fecha, hora: value.hora };
+};
 const runTransaction = (database, callback) => rawRunTransaction(database, async tx => {
-  const readValues = new Map();
+  const readValues = new Map(), writes = [], events = new Map();
+  const read = async ref => {
+    const snap = await tx.get(ref);
+    readValues.set(ref.path, snap.exists() ? snap.data() : null);
+    return snap;
+  };
   const wrapped = {
-    get: async ref => { const snap = await tx.get(ref); readValues.set(ref.path, snap.exists() ? snap.data() : {}); return snap; },
+    get: read,
     set: (ref, value, options) => {
-      if (options) tx.set(ref, value, options); else tx.set(ref, value);
       if (isEventRef(ref)) {
-        if (options?.merge && !readValues.has(ref.path)) throw new Error('EVENT_READ_REQUIRED');
-        projectEvent(tx, ref, options?.merge ? {...readValues.get(ref.path), ...value} : value);
+        if (options?.merge && !readValues.has(ref.path) && !events.has(ref.path)) throw new Error('EVENT_READ_REQUIRED');
+        const previous = events.has(ref.path) ? events.get(ref.path).value : readValues.get(ref.path);
+        events.set(ref.path, { ref, value: options?.merge ? {...previous, ...value} : value });
       }
+      writes.push({ ref, value, options });
       return wrapped;
     },
-    delete: ref => { tx.delete(ref); if (isEventRef(ref)) {tx.delete(availabilityRef(ref.id)); tx.delete(clientStatusRef(ref.id));} return wrapped; }
+    delete: ref => {
+      writes.push({ ref, deleted: true });
+      if (isEventRef(ref)) events.set(ref.path, { ref, value: null });
+      return wrapped;
+    }
   };
-  return callback(wrapped);
+  const result = await callback(wrapped);
+  const locks = new Map();
+  const changeLock = (lock, id, add) => {
+    if (!lock) return;
+    if (!locks.has(lock.id)) locks.set(lock.id, {...lock, remove: new Set(), add: new Set()});
+    locks.get(lock.id)[add ? 'add' : 'remove'].add(String(id));
+  };
+  for (const {ref, value} of events.values()) {
+    if (!readValues.has(ref.path)) await read(ref);
+    const oldLock = eventLock(readValues.get(ref.path)), newLock = eventLock(value);
+    if (oldLock?.id === newLock?.id) continue;
+    changeLock(oldLock, ref.id, false);
+    changeLock(newLock, ref.id, true);
+  }
+  // Include locks already read by the callback without adding extra reads.
+  for (const lock of locks.values()) {
+    lock.ref = availabilityRef(lock.id);
+    if (!readValues.has(lock.ref.path)) await read(lock.ref);
+  }
+  for (const write of writes) {
+    if (write.deleted) tx.delete(write.ref);
+    else if (write.options) tx.set(write.ref, write.value, write.options);
+    else tx.set(write.ref, write.value);
+  }
+  for (const {ref, value} of events.values()) {
+    if (value) projectEvent(tx, ref, value);
+    else { tx.delete(availabilityRef(ref.id)); tx.delete(clientStatusRef(ref.id)); }
+  }
+  for (const lock of locks.values()) {
+    const old = readValues.get(lock.ref.path);
+    let next;
+    if (!old || Array.isArray(old.reservationIds)) {
+      const ids = new Set((old?.reservationIds || []).map(String));
+      lock.remove.forEach(id => ids.delete(id));
+      lock.add.forEach(id => ids.add(id));
+      next = {...old, fecha:lock.fecha, hora:lock.hora, count:ids.size, reservationIds:[...ids]};
+    } else {
+      // Legacy counters lack membership IDs: keep their unknown reservations.
+      next = {...old, count:Math.max(0, (Number(old.count) || 0) - lock.remove.size) + lock.add.size};
+    }
+    if (next.count > 0) tx.set(lock.ref, {...next, updatedAt:new Date().toISOString()});
+    else if (old) tx.delete(lock.ref);
+  }
+  return result;
 });
 const setDoc = async (ref, value, options) => {
   if (!isEventRef(ref)) return options ? rawSetDoc(ref, value, options) : rawSetDoc(ref, value);
@@ -289,7 +347,7 @@ const setDoc = async (ref, value, options) => {
 };
 const deleteDoc = async ref => {
   if (!isEventRef(ref)) return rawDeleteDoc(ref);
-  const batch = writeBatch(db); batch.delete(ref); batch.delete(availabilityRef(ref.id)); batch.delete(clientStatusRef(ref.id)); await batch.commit();
+  return runTransaction(db, tx => { tx.delete(ref); });
 };
 let preparationPromise = null;
 let preparationComplete = false;
@@ -1215,7 +1273,7 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
 });
 
 // --- APP COMPONENT ---
-export default function App() {
+export default function App({ firebaseUser }) {
   const lastActivityRef = useRef(Date.now()); 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [appSettings, setAppSettings] = useState(() => readAppSettings(utils.getSafeLocal('diverty_settings'), { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }));
@@ -1224,12 +1282,6 @@ export default function App() {
       const timer = setInterval(() => setCurrentTime(new Date()), 60000);
       return () => clearInterval(timer);
   }, []);
-  
-  const [isAuthenticated, setIsAuthenticated] = useState(false); 
-  const [isAuthLoading, setIsAuthLoading] = useState(true); 
-  const [emailInput, setEmailInput] = useState(''); 
-  const [passwordInput, setPasswordInput] = useState('');
-  const [firebaseUser, setFirebaseUser] = useState(null); 
   
   const [activeTab, setActiveTab] = useState('inicio');
   const [configView, setConfigView] = useState('home'); 
@@ -1642,18 +1694,6 @@ export default function App() {
       return () => { cancelled = true; };
   }, [messaging, firebaseUser]);
   
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => setIsAuthLoading(false), 8000); 
-    const unsubscribe = onAuthStateChanged(auth, (user) => { 
-        clearTimeout(fallbackTimer); 
-        if (user?.uid === ADMIN_UID) { setFirebaseUser(user); setIsAuthenticated(true); } 
-        else { setFirebaseUser(null); setIsAuthenticated(false); setEventos([]); if (user) signOut(auth); } 
-        setIsAuthLoading(false); 
-    }, () => { 
-        clearTimeout(fallbackTimer); setIsAuthLoading(false); 
-    }); 
-    return () => { clearTimeout(fallbackTimer); unsubscribe(); };
-  }, []);
 
   useEffect(() => { 
       const handleResize = () => { if (window.innerWidth < 820) { setPdfScale((window.innerWidth - 32) / 794); } else { setPdfScale(1); } }; 
@@ -2306,16 +2346,6 @@ export default function App() {
           }
 
           const nextState = utils.normalizeText(nuevoEstado);
-          const releasesCapacity = nextState === 'cancelado' || nextState === 'cancelada' || nextState.includes('rechaz');
-          let slotRef = null;
-          let slotSnap = null;
-          if (releasesCapacity && current.fecha && current.hora) {
-              const esNavidad = current.esNavidad === true || /entregas de nochebuena/i.test(String(current.servicio || ''));
-              const safeSlot = `${String(current.fecha)}_${String(current.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
-              slotRef = availabilityRef(`${esNavidad ? 'slot_santa_' : 'slot_'}${safeSlot}`);
-              slotSnap = await tx.get(slotRef);
-          }
-
           const nowIso = new Date().toISOString();
           const stateMeta = nextState.includes('rechaz')
               ? { rejectedAt: nowIso }
@@ -2342,20 +2372,6 @@ export default function App() {
           updatedData = { ...current, ...patch, id };
           tx.set(ref, patch, { merge: true });
 
-          // Al cancelar o rechazar, libera también el candado interno del horario.
-          // El registro principal se conserva para el archivo de Canceladas / Rechazadas.
-          if (releasesCapacity && slotRef && slotSnap?.exists()) {
-              const slot = slotSnap.data() || {};
-              if (Array.isArray(slot.reservationIds)) {
-                  const ids = slot.reservationIds.map(String).filter(x => x !== String(id));
-                  if (ids.length <= 0) tx.delete(slotRef);
-                  else tx.set(slotRef, { ...slot, count: ids.length, reservationIds: ids, updatedAt: nowIso });
-              } else {
-                  const nextCount = Math.max(0, (Number(slot.count) || 1) - 1);
-                  if (nextCount <= 0) tx.delete(slotRef);
-                  else tx.set(slotRef, { ...slot, count: nextCount, updatedAt: nowIso });
-              }
-          }
       });
       await publishSync('evento', id, 'update');
       setEventos(prev => prev.map(e => e.id === id ? updatedData : e));
@@ -2761,6 +2777,8 @@ export default function App() {
               const remote = snap.data();
               if (utils.normalizeText(remote.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
               if (utils.normalizeText(remote.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
+              const remoteNeedsTransportReview = remote.requiereRevisionUbicacion === true || /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(remote.ubicacion || ''));
+              if (remoteNeedsTransportReview && remote.transporteRevisadoEnApp !== true) throw new Error('TRANSPORT_REVIEW_REQUIRED');
               const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
               const normalResources = esNavidad ? null : inferResourceRequirements(remote);
               confirmedData = {
@@ -2781,6 +2799,7 @@ export default function App() {
       } catch (err) {
           console.error('Error confirmando solicitud web:', err);
           if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
+          else if (err?.message === 'TRANSPORT_REVIEW_REQUIRED') showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
           else showAlert('No se pudo confirmar la reserva. Revisa la conexión e intenta nuevamente.', false);
           return false;
       }
@@ -3012,33 +3031,13 @@ export default function App() {
   const deleteEventoSynced = useCallback(async (id) => {
       if (!id) throw new Error('EVENT_ID_REQUIRED');
       let deletedWasChristmas = false;
-      await rawRunTransaction(db, async tx => {
-          const eventRef = getDocRef(id);
-          const eventSnap = await tx.get(eventRef);
-          if (!eventSnap.exists()) return;
-          const ev = eventSnap.data() || {};
-          const esNavidad = ev.esNavidad === true || /entregas de nochebuena/i.test(String(ev.servicio || ''));
-          deletedWasChristmas = esNavidad;
-          let slotRef = null;
-          let slotSnap = null;
-          if (ev.fecha && ev.hora) {
-              const safeSlot = `${String(ev.fecha)}_${String(ev.hora).replace(':','-')}`.replace(/[^0-9A-Za-z_-]/g,'');
-              slotRef = availabilityRef(`${esNavidad ? 'slot_santa_' : 'slot_'}${safeSlot}`);
-              slotSnap = await tx.get(slotRef);
-          }
-          tx.delete(eventRef);
-          tx.delete(availabilityRef(id));
-          tx.delete(clientStatusRef(id));
-          // Remove this reservation from the internal capacity lock as well. Old versions
-          // only did this for Santa, which left normal dates blocked after deleting tests.
-          if (slotRef && slotSnap?.exists()) {
-              const slot = slotSnap.data() || {};
-              const ids = Array.isArray(slot.reservationIds)
-                  ? slot.reservationIds.map(String).filter(x => x !== String(id))
-                  : [];
-              if (ids.length <= 0) tx.delete(slotRef);
-              else tx.set(slotRef, { ...slot, count: ids.length, reservationIds: ids, updatedAt: new Date().toISOString() });
-          }
+      await runTransaction(db, async tx => {
+          const ref = getDocRef(id);
+          const snap = await tx.get(ref);
+          if (!snap.exists()) return;
+          const ev = snap.data() || {};
+          deletedWasChristmas = ev.esNavidad === true || /entregas de nochebuena/i.test(String(ev.servicio || ''));
+          tx.delete(ref);
       });
       // Christmas also keeps its dedicated route/capacity reconciliation.
       if (deletedWasChristmas) {
@@ -3218,7 +3217,6 @@ export default function App() {
     const blob = new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8;' }), url = URL.createObjectURL(blob), link = document.createElement("a"); link.setAttribute("href", url); link.setAttribute("download", `Reporte_Finanzas_Diverty_${financePeriod === 'todos' ? 'Historico' : financePeriod === 'anio' ? `Anual_${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]}_${financeYear}`}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link);
   }, [eventosActivos, financePeriod, financeYear, financeMonth]);
 
-  const handleLogin = useCallback(async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, emailInput, passwordInput); utils.triggerHaptic('success'); setEmailInput(''); setPasswordInput(''); } catch (error) { utils.triggerHaptic('warning'); showAlert("Credenciales incorrectas", false); } }, [emailInput, passwordInput, showAlert]);
   const handleLogout = useCallback(async () => { try { await signOut(auth); } catch (error) { showAlert("Error al cerrar sesión"); } }, [showAlert]);
   const handleCopiarCobros = useCallback(() => { utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n"; eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && !isArchivedReservation(e) && !isPendingWebRequest(e) && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(e => { text += `👤 *${e.cliente}*\n📅 Fecha: ${e.fecha}\n💰 Debe: $${(utils.safeNum(e.total) - utils.safeNum(e.abono)).toFixed(2)}\n📞 WA: ${e.telefono}\n\n`; }); navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true); }, [eventosActivos, showAlert]);
 
@@ -4168,70 +4166,6 @@ export default function App() {
       </div>
     </>);
   };
-  if (isAuthLoading) return (
-    <div className="font-outfit min-h-[100dvh] relative overflow-hidden flex items-center justify-center bg-[linear-gradient(155deg,#F8F8FF_0%,#F4F6FF_48%,#FFF8FC_100%)]">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap');.font-outfit{font-family:'Outfit',sans-serif}@keyframes splashFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-8px) scale(1.015)}}@keyframes splashLoad{0%{width:8%}55%{width:64%}100%{width:88%}}@keyframes splashGlow{0%,100%{opacity:.28;transform:scale(.94)}50%{opacity:.48;transform:scale(1.06)}}.splash-logo{animation:splashFloat 3.2s ease-in-out infinite}.splash-load{animation:splashLoad 1.6s ease-in-out forwards}.splash-glow{animation:splashGlow 2.4s ease-in-out infinite}`}</style>
-      <div className="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-[#7657FF]/15 blur-2xl"></div>
-      <div className="absolute -top-28 left-20 w-72 h-64 rounded-[45%] bg-[#FF3EA5]/10 blur-2xl rotate-12"></div>
-      <div className="absolute -bottom-28 -right-24 w-96 h-80 rounded-[45%] bg-gradient-to-tr from-[#7657FF]/25 via-[#FF3EA5]/16 to-amber-300/18 blur-xl"></div>
-      <Star className="absolute top-[12%] left-[18%] text-amber-300 fill-amber-200/70 rotate-12" size={28}/>
-      <Star className="absolute top-[27%] right-[14%] text-[#7657FF]/35 fill-[#7657FF]/10 -rotate-12" size={24}/>
-      <Sparkles className="absolute bottom-[20%] right-[18%] text-[#FF3EA5]/35" size={28}/>
-      <div className="relative z-10 w-full max-w-[430px] px-8 text-center">
-        <div className="relative mx-auto w-[82%] max-w-[330px] splash-logo">
-          <div className="absolute inset-x-[10%] bottom-0 h-14 bg-[#7657FF]/25 blur-2xl rounded-full splash-glow"></div>
-          <img src={LOGO_URL} alt="Diverty Recreación y eventos" className="relative w-full h-auto object-contain drop-shadow-[0_18px_28px_rgba(118,87,255,.12)]" crossOrigin="anonymous"/>
-        </div>
-        <div className="mt-20 mx-auto max-w-[250px]">
-          <div className="h-[7px] rounded-full bg-slate-200/80 overflow-hidden shadow-inner"><div className="splash-load h-full rounded-full bg-gradient-to-r from-[#7657FF] via-[#B83DFF] to-[#FF3EA5] shadow-[0_0_16px_rgba(184,61,255,.35)]"></div></div>
-          <p className="mt-4 text-[13px] font-semibold tracking-wide text-slate-500">Cargando tu experiencia...</p>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!isAuthenticated) return (
-    <div className="font-outfit min-h-[100dvh] flex items-center justify-center px-5 py-8 relative overflow-hidden bg-[linear-gradient(155deg,#F8F9FF_0%,#F4F6FF_48%,#FFF8FC_100%)]">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap');.font-outfit{font-family:'Outfit',sans-serif}@keyframes portalFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}@keyframes portalGlow{0%,100%{opacity:.2;transform:scale(.94)}50%{opacity:.42;transform:scale(1.06)}}.portal-logo{animation:portalFloat 4s ease-in-out infinite}.portal-glow{animation:portalGlow 3s ease-in-out infinite}`}</style>
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-28 -left-24 w-80 h-80 rounded-full bg-[#7657FF]/18 blur-2xl"></div>
-        <div className="absolute top-16 left-[18%] w-64 h-44 rounded-full bg-[#FF3EA5]/9 blur-3xl"></div>
-        <div className="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-[#FF3EA5]/12 blur-2xl"></div>
-        <div className="absolute -bottom-28 -right-20 w-80 h-80 rounded-full bg-[#7657FF]/16 blur-2xl"></div>
-        <div className="absolute top-[8%] right-[7%] text-amber-300/80 rotate-12"><Star size={44}/></div>
-        <div className="absolute top-[19%] right-[4%] text-[#FF3EA5]/35 -rotate-12"><Star size={72}/></div>
-        <div className="absolute top-[15%] left-[8%] text-amber-300/70"><Sparkles size={27}/></div>
-      </div>
-      <div className="w-full max-w-[440px] relative z-10 rounded-[38px] bg-white/76 backdrop-blur-2xl border border-white shadow-[0_30px_80px_rgba(76,67,144,.13),inset_0_1px_0_rgba(255,255,255,.95)] px-6 sm:px-9 py-8 sm:py-10 animate-fadeInUp">
-        <div className="flex justify-center">
-          <div className="relative portal-logo">
-            <div className="portal-glow absolute -inset-5 rounded-[34px] bg-gradient-to-tr from-[#7657FF] via-[#B83DFF] to-[#FF3EA5] blur-2xl"></div>
-            <div className="relative w-[122px] h-[122px] rounded-[31px] bg-white/95 p-4 border border-white shadow-[0_18px_38px_rgba(118,87,255,.20)] flex items-center justify-center">
-              <img src={LOGO_URL} alt="Diverty" className="w-full h-full object-contain" crossOrigin="anonymous"/>
-            </div>
-            <div className="absolute -bottom-3 -right-3 w-12 h-12 rounded-[17px] bg-gradient-to-br from-amber-400 to-orange-500 border-[3px] border-white shadow-lg flex items-center justify-center rotate-12"><Star size={22} className="text-white fill-white"/></div>
-          </div>
-        </div>
-        <div className="text-center mt-8 mb-8">
-          <h1 className="text-[34px] sm:text-[38px] leading-none font-black tracking-[-.045em] text-slate-950">Portal <span className="bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] bg-clip-text text-transparent">Diverty</span></h1>
-          <p className="mt-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[.28em] text-slate-500">Gestión de Eventos Premium</p>
-          <div className="w-16 h-1 rounded-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] mx-auto mt-5"></div>
-        </div>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none"><Mail size={21} className="text-[#7657FF]/75 group-focus-within:text-[#7657FF]"/></div>
-            <input type="email" required value={emailInput} onChange={(e)=>setEmailInput(e.target.value)} placeholder="Correo Electrónico" className="w-full h-[62px] rounded-[19px] bg-white/88 border border-slate-200/90 pl-14 pr-5 text-[16px] font-semibold text-slate-900 placeholder:text-slate-400 outline-none shadow-[0_7px_20px_rgba(15,23,42,.05)] focus:border-[#7657FF]/55 focus:ring-4 focus:ring-[#7657FF]/10 transition-all"/>
-          </div>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none"><Lock size={21} className="text-[#7657FF]/70 group-focus-within:text-[#7657FF]"/></div>
-            <input type="password" required value={passwordInput} onChange={(e)=>setPasswordInput(e.target.value)} placeholder="Contraseña" className="w-full h-[62px] rounded-[19px] bg-white/88 border border-slate-200/90 pl-14 pr-5 text-[16px] font-semibold text-slate-900 placeholder:text-slate-400 outline-none shadow-[0_7px_20px_rgba(15,23,42,.05)] focus:border-[#7657FF]/55 focus:ring-4 focus:ring-[#7657FF]/10 transition-all"/>
-          </div>
-          <button type="submit" className="w-full h-[62px] mt-3 rounded-[20px] bg-gradient-to-r from-[#6D4BFF] via-[#A43BFA] to-[#F12BB5] text-white font-black uppercase tracking-[.14em] shadow-[0_16px_34px_rgba(164,59,250,.28)] active:scale-[.975] transition-transform flex items-center justify-center gap-3">Ingresar <Sparkles size={22}/><span className="w-8 h-8 rounded-full bg-white/16 flex items-center justify-center"><ChevronRight size={18}/></span></button>
-        </form>
-        <div className="mt-7 pt-5 border-t border-slate-200/70 flex items-center justify-center gap-2 text-slate-400"><ShieldCheck size={16} className="text-[#7657FF]/70"/><span className="text-[10px] font-semibold">Acceso seguro y confiable</span></div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">

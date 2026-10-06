@@ -6,8 +6,10 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const production = extract('const publicSlot = value => {', 'const isPendingWebRequest') +
+  extract('const isPendingWebRequest', 'const getResourceAvailability') +
   extract('const clientStatusRef = id =>', 'let preparationPromise = null;') +
-  extract('  const transitionEventStatus = useCallback', '  const handleUpdateEstado');
+  extract('  const transitionEventStatus = useCallback', '  const handleUpdateEstado') +
+  extract('  const handleConfirmWebRequest = useCallback', '  const handleRejectWebRequest');
 const base = 'artifacts/diverty-oficial/public/data/';
 
 function fixture() {
@@ -35,10 +37,11 @@ function fixture() {
     rawRunTransaction, rawSetDoc: async () => {}, rawDeleteDoc: async () => {},
     writeBatch: () => { throw new Error('not used in this test'); },
     useCallback: fn => fn, publishSync: async () => {}, setEventos() {},
-    utils: { normalizeText: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') }
+    showAlert() {}, console: { error() {} },
+    utils: { triggerHaptic() {}, normalizeText: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') }
   };
   vm.createContext(ctx);
-  vm.runInContext(production + '\nthis.api = { setDoc, runTransaction, transitionEventStatus };', ctx);
+  vm.runInContext(production + '\nthis.api = { setDoc, deleteDoc, runTransaction, transitionEventStatus, handleConfirmWebRequest };', ctx);
   return { rows, ref, api: ctx.api };
 }
 
@@ -97,4 +100,81 @@ test('rejection frees only the rejected reservation, keeping other IDs in a shar
   const remaining = f.rows.get(lock.path);
   assert.equal(remaining.count, 1);
   assert.deepEqual(Array.from(remaining.reservationIds), ['other']);
+});
+
+test('rescheduling moves the lock and preserves other reservations at both times', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  const old = f.ref('disponibilidad_web', 'slot_2026-11-10_10-00');
+  const next = f.ref('disponibilidad_web', 'slot_2026-11-12_15-00');
+  f.rows.set(old.path, { reservationIds: [event.id, 'old-other'], count: 2, capacity: 3 });
+  f.rows.set(next.path, { reservationIds: ['new-other'], count: 1, capacity: 3 });
+  await f.api.setDoc(f.ref('eventos', event.id), { fecha: '2026-11-12', hora: '15:00' }, { merge: true });
+  assert.deepEqual(Array.from(f.rows.get(old.path).reservationIds), ['old-other']);
+  assert.deepEqual(Array.from(f.rows.get(next.path).reservationIds).sort(), [event.id, 'new-other'].sort());
+  assert.equal(f.rows.get(next.path).count, 2);
+  assert.equal(f.rows.get(next.path).capacity, 3);
+});
+
+test('cancelling twice and deleting a cancelled event do not release another legacy reservation', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  const lock = f.ref('disponibilidad_web', 'slot_2026-11-10_10-00');
+  f.rows.set(lock.path, { count: 3, capacity: 3 });
+  await f.api.transitionEventStatus(event.id, 'Cancelado');
+  await f.api.transitionEventStatus(event.id, 'Cancelado');
+  await f.api.deleteDoc(f.ref('eventos', event.id));
+  assert.equal(f.rows.get(lock.path).count, 2);
+  for (const collection of ['eventos', 'disponibilidad_web', 'reservas_cliente']) {
+    assert.equal(f.rows.has(f.ref(collection, event.id).path), false);
+  }
+});
+
+test('reactivating a cancelled reservation reacquires its slot exactly once', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  await f.api.transitionEventStatus(event.id, 'Cancelado');
+  await f.api.transitionEventStatus(event.id, 'Confirmado');
+  await f.api.transitionEventStatus(event.id, 'Preparando');
+  const lock = f.rows.get(f.ref('disponibilidad_web', 'slot_2026-11-10_10-00').path);
+  assert.equal(lock.count, 1);
+  assert.deepEqual(Array.from(lock.reservationIds), [event.id]);
+});
+
+test('changing a normal reservation to Santa moves between the correct lock namespaces', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  await f.api.setDoc(f.ref('eventos', event.id), { esNavidad: true }, { merge: true });
+  assert.equal(f.rows.has(f.ref('disponibilidad_web', 'slot_2026-11-10_10-00').path), false);
+  assert.equal(f.rows.get(f.ref('disponibilidad_web', 'slot_santa_2026-11-10_10-00').path).count, 1);
+});
+
+test('a failed event mutation leaves the event, projections and locks unchanged', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  const before = structuredClone([...f.rows]);
+  await assert.rejects(f.api.runTransaction({}, async tx => {
+    const ref = f.ref('eventos', event.id);
+    await tx.get(ref);
+    tx.set(ref, { hora: '15:00' }, { merge: true });
+    throw new Error('simulated failure');
+  }), /simulated failure/);
+  assert.deepEqual([...f.rows], before);
+});
+
+test('accepting a web request publishes staff metadata and customer confirmation', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), event);
+  assert.equal(await f.api.handleConfirmWebRequest(event), true);
+  assert.equal(f.rows.get(f.ref('reservas_cliente', event.id).path).estado, 'Confirmado');
+  assert.equal(f.rows.get(f.ref('disponibilidad_web', event.id).path).resourceRequirements.animadores, 1);
+  assert.equal(await f.api.handleConfirmWebRequest(event), false, 'another device cannot accept the same pending request twice');
+});
+
+test('an outdated device cannot accept a location that now requires transport review', async () => {
+  const f = fixture();
+  await f.api.setDoc(f.ref('eventos', event.id), { ...event, requiereRevisionUbicacion: true });
+  const before = structuredClone([...f.rows]);
+  assert.equal(await f.api.handleConfirmWebRequest(event), false);
+  assert.deepEqual([...f.rows], before);
 });
