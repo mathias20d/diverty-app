@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const extract = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-const production = extract('const publicSlot = value => {', 'const isPendingWebRequest') +
+const production = extract('const christmasEventGps =', 'const christmasDistanceKm') + extract('const publicSlot = value => {', 'const isPendingWebRequest') +
   extract('const isPendingWebRequest', 'const getResourceAvailability') +
   extract('const clientStatusRef = id =>', 'let preparationPromise = null;') +
   extract('  const transitionEventStatus = useCallback', '  const handleUpdateEstado') +
@@ -177,4 +177,16 @@ test('an outdated device cannot accept a location that now requires transport re
   const before = structuredClone([...f.rows]);
   assert.equal(await f.api.handleConfirmWebRequest(event), false);
   assert.deepEqual([...f.rows], before);
+});
+
+
+test('a stale device cannot accept a manual Christmas request before its exact location is reviewed',async()=>{
+  const f=fixture(), pending={...event,esNavidad:true,ubicacion:'Ubicación por confirmar',transporteRevisadoEnApp:true};
+  f.rows.set(f.ref('eventos',event.id).path,pending);
+  assert.equal(await f.api.handleConfirmWebRequest({...pending,lat:9,lng:-79},'Santa 1'),false);
+  assert.equal(f.rows.get(f.ref('eventos',event.id).path).estado,'Pendiente');
+  await f.api.setDoc(f.ref('eventos',event.id),{lat:9,lng:-79},{merge:true});
+  assert.equal(await f.api.handleConfirmWebRequest({...pending,lat:9,lng:-79},'Santa 1'),true);
+  assert.equal(f.rows.get(f.ref('eventos',event.id).path).estado,'Confirmado');
+  assert.equal(f.rows.get(f.ref('disponibilidad_web',event.id).path).lat,9);
 });

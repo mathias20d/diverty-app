@@ -36,15 +36,18 @@ const christmasTimeMinutes = value => {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
 const christmasEventGps = value => {
-  const lat = Number(value?.lat), lng = Number(value?.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)) return {lat,lng};
-  const raw = String(value?.direccion || '').trim();
-  const q = raw.match(/[?&]q=(-?\d+(?:\.\d+)?)[,%2C\s]+(-?\d+(?:\.\d+)?)/i);
-  if (q) return {lat:Number(q[1]),lng:Number(q[2])};
-  const at = raw.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
-  if (at) return {lat:Number(at[1]),lng:Number(at[2])};
-  return null;
+  const valid = (a,b) => {
+    if(a == null || b == null || a === '' || b === '') return null;
+    const lat=Number(a),lng=Number(b);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat)<=90 && Math.abs(lng)<=180 && !(lat===0 && lng===0) ? {lat,lng} : null;
+  };
+  const stored=valid(value?.lat,value?.lng); if(stored) return stored;
+  let raw=String(value?.direccion||'').trim();
+  try { raw=decodeURIComponent(raw); } catch { /* Keep the original text. */ }
+  const match=raw.match(/(?:[?&](?:q|query|ll|center)=|@|^)(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/i);
+  return match ? valid(match[1],match[2]) : null;
 };
+
 const christmasDistanceKm = (a, b) => {
   if (!a || !b) return null;
   const R = 6371, rad = Math.PI / 180;
@@ -871,6 +874,8 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const [santaAsignado, setSantaAsignado] = useState('Santa 1');
     const [transportDraft, setTransportDraft] = useState('');
     const [savingTransport, setSavingTransport] = useState(false);
+    const [locationDraft,setLocationDraft]=useState('');
+    const [savingLocation,setSavingLocation]=useState(false);
     const [resourceDraft, setResourceDraft] = useState({ animadores:0, payasos:0, durationMinutes:120 });
     const [savingResources, setSavingResources] = useState(false);
     useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); setTransportDraft(''); setSavingTransport(false); setResourceDraft({animadores:0,payasos:0,durationMinutes:120}); setSavingResources(false); } }, [isOpen]);
@@ -878,6 +883,8 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
         if (selectedRequest) {
             setSantaAsignado(selectedRequest.santaAsignado || 'Santa 1');
             setTransportDraft(String(utils.safeNum(selectedRequest.transporte)));
+            const gps=christmasEventGps(selectedRequest);
+            setLocationDraft(gps?`${gps.lat},${gps.lng}`:'');
             const req = inferResourceRequirements(selectedRequest);
             setResourceDraft({
                 animadores: Math.max(0, Math.round(Number(req.animadores) || 0)),
@@ -919,6 +926,17 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const showResourcePanel = !!(selectedRequest && !isChristmasRequest && resourceStatus);
     const inferredTransportReview = !!(selectedRequest && /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(selectedRequest.ubicacion || '')));
     const needsTransportReview = !!((selectedRequest?.requiereRevisionUbicacion === true || inferredTransportReview) && selectedRequest?.transporteRevisadoEnApp !== true);
+    const needsLocationReview=isChristmasRequest && !christmasEventGps(selectedRequest);
+    const saveLocation=async()=>{
+        if(!selectedRequest || savingLocation) return;
+        const gps=christmasEventGps({direccion:locationDraft});
+        if(!gps) return window.alert('Pega un enlace con coordenadas de Maps/Waze o escribe latitud,longitud válidas. Un enlace corto no contiene el punto exacto.');
+        setSavingLocation(true);
+        try {
+            const updated=await onUpdateWebRequest(selectedRequest,{...gps});
+            if(updated) setSelectedRequest(prev=>({...prev,...updated}));
+        } finally {setSavingLocation(false);}
+    };
     const saveResources = async () => {
         if (!selectedRequest || savingResources || typeof onUpdateWebRequest !== 'function') return;
         const next = {
@@ -961,6 +979,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
             window.alert('No hay suficiente personal disponible para este horario. Ajusta la reserva o el personal antes de aceptarla.');
             return;
         }
+        if(needsLocationReview) return window.alert('Confirma el punto de entrega antes de aceptar la reserva de Navidad.');
         if (needsTransportReview) {
             window.alert('Esta ubicación llegó con transporte por confirmar. Revisa el monto y pulsa “Confirmar transporte” antes de aceptar la reserva.');
             return;
@@ -1007,10 +1026,11 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                             <div className="rounded-[22px] bg-gradient-to-br from-[#F7F3FF] to-white p-4 border border-[#7657FF]/10"><div className="flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-[.12em] font-black text-[#7657FF] flex items-center gap-1.5"><Sparkles size={14}/> Servicio solicitado</p><p className="font-black text-[#10182D] mt-2 whitespace-pre-wrap">{selectedRequest.servicio || '—'}</p></div><span className="shrink-0 h-fit rounded-full bg-[#7657FF]/10 px-3 py-1.5 font-black text-[#7657FF]">{money(selectedRequest.total)}</span></div>{selectedRequest.descripcionEvento && <p className="font-semibold text-slate-600 whitespace-pre-wrap mt-3 text-sm leading-relaxed">{selectedRequest.descripcionEvento}</p>}{selectedRequest.comentarios && <div className="mt-3 pt-3 border-t border-[#7657FF]/10"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400">Comentarios</p><p className="font-semibold text-slate-600 whitespace-pre-wrap mt-1">{selectedRequest.comentarios}</p></div>}</div>
                             {(selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))) && <div className="rounded-[22px] border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4"><div className="flex items-center gap-3 mb-3"><div className="w-11 h-11 rounded-[15px] bg-red-100 flex items-center justify-center text-2xl">🎅</div><div><p className="text-[9px] uppercase tracking-[.14em] font-black text-red-500">Operación Navidad</p><p className="font-black text-[#10182D]">Santa asignado</p></div></div><select value={santaAsignado} onChange={e=>setSantaAsignado(e.target.value)} className="w-full rounded-[16px] border border-red-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none">{availableSantaNames.map(name=><option key={name} value={name}>{name}</option>)}</select><p className="mt-2 text-[10px] font-semibold text-slate-400">Selecciona quién atenderá esta entrega. La asignación quedará guardada en la reserva.</p></div>}
                             {showResourcePanel && resourceStatus && <div className={`rounded-[22px] border p-4 ${resourceStatus.feasible?'border-emerald-100 bg-emerald-50/70':'border-rose-200 bg-rose-50/80'}`}><div className="flex items-start justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${resourceStatus.feasible?'text-emerald-600':'text-rose-600'}`}>Personal para esta reserva</p><p className="font-black text-slate-900 mt-1">{resourceStatus.feasible?'Sí puedes recibirla con el personal actual':'No hay suficiente personal en este horario'}</p><p className="text-[10px] font-semibold text-slate-500 mt-1">Puedes corregir aquí lo que realmente requiere el servicio antes de aceptar.</p></div>{resourceStatus.feasible?<CheckCircle2 size={24} className="text-emerald-500 shrink-0"/>:<AlertTriangle size={24} className="text-rose-500 shrink-0"/>}</div><div className="grid grid-cols-2 gap-2 mt-4"><div className="rounded-[16px] bg-white p-3 border border-slate-100"><p className="text-[8px] font-black uppercase text-slate-400">Animadores</p><div className="grid grid-cols-3 gap-1 mt-2 text-center"><div><p className="text-[8px] font-bold text-slate-400">Total</p><p className="font-black text-slate-800">{resourceStatus.capacity.animadores}</p></div><div><p className="text-[8px] font-bold text-slate-400">Ocupados</p><p className="font-black text-amber-600">{resourceStatus.usage.animadores}</p></div><div><p className="text-[8px] font-bold text-slate-400">Libres</p><p className="font-black text-emerald-600">{resourceStatus.available.animadores}</p></div></div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Esta reserva necesita</label><input type="number" min="0" max="50" value={resourceDraft.animadores} onChange={e=>setResourceDraft(prev=>({...prev,animadores:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-1 w-full h-11 rounded-[13px] border border-slate-200 bg-slate-50 px-3 text-center font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div><div className="rounded-[16px] bg-white p-3 border border-slate-100"><p className="text-[8px] font-black uppercase text-slate-400">Payasos</p><div className="grid grid-cols-3 gap-1 mt-2 text-center"><div><p className="text-[8px] font-bold text-slate-400">Total</p><p className="font-black text-slate-800">{resourceStatus.capacity.payasos}</p></div><div><p className="text-[8px] font-bold text-slate-400">Ocupados</p><p className="font-black text-amber-600">{resourceStatus.usage.payasos}</p></div><div><p className="text-[8px] font-bold text-slate-400">Libres</p><p className="font-black text-emerald-600">{resourceStatus.available.payasos}</p></div></div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Esta reserva necesita</label><input type="number" min="0" max="50" value={resourceDraft.payasos} onChange={e=>setResourceDraft(prev=>({...prev,payasos:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-1 w-full h-11 rounded-[13px] border border-slate-200 bg-slate-50 px-3 text-center font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div></div><div className="grid grid-cols-[1fr_auto] gap-2 mt-3 items-end"><div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400">Duración que ocupa al personal</label><div className="relative mt-1"><input type="number" min="30" max="720" step="15" value={resourceDraft.durationMinutes} onChange={e=>setResourceDraft(prev=>({...prev,durationMinutes:Math.max(30,Math.min(720,Number(e.target.value)||120))}))} className="w-full h-11 rounded-[13px] border border-slate-200 bg-white px-3 pr-12 font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">MIN</span></div></div><button type="button" disabled={savingResources} onClick={saveResources} className="h-11 px-4 rounded-[13px] bg-[#10182D] text-white text-[9px] font-black uppercase tracking-wider disabled:opacity-50">{savingResources?'Guardando':'Guardar personal'}</button></div>{!resourceStatus.feasible&&<div className="mt-3 rounded-[14px] bg-white/80 border border-rose-100 p-3 text-[10px] font-bold text-rose-600">No podrás aceptar la reserva hasta que haya personal suficiente o ajustes correctamente lo que necesita este servicio.</div>}</div>}
+                            {needsLocationReview && <div className="rounded-[22px] border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-black text-amber-700">Dirección por confirmar</p><p className="text-xs text-slate-600 mt-2">El cliente escribió la dirección. Confirma el punto de entrega con él antes de aceptar y revisar la ruta.</p><label className="block text-xs font-bold mt-3">Enlace de Maps/Waze con coordenadas o latitud,longitud<input value={locationDraft} onChange={e=>setLocationDraft(e.target.value)} placeholder="9.0123,-79.5012" className="w-full mt-2 rounded-xl border border-slate-200 p-3 text-sm"/></label><button type="button" disabled={savingLocation} onClick={saveLocation} className="mt-3 rounded-xl bg-amber-600 text-white px-4 py-3 text-xs font-black disabled:opacity-60">{savingLocation?'Guardando…':'Confirmar punto de entrega'}</button></div>}
                             <div className={`rounded-[22px] border p-4 ${needsTransportReview?'border-amber-200 bg-amber-50/80':'border-[#7657FF]/10 bg-[#F8F6FF]'}`}><div className="flex items-center justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${needsTransportReview?'text-amber-600':'text-[#7657FF]'}`}>{needsTransportReview?'Transporte por confirmar':'Transporte de la solicitud'}</p><p className="text-[10px] font-semibold text-slate-500 mt-1">{needsTransportReview?'La ubicación quedó fuera del cálculo automático. Define el transporte final antes de aceptar.':'Si la zona o dirección no concuerda, corrige el monto antes de aceptar.'}</p></div><span className="text-xl font-black text-slate-900">{money(selectedRequest.transporte)}</span></div>{selectedRequest.transporteOriginalWeb!=null&&<p className="mt-2 text-[9px] font-bold text-slate-400">Calculado en web: {money(selectedRequest.transporteOriginalWeb)}</p>}<div className="grid grid-cols-[1fr_auto] gap-2 mt-3"><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">$</span><input type="number" min="0" step="0.01" value={transportDraft} onChange={e=>setTransportDraft(e.target.value)} className="w-full h-12 rounded-[14px] bg-white border border-slate-200 pl-8 pr-3 font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div><button type="button" disabled={savingTransport} onClick={saveTransport} className="px-4 h-12 rounded-[14px] bg-[#7657FF] text-white font-black text-[9px] uppercase tracking-wider disabled:opacity-60">{savingTransport?'Guardando':needsTransportReview?'Confirmar transporte':'Aplicar'}</button></div></div>
                             <div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Transporte</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.transporte)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Descuento</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.descuento)}</p></div><div className="rounded-[18px] bg-emerald-50 p-3"><p className="text-[9px] uppercase font-black text-emerald-500">Total</p><p className="font-black text-emerald-600 mt-1">{money(selectedRequest.total)}</p></div></div></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting || needsTransportReview || (showResourcePanel && resourceStatus && !resourceStatus.feasible)} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : needsTransportReview ? 'Revisa transporte' : 'Aceptar reserva'}</button></div>
+                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting || needsLocationReview || needsTransportReview || (showResourcePanel && resourceStatus && !resourceStatus.feasible)} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : needsLocationReview ? 'Revisa ubicación' : needsTransportReview ? 'Revisa transporte' : 'Aceptar reserva'}</button></div>
                     </div>
                 )}
             </div>
@@ -2780,6 +2800,7 @@ export default function App({ firebaseUser }) {
               const remoteNeedsTransportReview = remote.requiereRevisionUbicacion === true || /por confirmar|por revisar|fuera del area|fuera del área|despues de|después de/i.test(String(remote.ubicacion || ''));
               if (remoteNeedsTransportReview && remote.transporteRevisadoEnApp !== true) throw new Error('TRANSPORT_REVIEW_REQUIRED');
               const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
+              if(esNavidad && !christmasEventGps(remote)) throw new Error('LOCATION_REVIEW_REQUIRED');
               const normalResources = esNavidad ? null : inferResourceRequirements(remote);
               confirmedData = {
                   ...remote,
@@ -2799,6 +2820,7 @@ export default function App({ firebaseUser }) {
       } catch (err) {
           console.error('Error confirmando solicitud web:', err);
           if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
+          else if (err?.message === 'LOCATION_REVIEW_REQUIRED') showAlert('Confirma el punto de entrega de Santa antes de aceptar la reserva.', false);
           else if (err?.message === 'TRANSPORT_REVIEW_REQUIRED') showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
           else showAlert('No se pudo confirmar la reserva. Revisa la conexión e intenta nuevamente.', false);
           return false;

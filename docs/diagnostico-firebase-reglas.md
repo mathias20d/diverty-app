@@ -55,3 +55,11 @@ La lectura pública real, limitada a datos de disponibilidad y a estadísticas a
 5. **Alojamiento y teléfono original.** Los nuevos commits y las pruebas no prueban por sí solos que Vercel/Netlify haya publicado la versión ni que el teléfono del video esté resuelto. El fallo visible del selector de fecha del video sigue siendo independiente de esta verificación de Firebase.
 
 Para repetir: ejecutar `npm ci --prefix firebase --ignore-scripts` y `npm --prefix firebase test` desde `Diverty-`. Se requiere Java 21 y acceso a los destinos de descarga. Las rutas de caché del entorno están documentadas en `firebase/README.md`; el dominio del emulador y los pasos de instalación se añadieron a la configuración reutilizable.
+
+## Dirección remota de Navidad
+
+El cliente puede indicar un lugar que no aparece en el mapa. La web envía la solicitud pendiente sin inventar coordenadas, con `ubicacion: Ubicación por confirmar` y transporte provisional cero. Requiere publicar las nuevas reglas descritas en [el recorrido de dirección remota](https://github.com/mathias20d/Diverty-/blob/main/docs/reserva-direccion-remota.md).
+
+La app permite al administrador confirmar el punto exacto con coordenadas o un enlace de Maps/Waze que las contenga; conserva la dirección escrita. La aceptación vuelve a comprobar las coordenadas de la reserva guardada, además de la revisión del transporte. El cliente no puede convertir esa solicitud en Confirmado. Los enlaces cortos pueden abrirse para consultar el punto, pero no se interpretan como coordenadas inexistentes.
+
+Verificación de esta ampliación: 25 pruebas de la app, incluyendo confirmación desde un dispositivo con ubicación desactualizada; 34 pruebas de reglas en el emulador demo-diverty y recorridos de navegador con servicios simulados. No se publicaron reglas mediante credenciales administrativas desde este entorno.
