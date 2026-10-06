@@ -1,3 +1,4 @@
+import {needsPlaceReference} from '../src/lib/location-reference.mjs';
 import test from 'node:test';
 import { transportPending } from '../src/lib/web-request-review.mjs';
 import { bookingControlDates } from '../src/lib/booking-control.mjs';
@@ -32,7 +33,7 @@ function fixture() {
     writes.forEach(write => write());
   };
   const ctx = {
-    db: {}, appId: 'diverty-oficial', transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
+    db: {}, appId: 'diverty-oficial', needsPlaceReference, transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
     doc: (_db, ...parts) => ({ id: parts.at(-1), path: parts.join('/') }),
     isEventRef: r => r.path.startsWith(base + 'eventos/'),
     availabilityRef: id => ref('disponibilidad_web', id), getDocRef: id => ref('eventos', id),
@@ -49,7 +50,7 @@ function fixture() {
 
 const event = {
   id: 'web-1', ownerUid: 'customer', origen: 'Web Directa', estado: 'Pendiente',
-  cliente: 'Cliente ficticio', telefono: '60000000', fecha: '2026-11-10', hora: '10:00',
+  cliente: 'Cliente ficticio', direccion:'PH de prueba', telefono: '60000000', fecha: '2026-11-10', hora: '10:00',
   servicio: 'Animación', total: '100', abono: '0', _rev: 1,
   resourceRequirements: { animadores: 1, payasos: 0, durationMinutes: 120 }
 };
@@ -209,4 +210,20 @@ test('central approval uses returned server event and errors cannot fall back to
   assert.equal(await f.api.handleConfirmWebRequest(central),true);
   f.ctx.confirmCentralRequest=async()=>{throw Object.assign(new Error('Horario ocupado'),{details:{reason:'SLOT_FULL'}});};
   assert.equal(await f.api.handleConfirmWebRequest(central),false);
+});
+
+test('a GPS-only request cannot be approved until its venue reference is saved',async()=>{
+  const f=fixture(),gps={...event,direccion:'https://www.google.com/maps?q=9.01,-79.5',lat:9.01,lng:-79.5,referenciaLugar:''};
+  f.rows.set(f.ref('eventos',gps.id).path,gps);
+  assert.equal(await f.api.handleConfirmWebRequest(gps),false);
+  assert.equal(f.rows.get(f.ref('eventos',gps.id).path).estado,'Pendiente');
+  await f.api.setDoc(f.ref('eventos',gps.id),{...gps,referenciaLugar:'PH Las Palmeras, salón social'});
+  assert.equal(await f.api.handleConfirmWebRequest(f.rows.get(f.ref('eventos',gps.id).path)),true);
+  assert.equal(f.rows.get(f.ref('eventos',gps.id).path).referenciaLugar,'PH Las Palmeras, salón social');
+});
+test('an outdated device cannot approve after the remote venue reference was removed',async()=>{
+  const f=fixture(),gps={...event,direccion:'https://www.google.com/maps?q=9.01,-79.5',referenciaLugar:'PH Las Palmeras'};
+  f.rows.set(f.ref('eventos',gps.id).path,{...gps,referenciaLugar:''});
+  assert.equal(await f.api.handleConfirmWebRequest(gps),false);
+  assert.equal(f.rows.get(f.ref('eventos',gps.id).path).estado,'Pendiente');
 });

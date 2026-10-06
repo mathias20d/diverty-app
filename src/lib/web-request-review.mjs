@@ -1,3 +1,4 @@
+import { needsPlaceReference } from './location-reference.mjs';
 // Use the destination saved on the reservation, never the visitor's country.
 export function transportPending(event) {
   const flagged = event?.requiereRevisionUbicacion === true || event?.totalPendienteTransporte === true || /por confirmar|por revisar|fuera.*(?:area|área|cobertura)|despu[eé]s de/i.test(String(event?.ubicacion || ''));
@@ -9,6 +10,7 @@ export function requestReview(event) {
   const point = lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) && Math.abs(Number(lat))<=90 && Math.abs(Number(lng))<=180 && !(Number(lat)===0 && Number(lng)===0);
   const issues = [];
   if (!String(event?.direccion || '').trim() || (christmas && !point && !/(?:[?&](?:q|query|ll|center)=|@)-?\d+(?:\.\d+)?[, ]-?\d+(?:\.\d+)?/i.test(String(event?.direccion || '')))) issues.push('Ubicación');
+  if (needsPlaceReference(event)) issues.push('Referencia');
   if (transportPending(event)) issues.push('Transporte');
   if (!christmas && event?.recursosRevisadosEnApp !== true) issues.push('Personal');
   if (christmas && !event?.santaAsignado) issues.push('Asignar Santa');

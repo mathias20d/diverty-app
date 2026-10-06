@@ -11,3 +11,14 @@ Las ediciones, cambios de estado y eliminaciones de la app actualizan coordinado
 El servicio Firebase y su publicación están documentados en el repositorio web: [guía de validación central](https://github.com/mathias20d/Diverty-/blob/main/docs/validacion-central-reservas.md). Subir los cambios de la app a GitHub no publica Cloud Functions ni reglas. No activar el campo hasta publicar funciones, reglas, web y app.
 
 Validación: 30 pruebas unitarias, compilación Vite y recorrido móvil con Firebase simulado (filtros y bloqueo de aprobación con transporte pendiente). Ninguna prueba crea reservas ni notificaciones reales.
+
+
+## Verificar el lugar desde el celular
+
+Al abrir una solicitud pendiente, pulsa **Ver ubicación en el mapa** y elige Google Maps o Waze. Cuando hay GPS guardado, ambas aplicaciones abren ese punto, no la ubicación actual del administrador. El selector aparece por encima de la solicitud; al cerrarlo se conserva la reserva abierta. Sin coordenadas, el mapa busca la dirección/referencia escrita y se muestra esa limitación.
+
+El campo **Barriada, PH o salón de fiestas** permite añadir o corregir una referencia y guardarla en la reserva existente. Un GPS o enlace sin nombre del lugar bloquea la aprobación hasta que se añada ese dato. La app revalida la referencia del documento remoto para evitar que un dispositivo con información antigua apruebe sin ella. Una dirección escrita que ya identifica el lugar sirve como referencia; no se exige escribirla dos veces.
+
+Estos cambios de la interfaz funcionan con las reglas actuales: usan el campo existente `referenciaLugar` y el acceso administrativo existente. La activación del servicio central de Firebase sigue siendo independiente.
+
+Validación de esta mejora: 34 pruebas de la app, compilación de producción y recorrido a 390 px con Firebase simulado. Se verifican Google Maps/Waze, referencia guardada y bloqueo de transporte pendiente.

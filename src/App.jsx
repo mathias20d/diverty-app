@@ -7,6 +7,7 @@ import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
 
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
 import { loadPdfLibrary } from './lib/pdf.mjs';
+import { hasPlaceDescription, needsPlaceReference } from './lib/location-reference.mjs';
 import { bookingControlDates } from './lib/booking-control.mjs';
 import { pendingRequests, requestReview, transportPending } from './lib/web-request-review.mjs';
 import { peakResourceUsage } from './lib/resource-usage.mjs';
@@ -773,9 +774,9 @@ const QuickExpenseModal = memo(function QuickExpenseModal({ modal, onClose, onSa
 
 const NavigationChoiceModal = memo(function NavigationChoiceModal({ modal, onClose }) {
     if (!modal?.isOpen) return null;
-    const open = url => { if (!url) return; utils.triggerHaptic('light'); window.open(url, '_blank'); onClose(); };
+    const open = url => { if (!url) return; utils.triggerHaptic('light'); window.open(url, '_blank', 'noopener,noreferrer'); onClose(); };
     return (
-      <div className="fixed inset-0 z-[100000] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn" onClick={onClose}>
+      <div className="fixed inset-0 z-[100010] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn" onClick={onClose}>
         <div onClick={e=>e.stopPropagation()} className="w-full sm:max-w-md bg-white rounded-t-[30px] sm:rounded-[30px] p-5 sm:p-6 shadow-[0_30px_80px_rgba(15,23,42,.28)]">
           <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-5 sm:hidden"></div>
           <div className="flex items-start justify-between gap-4">
@@ -886,7 +887,7 @@ const SkeletonCard = memo(function SkeletonCard() {
     ); 
 });
 
-const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity, christmasSantaCapacity = 1, targetReservationId = '' }) {
+const NotifModal = memo(function NotifModal({ onMapClick, isOpen, onClose, eventosActivos, onConfirmWebRequest, onRejectWebRequest, onUpdateWebRequest, staffCapacity, christmasSantaCapacity = 1, targetReservationId = '' }) {
     const [requestFilter, setRequestFilter] = useState('all');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [confirming, setConfirming] = useState(false);
@@ -898,6 +899,9 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const [savingTransport, setSavingTransport] = useState(false);
     const [locationDraft,setLocationDraft]=useState('');
     const [savingLocation,setSavingLocation]=useState(false);
+    const [referenceDraft,setReferenceDraft]=useState('');
+    const [savingReference,setSavingReference]=useState(false);
+    useEffect(()=>{setReferenceDraft(String(selectedRequest?.referenciaLugar||''));},[selectedRequest?.id,selectedRequest?.referenciaLugar]);
     const [resourceDraft, setResourceDraft] = useState({ animadores:0, payasos:0, durationMinutes:120 });
     const [savingResources, setSavingResources] = useState(false);
     useEffect(() => { if (!isOpen) { setSelectedRequest(null); setConfirming(false); setRejecting(false); setConfirmedName(''); setRejectedName(''); setSantaAsignado('Santa 1'); setTransportDraft(''); setSavingTransport(false); setResourceDraft({animadores:0,payasos:0,durationMinutes:120}); setSavingResources(false); } }, [isOpen]);
@@ -947,6 +951,18 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
     const resourceStatus = resourcePreviewRequest ? getResourceAvailability(resourcePreviewRequest, eventosActivos, staffCapacity || {}) : null;
     const showResourcePanel = !!(selectedRequest && !isChristmasRequest && resourceStatus);
     const needsTransportReview = transportPending(selectedRequest);
+    const needsReferenceReview=needsPlaceReference(selectedRequest);
+    const selectedGps=christmasEventGps(selectedRequest);
+    const saveReference=async()=>{
+        if(!selectedRequest || savingReference) return;
+        const reference=referenceDraft.trim();
+        if(!hasPlaceDescription(reference) || reference.length>500) return window.alert('Escribe el nombre de la barriada, PH o salón y una indicación para llegar (máximo 500 caracteres).');
+        setSavingReference(true);
+        try {
+            const updated=await onUpdateWebRequest(selectedRequest,{referenciaLugar:reference});
+            if(updated)setSelectedRequest(prev=>({...prev,...updated}));
+        } finally {setSavingReference(false);}
+    };
     const needsLocationReview=isChristmasRequest && !christmasEventGps(selectedRequest);
     const saveLocation=async()=>{
         if(!selectedRequest || savingLocation) return;
@@ -1000,6 +1016,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
             window.alert('No hay suficiente personal disponible para este horario. Ajusta la reserva o el personal antes de aceptarla.');
             return;
         }
+        if(needsReferenceReview) return window.alert('Añade la barriada, PH o salón del evento antes de aceptar. El GPS solo marca el punto.');
         if(needsLocationReview) return window.alert('Confirma el punto de entrega antes de aceptar la reserva de Navidad.');
         if (needsTransportReview) {
             window.alert('Esta ubicación llegó con transporte por confirmar. Revisa el monto y pulsa “Confirmar transporte” antes de aceptar la reserva.');
@@ -1044,7 +1061,16 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                     <div className="flex-1 overflow-y-auto p-4 pb-8">
                         <div className="bg-white rounded-[28px] border border-white shadow-[0_16px_45px_rgba(15,23,42,.08)] overflow-hidden"><div className="p-5 bg-gradient-to-br from-[#F7F3FF] via-white to-[#FFF4FA] border-b border-slate-100"><div className="flex justify-between items-center gap-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.12em] text-amber-600"><Zap size={11}/> Nueva solicitud</span><span className="text-[10px] font-black text-slate-500 bg-white px-3 py-1.5 rounded-full shadow-sm">{selectedRequest.fecha?.split('-').reverse().join('/')}</span></div><div className="mt-4 flex justify-between gap-3"><div><h4 className="font-black text-[27px] text-[#10182D] leading-tight">{selectedRequest.cliente}</h4><p className="text-xs font-bold text-slate-500 mt-1">Solicitud recibida directamente desde la página web</p></div>{phone && <div className="flex gap-2"><button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${selectedRequest.cliente}, recibimos tu solicitud de reserva.`)} className="w-11 h-11 rounded-[15px] bg-emerald-50 text-emerald-500 flex items-center justify-center"><MessageCircle size={21}/></button><a href={`tel:${phone}`} className="w-11 h-11 rounded-[15px] bg-[#7657FF]/10 text-[#7657FF] flex items-center justify-center"><Smartphone size={21}/></a></div>}</div></div>
                             <div className="p-4 space-y-3"><div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><CalendarDays size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Fecha</p><p className="text-xs font-black text-slate-800 mt-1">{selectedRequest.fecha?.split('-').reverse().join('/') || '—'}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><Clock size={18} className="text-[#7657FF]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Hora</p><p className="text-xs font-black text-slate-800 mt-1">{utils.formatTime12h(selectedRequest.hora)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><MapPin size={18} className="text-[#FF3EA5]"/><p className="text-[9px] uppercase font-black tracking-wider text-slate-400 mt-2">Ubicación</p><p className="text-[11px] font-black text-slate-800 mt-1 leading-tight">{selectedRequest.ubicacion || '—'}</p></div></div>
-                            <div className="rounded-[20px] bg-slate-50 p-4"><div className="flex items-center justify-between gap-2"><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400">Dirección / referencia</p><span className={`text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-full ${utils.normalizeText(selectedRequest.ubicacionFuente||selectedRequest.locationSource||'').includes('gps')?'bg-emerald-50 text-emerald-600':'bg-amber-50 text-amber-600'}`}>{utils.normalizeText(selectedRequest.ubicacionFuente||selectedRequest.locationSource||'').includes('gps')?'GPS':'Manual'}</span></div><p className="font-bold text-slate-700 mt-1 whitespace-pre-wrap">{selectedRequest.direccion || 'No indicada'}</p>{selectedRequest.referenciaLugar&&<><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400 mt-3">PH / barriada / referencia</p><p className="font-semibold text-slate-600 mt-1 whitespace-pre-wrap">{selectedRequest.referenciaLugar}</p></>}</div>
+                            <div className="rounded-[20px] bg-slate-50 p-4">
+                                <div className="flex items-center justify-between gap-2"><p className="text-[9px] uppercase tracking-[.14em] font-black text-slate-400">Lugar del evento</p><span className={`text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-full ${selectedGps?'bg-emerald-50 text-emerald-600':'bg-amber-50 text-amber-600'}`}>{selectedGps?'GPS':'Dirección escrita'}</span></div>
+                                <p className="font-bold text-slate-700 mt-2 whitespace-pre-wrap break-words">{selectedRequest.direccion || 'Dirección no indicada'}</p>
+                                <button type="button" onClick={()=>onMapClick(selectedRequest.direccion,selectedRequest.ubicacion,selectedRequest)} className="w-full mt-3 min-h-[48px] rounded-[14px] bg-[#7657FF] text-white font-black text-xs flex items-center justify-center gap-2"><MapIcon size={18}/> Ver ubicación en el mapa</button>
+                                {!selectedGps && <p className="text-[11px] text-slate-500 mt-2">El mapa buscará la dirección escrita. Verifica que sea el lugar del evento.</p>}
+                                <label htmlFor="request-place-reference" className="block text-xs font-black text-slate-600 mt-4">Barriada, PH o salón de fiestas</label>
+                                <textarea id="request-place-reference" value={referenceDraft} onChange={e=>setReferenceDraft(e.target.value)} maxLength={500} rows={2} placeholder="Ej.: PH Las Palmeras, Brisas del Golf, salón social, entrada por la garita" className="w-full mt-2 rounded-xl border border-slate-200 p-3 text-sm text-slate-800"/>
+                                <p className={`text-[11px] mt-2 ${needsReferenceReview?'text-amber-700 font-bold':'text-slate-500'}`}>{needsReferenceReview?'Falta el nombre o una referencia del lugar. Confírmalo con el cliente antes de aceptar.':'El GPS y la referencia te ayudan a confirmar dónde debe llegar el equipo.'}</p>
+                                <button type="button" disabled={savingReference} onClick={saveReference} className="mt-3 rounded-xl bg-slate-900 text-white px-4 py-3 text-xs font-black disabled:opacity-60">{savingReference?'Guardando…':'Guardar referencia'}</button>
+                            </div>
                             <div className="rounded-[22px] bg-gradient-to-br from-[#F7F3FF] to-white p-4 border border-[#7657FF]/10"><div className="flex justify-between gap-3"><div><p className="text-[10px] uppercase tracking-[.12em] font-black text-[#7657FF] flex items-center gap-1.5"><Sparkles size={14}/> Servicio solicitado</p><p className="font-black text-[#10182D] mt-2 whitespace-pre-wrap">{selectedRequest.servicio || '—'}</p></div><span className="shrink-0 h-fit rounded-full bg-[#7657FF]/10 px-3 py-1.5 font-black text-[#7657FF]">{money(selectedRequest.total)}</span></div>{selectedRequest.descripcionEvento && <p className="font-semibold text-slate-600 whitespace-pre-wrap mt-3 text-sm leading-relaxed">{selectedRequest.descripcionEvento}</p>}{selectedRequest.comentarios && <div className="mt-3 pt-3 border-t border-[#7657FF]/10"><p className="text-[9px] uppercase tracking-widest font-black text-slate-400">Comentarios</p><p className="font-semibold text-slate-600 whitespace-pre-wrap mt-1">{selectedRequest.comentarios}</p></div>}</div>
                             {(selectedRequest.esNavidad === true || /entregas de nochebuena/i.test(String(selectedRequest.servicio || ''))) && <div className="rounded-[22px] border border-red-100 bg-gradient-to-br from-red-50 via-white to-amber-50 p-4"><div className="flex items-center gap-3 mb-3"><div className="w-11 h-11 rounded-[15px] bg-red-100 flex items-center justify-center text-2xl">🎅</div><div><p className="text-[9px] uppercase tracking-[.14em] font-black text-red-500">Operación Navidad</p><p className="font-black text-[#10182D]">Santa asignado</p></div></div><select value={santaAsignado} onChange={e=>setSantaAsignado(e.target.value)} className="w-full rounded-[16px] border border-red-100 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none">{availableSantaNames.map(name=><option key={name} value={name}>{name}</option>)}</select><p className="mt-2 text-[10px] font-semibold text-slate-400">Selecciona quién atenderá esta entrega. La asignación quedará guardada en la reserva.</p></div>}
                             {showResourcePanel && resourceStatus && <div className={`rounded-[22px] border p-4 ${resourceStatus.feasible?'border-emerald-100 bg-emerald-50/70':'border-rose-200 bg-rose-50/80'}`}><div className="flex items-start justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${resourceStatus.feasible?'text-emerald-600':'text-rose-600'}`}>Personal para esta reserva</p><p className="font-black text-slate-900 mt-1">{resourceStatus.feasible?'Sí puedes recibirla con el personal actual':'No hay suficiente personal en este horario'}</p><p className="text-[10px] font-semibold text-slate-500 mt-1">Puedes corregir aquí lo que realmente requiere el servicio antes de aceptar.</p></div>{resourceStatus.feasible?<CheckCircle2 size={24} className="text-emerald-500 shrink-0"/>:<AlertTriangle size={24} className="text-rose-500 shrink-0"/>}</div><div className="grid grid-cols-2 gap-2 mt-4"><div className="rounded-[16px] bg-white p-3 border border-slate-100"><p className="text-[8px] font-black uppercase text-slate-400">Animadores</p><div className="grid grid-cols-3 gap-1 mt-2 text-center"><div><p className="text-[8px] font-bold text-slate-400">Total</p><p className="font-black text-slate-800">{resourceStatus.capacity.animadores}</p></div><div><p className="text-[8px] font-bold text-slate-400">Ocupados</p><p className="font-black text-amber-600">{resourceStatus.usage.animadores}</p></div><div><p className="text-[8px] font-bold text-slate-400">Libres</p><p className="font-black text-emerald-600">{resourceStatus.available.animadores}</p></div></div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Esta reserva necesita</label><input type="number" min="0" max="50" value={resourceDraft.animadores} onChange={e=>setResourceDraft(prev=>({...prev,animadores:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-1 w-full h-11 rounded-[13px] border border-slate-200 bg-slate-50 px-3 text-center font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div><div className="rounded-[16px] bg-white p-3 border border-slate-100"><p className="text-[8px] font-black uppercase text-slate-400">Payasos</p><div className="grid grid-cols-3 gap-1 mt-2 text-center"><div><p className="text-[8px] font-bold text-slate-400">Total</p><p className="font-black text-slate-800">{resourceStatus.capacity.payasos}</p></div><div><p className="text-[8px] font-bold text-slate-400">Ocupados</p><p className="font-black text-amber-600">{resourceStatus.usage.payasos}</p></div><div><p className="text-[8px] font-bold text-slate-400">Libres</p><p className="font-black text-emerald-600">{resourceStatus.available.payasos}</p></div></div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Esta reserva necesita</label><input type="number" min="0" max="50" value={resourceDraft.payasos} onChange={e=>setResourceDraft(prev=>({...prev,payasos:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-1 w-full h-11 rounded-[13px] border border-slate-200 bg-slate-50 px-3 text-center font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div></div><div className="grid grid-cols-[1fr_auto] gap-2 mt-3 items-end"><div><label className="block text-[8px] font-black uppercase tracking-wider text-slate-400">Duración que ocupa al personal</label><div className="relative mt-1"><input type="number" min="30" max="720" step="15" value={resourceDraft.durationMinutes} onChange={e=>setResourceDraft(prev=>({...prev,durationMinutes:Math.max(30,Math.min(720,Number(e.target.value)||120))}))} className="w-full h-11 rounded-[13px] border border-slate-200 bg-white px-3 pr-12 font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/><span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">MIN</span></div></div><button type="button" disabled={savingResources} onClick={saveResources} className="h-11 px-4 rounded-[13px] bg-[#10182D] text-white text-[9px] font-black uppercase tracking-wider disabled:opacity-50">{savingResources?'Guardando':'Guardar personal'}</button></div>{!resourceStatus.feasible&&<div className="mt-3 rounded-[14px] bg-white/80 border border-rose-100 p-3 text-[10px] font-bold text-rose-600">No podrás aceptar la reserva hasta que haya personal suficiente o ajustes correctamente lo que necesita este servicio.</div>}</div>}
@@ -1052,7 +1078,7 @@ const NotifModal = memo(function NotifModal({ isOpen, onClose, eventosActivos, o
                             <div className={`rounded-[22px] border p-4 ${needsTransportReview?'border-amber-200 bg-amber-50/80':'border-[#7657FF]/10 bg-[#F8F6FF]'}`}><div className="flex items-center justify-between gap-3"><div><p className={`text-[9px] uppercase tracking-[.14em] font-black ${needsTransportReview?'text-amber-600':'text-[#7657FF]'}`}>{needsTransportReview?'Transporte por confirmar':'Transporte de la solicitud'}</p><p className="text-[10px] font-semibold text-slate-500 mt-1">{needsTransportReview?'La ubicación quedó fuera del cálculo automático. Define el transporte final antes de aceptar.':'Si la zona o dirección no concuerda, corrige el monto antes de aceptar.'}</p></div><span className="text-xl font-black text-slate-900">{money(selectedRequest.transporte)}</span></div>{selectedRequest.transporteOriginalWeb!=null&&<p className="mt-2 text-[9px] font-bold text-slate-400">Calculado en web: {money(selectedRequest.transporteOriginalWeb)}</p>}<div className="grid grid-cols-[1fr_auto] gap-2 mt-3"><div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">$</span><input type="number" min="0" step="0.01" value={transportDraft} onChange={e=>setTransportDraft(e.target.value)} className="w-full h-12 rounded-[14px] bg-white border border-slate-200 pl-8 pr-3 font-black text-slate-900 outline-none focus:border-[#7657FF]/40"/></div><button type="button" disabled={savingTransport} onClick={saveTransport} className="px-4 h-12 rounded-[14px] bg-[#7657FF] text-white font-black text-[9px] uppercase tracking-wider disabled:opacity-60">{savingTransport?'Guardando':needsTransportReview?'Confirmar transporte':'Aplicar'}</button></div></div>
                             <div className="grid grid-cols-3 gap-2"><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Transporte</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.transporte)}</p></div><div className="rounded-[18px] bg-slate-50 p-3"><p className="text-[9px] uppercase font-black text-slate-400">Descuento</p><p className="font-black text-slate-800 mt-1">{money(selectedRequest.descuento)}</p></div><div className="rounded-[18px] bg-emerald-50 p-3"><p className="text-[9px] uppercase font-black text-emerald-500">Total</p><p className="font-black text-emerald-600 mt-1">{money(selectedRequest.total)}</p></div></div></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting || needsLocationReview || needsTransportReview || (showResourcePanel && resourceStatus && !resourceStatus.feasible)} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : needsLocationReview ? 'Revisa ubicación' : needsTransportReview ? 'Revisa transporte' : 'Aceptar reserva'}</button></div>
+                        <div className="grid grid-cols-2 gap-3 mt-4"><button type="button" disabled={rejecting || confirming} onClick={rejectSelected} className="py-4 rounded-[18px] border-2 border-rose-200 text-rose-600 font-black bg-white disabled:opacity-60 active:scale-[.98] flex items-center justify-center gap-2"><X size={20}/>{rejecting ? 'Rechazando...' : 'Rechazar reserva'}</button><button disabled={confirming || rejecting || savingReference || needsReferenceReview || needsLocationReview || needsTransportReview || (showResourcePanel && resourceStatus && !resourceStatus.feasible)} onClick={confirmSelected} className="py-4 rounded-[18px] bg-gradient-to-r from-[#FF2F9A] via-[#D52DDA] to-[#7657FF] disabled:opacity-60 text-white font-black shadow-[0_14px_30px_rgba(157,74,255,.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"><CheckCircle2 size={20}/>{confirming ? 'Confirmando...' : needsReferenceReview ? 'Añade referencia' : needsLocationReview ? 'Revisa ubicación' : needsTransportReview ? 'Revisa transporte' : 'Aceptar reserva'}</button></div>
                     </div>
                 )}
             </div>
@@ -2804,6 +2830,7 @@ export default function App({ firebaseUser }) {
 
   const handleConfirmWebRequest = useCallback(async (event, santaAsignado = '') => {
       if (!event?.id || utils.normalizeText(event.origen) !== 'web directa') return false;
+      if(needsPlaceReference(event)) {showAlert('Añade la barriada, PH o salón del evento antes de aceptar.',false);return false;}
       const needsTransportReview = transportPending(event);
       if (needsTransportReview && event?.transporteRevisadoEnApp !== true) {
           showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
@@ -2819,6 +2846,7 @@ export default function App({ firebaseUser }) {
               const remote = snap.data();
               if (utils.normalizeText(remote.origen) !== 'web directa') throw new Error('NOT_WEB_REQUEST');
               if (utils.normalizeText(remote.estado) !== 'pendiente') throw new Error('ALREADY_PROCESSED');
+              if(needsPlaceReference(remote)) throw new Error('PLACE_REFERENCE_REQUIRED');
               const remoteNeedsTransportReview = transportPending(remote);
               if (remoteNeedsTransportReview && remote.transporteRevisadoEnApp !== true) throw new Error('TRANSPORT_REVIEW_REQUIRED');
               const esNavidad = remote.esNavidad === true || /entregas de nochebuena/i.test(String(remote.servicio || ''));
@@ -2842,6 +2870,7 @@ export default function App({ firebaseUser }) {
       } catch (err) {
           console.error('Error confirmando solicitud web:', err);
           if (err?.message === 'ALREADY_PROCESSED') showAlert('Esta solicitud ya fue procesada en otro dispositivo.', false);
+          else if (err?.message === 'PLACE_REFERENCE_REQUIRED') showAlert('Confirma la barriada, PH o salón antes de aceptar la solicitud.',false);
           else if (err?.message === 'LOCATION_REVIEW_REQUIRED') showAlert('Confirma el punto de entrega de Santa antes de aceptar la reserva.', false);
           else if (err?.message === 'TRANSPORT_REVIEW_REQUIRED') showAlert('Revisa y confirma el transporte de esta ubicación antes de aceptar la reserva.', false);
           else if(err?.details?.reason) showAlert(err.message || 'Revisa la disponibilidad y los datos de la solicitud.', false);
@@ -3188,12 +3217,12 @@ export default function App({ firebaseUser }) {
     const rawUbi = String(ubi || '').trim();
     const mapUrlMatch = rawDir.match(/https?:\/\/(?:www\.)?(?:(?:google\.[^\s/]+\/maps|maps\.google\.[^\s/]+)|maps\.app\.goo\.gl)[^\s]*/i);
     const gps = christmasEventGps(eventData || { direccion:rawDir });
-    const queryText = [rawDir.replace(/https?:\/\/\S+/g,'').trim(), rawUbi, 'Panamá'].filter(Boolean).join(' ').trim();
+    const queryText = [rawDir.replace(/https?:\/\/\S+/g,'').trim(), String(eventData?.referenciaLugar||'').trim(), rawUbi, 'Panamá'].filter(Boolean).join(' ').trim();
 
     let googleUrl = '';
     let wazeUrl = '';
     if (gps) {
-        googleUrl = mapUrlMatch?.[0] || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${gps.lat},${gps.lng}`)}`;
+        googleUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${gps.lat},${gps.lng}`)}`;
         wazeUrl = `https://www.waze.com/ul?ll=${encodeURIComponent(`${gps.lat},${gps.lng}`)}&navigate=yes`;
     } else {
         googleUrl = mapUrlMatch?.[0] || `https://maps.google.com/maps?q=${encodeURIComponent(queryText || rawDir || rawUbi)}`;
@@ -3204,7 +3233,7 @@ export default function App({ firebaseUser }) {
         isOpen:true,
         googleUrl,
         wazeUrl,
-        label: rawUbi || String(eventData?.referenciaLugar || '').trim() || 'Ubicación de la reserva'
+        label: String(eventData?.referenciaLugar || '').trim() || rawUbi || 'Ubicación de la reserva'
     });
   }, []);
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
@@ -4218,7 +4247,7 @@ export default function App({ firebaseUser }) {
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
       <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
-      <NotifModal isOpen={isNotifOpen} onClose={()=>{setIsNotifOpen(false);setNotificationPendingId('')}} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} christmasSantaCapacity={christmasSantaCapacity} targetReservationId={notificationPendingId} />
+      <NotifModal onMapClick={openGoogleMaps} isOpen={isNotifOpen} onClose={()=>{setIsNotifOpen(false);setNotificationPendingId('')}} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} christmasSantaCapacity={christmasSantaCapacity} targetReservationId={notificationPendingId} />
       <EventFormModal isOpen={modalConfig.isOpen} initialData={modalConfig.initialData} isCotizacionMode={modalConfig.isCotizacion} onClose={closeModal} onSave={handleSaveFromModal} PAQUETES={catalogoPaquetes} onAddCustomService={handleAddCustomService} showAlert={showAlert} clientesRegistrados={clientsList} listadoProveedores={proveedores} />
       <ClientEditModal isOpen={clientEditModal.isOpen} oldName={clientEditModal.oldName} clientKey={clientEditModal.clientKey} onClose={() => setClientEditModal({isOpen:false, oldName:'', clientKey:''})} onSave={handleSaveClientName} />
       <ProveedorModal isOpen={proveedorModal.isOpen} data={proveedorModal.data} onClose={() => setProveedorModal({isOpen:false, data:null})} onSave={handleSaveProveedor} />
