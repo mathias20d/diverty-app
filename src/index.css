@@ -1,3 +1,44 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Estas superficies ya son casi opacas: el desenfoque no aporta legibilidad
+   en móvil y obliga a recomponer el fondo durante cada desplazamiento. */
+@media (max-width: 640px) {
+  .diverty-app-shell .backdrop-blur-2xl {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .diverty-app-shell .animate-fadeInUp {
+    animation-delay: 0s !important;
+  }
+
+  .diverty-app-shell .transition-all {
+    transition-duration: 180ms;
+  }
+
+  .diverty-app-shell .animate-pulse-slow,
+  .diverty-app-shell .animate-spin-slow {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diverty-app-shell .animate-fadeIn,
+  .diverty-app-shell .animate-fadeInUp,
+  .diverty-app-shell .animate-slideLeft,
+  .diverty-app-shell .animate-slideUp {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+  }
+
+  .diverty-app-shell .animate-pulse-slow,
+  .diverty-app-shell .animate-spin-slow {
+    animation: none;
+  }
+
+  .diverty-app-shell .transition-all {
+    transition-duration: 0.01ms;
+  }
+}

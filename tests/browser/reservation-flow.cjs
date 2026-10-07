@@ -79,10 +79,13 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  assert.equal(await edit.getByLabel('Cantidad de Hot dogs',{exact:true}).inputValue(),'200');
  assert.equal(await edit.getByLabel('Horas de Pintacaritas',{exact:true}).inputValue(),'2');
  await edit.getByLabel('Horas de Pintacaritas',{exact:true}).fill('3');
+ await edit.getByText('Total recibido / abonado ($)',{exact:true}).locator('..').locator('input').fill('125');
+ await edit.getByText('Gastos operativos totales ($)',{exact:true}).locator('..').locator('input').fill('15');
  await edit.getByRole('button',{name:'Actualizar Reserva',exact:true}).click();await edit.waitFor({state:'hidden'});
  const edited=await page.evaluate(id=>window.__rows['artifacts/diverty-oficial/public/data/eventos/'+id],saved.id);
  assert.equal(edited.total,475);assert.equal(edited.serviciosSeleccionados[1].duracionHoras,3);
- console.log('PASS: reopening and editing retained units, rates and hours; total updated to $475.');
+ assert.equal(edited.abono,125);assert.equal(Number(edited.gastos),15);assert.equal(edited.costosSeparados,true);
+ console.log('PASS: reopening retained units and hours; $475 total, $125 payment and $15 internal expenses saved independently.');
  // An unrelated saved draft must not replace the chosen client's contact details.
  await page.evaluate(saved=>{const draft={...saved,cliente:'Otro borrador',telefono:'69999999',email:'otro@example.invalid',serviciosSeleccionados:[],servicio:'',total:'',abono:''};delete draft.id;localStorage.setItem('diverty_form_draft',JSON.stringify(draft));},saved);
  await page.getByRole('button',{name:'Reservar',exact:true}).click();

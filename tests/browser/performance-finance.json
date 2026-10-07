@@ -1,0 +1,250 @@
+{
+  "mes": {
+    "finanzasData": {
+      "facturado": 120000,
+      "cobrado": 120000,
+      "porCobrar": 0,
+      "gastosInternos": 2400,
+      "proveedores": 12000,
+      "proveedoresPagados": 6000,
+      "proveedoresPendientes": 6000,
+      "costosTotales": 14400,
+      "ganancia": 105600,
+      "roi": "88",
+      "tI": 120000,
+      "tG": 14400,
+      "bT": 105600,
+      "deudaTotalGlobal": 0
+    },
+    "gastosPorCategoria": {
+      "personal": 0,
+      "transporte": 0,
+      "globos": 0,
+      "otros": 2400
+    },
+    "finanzasMes": {
+      "ingresosEsteMesGlobal": 105600,
+      "diasTranscurridos": 7,
+      "diasTotales": 31,
+      "proyeccion": 467657.1428571429,
+      "progresoMeta": 100
+    },
+    "chartData": [
+      {
+        "date": "Sem 1",
+        "value": 105600
+      },
+      {
+        "date": "Sem 2",
+        "value": 0
+      },
+      {
+        "date": "Sem 3",
+        "value": 0
+      },
+      {
+        "date": "Sem 4",
+        "value": 0
+      },
+      {
+        "date": "Sem 5",
+        "value": 0
+      }
+    ],
+    "evtCount": 1200
+  },
+  "anio": {
+    "finanzasData": {
+      "facturado": 120000,
+      "cobrado": 120000,
+      "porCobrar": 0,
+      "gastosInternos": 2400,
+      "proveedores": 12000,
+      "proveedoresPagados": 6000,
+      "proveedoresPendientes": 6000,
+      "costosTotales": 14400,
+      "ganancia": 105600,
+      "roi": "88",
+      "tI": 120000,
+      "tG": 14400,
+      "bT": 105600,
+      "deudaTotalGlobal": 0
+    },
+    "gastosPorCategoria": {
+      "personal": 0,
+      "transporte": 0,
+      "globos": 0,
+      "otros": 2400
+    },
+    "finanzasMes": {
+      "ingresosEsteMesGlobal": 105600,
+      "diasTranscurridos": 7,
+      "diasTotales": 31,
+      "proyeccion": 467657.1428571429,
+      "progresoMeta": 100
+    },
+    "chartData": [
+      {
+        "date": "Ene",
+        "value": 0
+      },
+      {
+        "date": "Feb",
+        "value": 0
+      },
+      {
+        "date": "Mar",
+        "value": 0
+      },
+      {
+        "date": "Abr",
+        "value": 0
+      },
+      {
+        "date": "May",
+        "value": 0
+      },
+      {
+        "date": "Jun",
+        "value": 0
+      },
+      {
+        "date": "Jul",
+        "value": 0
+      },
+      {
+        "date": "Ago",
+        "value": 0
+      },
+      {
+        "date": "Sep",
+        "value": 0
+      },
+      {
+        "date": "Oct",
+        "value": 105600
+      },
+      {
+        "date": "Nov",
+        "value": 0
+      },
+      {
+        "date": "Dic",
+        "value": 0
+      }
+    ],
+    "evtCount": 1200
+  },
+  "todos": {
+    "finanzasData": {
+      "facturado": 120000,
+      "cobrado": 120000,
+      "porCobrar": 0,
+      "gastosInternos": 2400,
+      "proveedores": 12000,
+      "proveedoresPagados": 6000,
+      "proveedoresPendientes": 6000,
+      "costosTotales": 14400,
+      "ganancia": 105600,
+      "roi": "88",
+      "tI": 120000,
+      "tG": 14400,
+      "bT": 105600,
+      "deudaTotalGlobal": 0
+    },
+    "gastosPorCategoria": {
+      "personal": 0,
+      "transporte": 0,
+      "globos": 0,
+      "otros": 2400
+    },
+    "finanzasMes": {
+      "ingresosEsteMesGlobal": 105600,
+      "diasTranscurridos": 7,
+      "diasTotales": 31,
+      "proyeccion": 467657.1428571429,
+      "progresoMeta": 100
+    },
+    "chartData": [
+      {
+        "date": "May",
+        "value": 0
+      },
+      {
+        "date": "Jun",
+        "value": 0
+      },
+      {
+        "date": "Jul",
+        "value": 0
+      },
+      {
+        "date": "Ago",
+        "value": 0
+      },
+      {
+        "date": "Sep",
+        "value": 0
+      },
+      {
+        "date": "Oct",
+        "value": 105600
+      }
+    ],
+    "evtCount": 1200
+  },
+  "seleccionado": {
+    "finanzasData": {
+      "facturado": 120000,
+      "cobrado": 120000,
+      "porCobrar": 0,
+      "gastosInternos": 2400,
+      "proveedores": 12000,
+      "proveedoresPagados": 6000,
+      "proveedoresPendientes": 6000,
+      "costosTotales": 14400,
+      "ganancia": 105600,
+      "roi": "88",
+      "tI": 120000,
+      "tG": 14400,
+      "bT": 105600,
+      "deudaTotalGlobal": 0
+    },
+    "gastosPorCategoria": {
+      "personal": 0,
+      "transporte": 0,
+      "globos": 0,
+      "otros": 2400
+    },
+    "finanzasMes": {
+      "ingresosEsteMesGlobal": 105600,
+      "diasTranscurridos": 7,
+      "diasTotales": 31,
+      "proyeccion": 467657.1428571429,
+      "progresoMeta": 100
+    },
+    "chartData": [
+      {
+        "date": "Sem 1",
+        "value": 105600
+      },
+      {
+        "date": "Sem 2",
+        "value": 0
+      },
+      {
+        "date": "Sem 3",
+        "value": 0
+      },
+      {
+        "date": "Sem 4",
+        "value": 0
+      },
+      {
+        "date": "Sem 5",
+        "value": 0
+      }
+    ],
+    "evtCount": 1200
+  }
+}

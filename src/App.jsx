@@ -484,7 +484,7 @@ async function prepareDivertyData() {
 // --- 2. DICCIONARIO DE ESTILOS PREMIUM ---
 const UI = {
   card: "bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(248,249,255,0.94))] backdrop-blur-2xl border border-slate-200/70 rounded-[26px] shadow-[0_8px_26px_rgba(15,23,42,0.065),inset_0_1px_0_rgba(255,255,255,0.95)] relative overflow-hidden group hover:shadow-[0_16px_42px_rgba(71,51,150,0.11)] hover:border-violet-200/80 transition-all duration-500",
-  modal: "bg-white/98 backdrop-blur-2xl rounded-t-[32px] sm:rounded-[32px] shadow-[0_30px_90px_rgba(8,15,35,0.30)] border border-white/80 transition-transform duration-300",
+  modal: "bg-white/[0.98] backdrop-blur-2xl rounded-t-[32px] sm:rounded-[32px] shadow-[0_30px_90px_rgba(8,15,35,0.30)] border border-white/80 transition-transform duration-300",
   input: "w-full bg-white/75 focus:bg-white border border-slate-200/80 focus:border-[#8B5CF6]/55 rounded-[16px] p-4 text-[15px] font-semibold text-slate-900 outline-none focus:ring-4 focus:ring-[#8B5CF6]/10 transition-all placeholder:text-slate-400 shadow-[0_5px_18px_rgba(15,23,42,0.035),inset_0_1px_0_rgba(255,255,255,.9)]",
   label: "block text-[10px] uppercase text-slate-500 font-extrabold tracking-[0.18em] mb-2 ml-1",
   title: "text-3xl sm:text-5xl font-black text-slate-950 tracking-[-0.03em]",
@@ -868,6 +868,12 @@ function useCountUp(end, duration = 1000) {
     }, [end, duration]); 
     return count; 
 }
+
+// La animación actualiza únicamente este número, sin volver a dibujar toda la app.
+const AnimatedMoney = memo(function AnimatedMoney({ value }) {
+    const amount = useCountUp(value);
+    return <span>{amount.toFixed(0)}</span>;
+});
 
 const AnimatedProgress = memo(function AnimatedProgress({ value }) { 
     const [width, setWidth] = useState(0); const barRef = useRef(null); 
@@ -1338,7 +1344,7 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
     if (!isOpen) return null; const opcionesEstado = isCotizacionMode ? ['Cotización', 'Cot. Aprobada', 'Cot. Rechazada'] : ['Pendiente', 'Confirmado', 'Completado'];
     return (
         <div role="dialog" aria-modal="true" aria-label={isCotizacionMode ? 'Cotización' : 'Reserva'} className="fixed inset-0 z-[9998] bg-[#071225]/55 flex justify-center items-end sm:items-center p-0 sm:p-4 animate-fadeIn">
-            <div className={`${UI.modal.replace('bg-white/98 backdrop-blur-2xl', 'bg-white')} w-full h-[94vh] sm:h-auto sm:max-h-[92vh] sm:max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0 rounded-t-[34px] sm:rounded-[34px] border border-white/70 shadow-[0_-12px_50px_rgba(31,41,55,.18)]`}>
+            <div className={`${UI.modal.replace('bg-white/[0.98] backdrop-blur-2xl', 'bg-white')} w-full h-[94vh] sm:h-auto sm:max-h-[92vh] sm:max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0 rounded-t-[34px] sm:rounded-[34px] border border-white/70 shadow-[0_-12px_50px_rgba(31,41,55,.18)]`}>
                  <div className="px-5 py-5 sm:px-7 sm:py-6 border-b border-slate-200/60 flex justify-between items-center z-20 bg-white"><h3 className="font-black text-slate-900 text-2xl flex items-center gap-3 tracking-tight">{isCotizacionMode ? <FileText className="text-amber-500 drop-shadow-sm"/> : (initialData?.id && !initialData?.isDuplicated ? <Edit className="text-[#7657FF] drop-shadow-sm"/> : <Plus className="text-[#7657FF] drop-shadow-sm"/>)} {isCotizacionMode ? (initialData?.id ? 'Editar Cotización' : 'Nueva Cotización') : (initialData?.id && !initialData?.isDuplicated ? 'Editar Reserva' : 'Nueva Reserva')}</h3><div className="flex gap-2">{(!initialData?.id || initialData?.isDuplicated) && (<button onClick={handleClearDraft} type="button" className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 active:scale-[0.98] transition-colors border border-rose-200 shadow-sm"><Trash2 size={20}/></button>)}<button onClick={onClose} type="button" className="p-2.5 bg-slate-100 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-200 active:scale-[0.98] transition-colors border border-slate-200 shadow-sm"><X size={20}/></button></div></div>
                  <div className="overflow-y-auto flex-1 px-4 py-5 sm:p-7 bg-[radial-gradient(circle_at_top_left,rgba(255,47,154,.06),transparent_30%),radial-gradient(circle_at_top_right,rgba(118,87,255,.09),transparent_34%),#F7F8FC]"><form onSubmit={handleSubmit} className="max-w-xl mx-auto pb-28 space-y-4">
                      {!isCotizacionMode && <div className="rounded-[24px] bg-[linear-gradient(100deg,#FF2F9A_0%,#D52DDA_48%,#7657FF_100%)] p-[1px] shadow-[0_16px_36px_rgba(157,74,255,.18)]"><div className="rounded-[23px] bg-white/95 px-4 py-3"><div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[.13em]"><span className="text-[#7657FF]">1 Cliente</span><span className="h-px flex-1 bg-slate-200"/><span className="text-[#FF2F9A]">2 Evento</span><span className="h-px flex-1 bg-slate-200"/><span className="text-amber-500">3 Servicio</span><span className="h-px flex-1 bg-slate-200"/><span className="text-emerald-500">4 Cobro</span></div></div></div>}
@@ -1382,8 +1388,17 @@ export default function App({ firebaseUser }) {
   const [appSettings, setAppSettings] = useState(() => readAppSettings(utils.getSafeLocal('diverty_settings'), { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }));
   // Mantiene día/mes financiero vivo aunque la app permanezca abierta durante medianoche.
   useEffect(() => {
-      const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-      return () => clearInterval(timer);
+      const refreshDay = () => {
+          const now = new Date();
+          setCurrentTime(previous => utils.getLocalYYYYMMDD(previous) === utils.getLocalYYYYMMDD(now) ? previous : now);
+      };
+      const onVisibilityChange = () => { if (!document.hidden) refreshDay(); };
+      const timer = setInterval(refreshDay, 60000);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      return () => {
+          clearInterval(timer);
+          document.removeEventListener('visibilitychange', onVisibilityChange);
+      };
   }, []);
   
   const [activeTab, setActiveTab] = useState('inicio');
@@ -1979,7 +1994,7 @@ export default function App({ firebaseUser }) {
   useEffect(() => {
     if (!firebaseUser || activeTab !== 'finanzas' || financePeriod === 'todos') return;
     let cancelled = false;
-    const now = new Date();
+    const now = currentTime;
     const year = financePeriod === 'mes' ? now.getFullYear() : selectedFinanceYear;
     const month = financePeriod === 'mes' ? now.getMonth()+1 : selectedFinanceMonth;
     const start = financePeriod === 'anio' ? `${year}-01-01` : `${year}-${String(month).padStart(2,'0')}-01`;
@@ -1994,7 +2009,7 @@ export default function App({ firebaseUser }) {
       .catch(() => { if (!cancelled) setFinanceLoadError('No se pudo actualizar el período. Vuelve a seleccionarlo para reintentar.'); })
       .finally(() => { if (!cancelled) setFinanceLoading(false); });
     return () => { cancelled = true; };
-  }, [firebaseUser,activeTab,financePeriod,selectedFinanceMonth,selectedFinanceYear]);
+  }, [firebaseUser,activeTab,financePeriod,selectedFinanceMonth,selectedFinanceYear,currentTime]);
 
 
   useEffect(() => {
@@ -2222,7 +2237,6 @@ export default function App({ firebaseUser }) {
       });
   }, [clientsList, todayTime, todayStr]);
 
-  const animatedGananciaHoy = useCountUp(stats.gananciaHoy);
   
   const agendaFiltrados = useMemo(() => { 
       return eventosActivos.filter(e => { 
@@ -2282,8 +2296,10 @@ export default function App({ firebaseUser }) {
   const contactCandidates = useMemo(() => enrichedClients.filter(c => c.needsContact).slice(0, 5), [enrichedClients]);
   const financeYear = useMemo(() => financePeriod === 'mes' ? todayObj.getFullYear() : selectedFinanceYear, [financePeriod, todayObj, selectedFinanceYear]);
   const financeMonth = useMemo(() => financePeriod === 'mes' ? (todayObj.getMonth() + 1) : selectedFinanceMonth, [financePeriod, todayObj, selectedFinanceMonth]);
+  const financesVisible = activeTab === 'finanzas';
 
   const evtCalculoBase = useMemo(() => {
+    if (!financesVisible) return [];
     return eventosActivos.filter(e => {
       const es = utils.normalizeText(e.estado);
       if (isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return false;
@@ -2295,9 +2311,10 @@ export default function App({ firebaseUser }) {
       if (financePeriod === 'anio') return y === financeYear;
       return y === financeYear && m === financeMonth;
     });
-  }, [eventosActivos, financePeriod, financeYear, financeMonth]);
+  }, [financesVisible, eventosActivos, financePeriod, financeYear, financeMonth]);
 
   const finanzasData = useMemo(() => {
+      if (!financesVisible) return null;
       const facturado = evtCalculoBase.reduce((a, e) => a + utils.safeNum(e.total), 0);
       const cobrado = evtCalculoBase.reduce((a, e) => a + Math.min(utils.safeNum(e.abono), utils.safeNum(e.total)), 0);
       const porCobrar = evtCalculoBase.reduce((a, e) => a + Math.max(utils.safeNum(e.total) - utils.safeNum(e.abono), 0), 0);
@@ -2313,15 +2330,16 @@ export default function App({ firebaseUser }) {
         // Alias para mantener compatibilidad con componentes existentes.
         tI: facturado, tG: costosTotales, bT: ganancia, deudaTotalGlobal: porCobrar
       };
-  }, [evtCalculoBase]);
+  }, [financesVisible, evtCalculoBase]);
 
-  const gastosPorCategoria = useMemo(() => evtCalculoBase.reduce((acc, ev) => {
+  const gastosPorCategoria = useMemo(() => financesVisible ? evtCalculoBase.reduce((acc, ev) => {
       const b = getExpenseBreakdownEvento(ev);
       acc.personal += b.personal; acc.transporte += b.transporte; acc.globos += b.globos; acc.otros += b.otros;
       return acc;
-  }, { personal:0, transporte:0, globos:0, otros:0 }), [evtCalculoBase]);
+  }, { personal:0, transporte:0, globos:0, otros:0 }) : null, [financesVisible, evtCalculoBase]);
   
   const finanzasMes = useMemo(() => { 
+    if (!financesVisible) return null;
     const ingresosEsteMesGlobal = eventosActivos.filter(e => { 
       const es = utils.normalizeText(e.estado); 
       if (isArchivedReservation(e) || isPendingWebRequest(e) || es.includes('cotizaci') || es.includes('cot.')) return false; 
@@ -2338,9 +2356,10 @@ export default function App({ firebaseUser }) {
     const progresoMeta = Math.min((ingresosEsteMesGlobal / appSettings.metaMensual) * 100, 100); 
     
     return { ingresosEsteMesGlobal, diasTranscurridos, diasTotales, proyeccion, progresoMeta }; 
-  }, [eventosActivos, financeYear, financeMonth, todayObj, todayTime, appSettings.metaMensual]);
+  }, [financesVisible, eventosActivos, financeYear, financeMonth, todayObj, todayTime, appSettings.metaMensual]);
 
   const chartData = useMemo(() => {
+    if (!financesVisible) return [];
     if (financePeriod === 'anio') {
       return NOMBRES_MESES.map((nombre, idx) => {
         const month = idx + 1;
@@ -2370,7 +2389,7 @@ export default function App({ firebaseUser }) {
       }).reduce((acc, ev) => acc + (utils.safeNum(ev.total) - getCostosEvento(ev)), 0);
       return { date: s.label, value };
     });
-  }, [eventosActivos, financePeriod, financeYear, financeMonth, todayTime]);
+  }, [financesVisible, eventosActivos, financePeriod, financeYear, financeMonth, todayTime]);
 
   const maxChartVal = useMemo(() => Math.max(...chartData.map(d => d.value), 100), [chartData]); 
   const cotizacionesActivas = useMemo(() => eventosActivos.filter(e => { const es = utils.normalizeText(e.estado); return es === 'cotizacion' || es === 'cot. aprobada'; }), [eventosActivos]); 
@@ -4069,7 +4088,7 @@ export default function App({ firebaseUser }) {
              </div>
 
              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 animate-fadeInUp" style={{animationDelay: '100ms'}}>
-               <div className={`${UI.card} p-4 sm:p-5 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Ganancia Hoy</p><p className="text-3xl font-extrabold text-emerald-500 tracking-tight">${animatedGananciaHoy.toFixed(0)}</p></div>
+               <div className={`${UI.card} p-4 sm:p-5 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Ganancia Hoy</p><p className="text-3xl font-extrabold text-emerald-500 tracking-tight">$<AnimatedMoney value={stats.gananciaHoy} /></p></div>
                <div className={`${UI.card} p-4 sm:p-5 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Por Cobrar Período</p><p className="text-3xl font-extrabold text-rose-500 tracking-tight">${finanzasData.deudaTotalGlobal.toFixed(0)}</p></div>
                <div className={`col-span-2 ${UI.card} p-4 sm:p-5 flex items-end justify-between gap-3 h-[105px]`}>
                  <div className="flex-1 flex justify-between items-end h-full gap-2 sm:gap-3">
@@ -4282,7 +4301,7 @@ export default function App({ firebaseUser }) {
   };
 
   return (
-    <div className="font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">
+    <div className="diverty-app-shell font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.3s ease-out forwards;} .animate-slideLeft{animation:slideLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-slideUp{animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-fadeInUp{animation:fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards;} @keyframes pulse-slow{0%,100%{opacity:0.04;transform:scale(1);}50%{opacity:0.06;transform:scale(1.05);}} .animate-pulse-slow{animation:pulse-slow 10s ease-in-out infinite;} @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin-slow{animation:spin-slow 15s linear infinite;} ::-webkit-scrollbar{display:none;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;} .pb-safe{padding-bottom: env(safe-area-inset-bottom);} button{-webkit-tap-highlight-color:transparent;} @media(max-width:640px){#main-content{background:radial-gradient(circle at 85% 8%,rgba(255,62,165,.055),transparent 24%),radial-gradient(circle at 10% 28%,rgba(118,87,255,.06),transparent 28%),linear-gradient(180deg,#F5F6FB 0%,#FAFAFD 48%,#F4F6FB 100%);} #main-content>div{padding-left:14px;padding-right:14px;} input,select,textarea{font-size:16px!important;} button{touch-action:manipulation;} .animate-fadeIn{animation-duration:.14s!important;} .animate-slideLeft{animation-duration:.18s!important;} .animate-slideUp{animation-duration:.2s!important;} .animate-fadeInUp{animation-duration:.22s!important;} }`}</style>
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
