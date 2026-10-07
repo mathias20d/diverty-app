@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Briefcase, Calendar, Download, FileSignature, Printer, Share2, Users, X } from 'lucide-react';
+import { billingMode } from '../../lib/reservation-lines.mjs';
 
 const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, catalogoPaquetes = [] }) {
     const isC = printType === 'cotizacion', isContrato = printType === 'contrato', isContratoProv = printType === 'contrato_proveedor';
@@ -18,7 +19,7 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
       : [];
     const summaryNames = String(printData.servicio || '')
       .split(/\s+\+\s+/)
-      .map(x => x.replace(/\s*\(x\d+\)\s*$/i, '').trim())
+      .map(x => x.replace(/\s*\(x\d+(?:[.,]\d+)?\)\s*$/i, '').trim())
       .filter(Boolean)
       .map(x => utils.normalizeText(x));
     let selectedServices = rawSelectedServices;
@@ -99,10 +100,10 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
         const durationText = [servicio.duracion, servicio.duracionTexto, servicio.descripcion, catalogMatch.duracion, catalogMatch.duracionTexto, catalogMatch.descripcion, ...includeLines].filter(Boolean).join(' ');
         const m = durationText.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b/i);
         const fallback = n.includes('plan recreativo') ? 2 : (n.includes('plan diverty') ? 3 : 0);
-        const hrs = utils.safeNum(servicio.duracionHoras) || utils.safeNum(catalogMatch.duracionHoras) || (m ? Number(String(m[1]).replace(',', '.')) : 0) || fallback;
-        const hourly = utils.normalizeText(servicio.tipoCobro || catalogMatch.tipoCobro || '') === 'hora' || servicio.isHourly === true || catalogMatch.isHourly === true;
+        const hrs = utils.normalizeText(servicio.tipoCobro || '') === 'unidad' ? 0 : utils.safeNum(servicio.duracionHoras) || utils.safeNum(catalogMatch.duracionHoras) || (m ? Number(String(m[1]).replace(',', '.')) : 0) || fallback;
+        const hourly = billingMode({...catalogMatch, ...servicio}) === 'hora';
         const duracion = hourly ? `${cant} ${cant === 1 ? 'Hora' : 'Horas'}` : (hrs > 0 ? `${hrs} ${hrs === 1 ? 'Hora' : 'Horas'}` : '—');
-        return { cant, duracion, detalles, precio: utils.safeNum(servicio.precio) };
+        return { cant, duracion, detalles, hourly, precio: utils.safeNum(servicio.precio) };
     };
 
     const invoiceConceptDescription = (servicio, info) => {
@@ -139,7 +140,7 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
         <BrandHeader/><InfoCards/>
         <div className="relative z-10 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
             <table className="w-full text-[10px]"><thead className="bg-gradient-to-r from-[#7657FF]/7 to-[#FF3EA5]/7"><tr className="text-[8px] uppercase tracking-wider text-slate-500"><th className="p-3 text-center w-[8%]">Cant.</th><th className="p-3 text-left w-[42%]">Concepto / Servicio</th><th className="p-3 text-center w-[16%]">Duración</th><th className="p-3 text-right w-[17%]">P. Unit.</th><th className="p-3 text-right w-[17%]">Total</th></tr></thead><tbody className="divide-y divide-slate-100">
-            {sA.map((s,i)=>{const x=serviceInfo(s); return <tr key={i}><td className="p-3 text-center font-bold">{x.cant}</td><td className="p-3"><p className="font-black text-slate-900">{String(s.nombre)}</p><p className="text-[8.5px] text-slate-400 mt-1">{invoiceConceptDescription(s, x)}</p></td><td className="p-3 text-center font-bold text-[#8B5CF6]">{x.duracion}</td><td className="p-3 text-right font-bold">B/. {(x.precio/x.cant).toFixed(2)}</td><td className="p-3 text-right font-black">B/. {x.precio.toFixed(2)}</td></tr>})}
+            {sA.map((s,i)=>{const x=serviceInfo(s); return <tr key={i}><td className="p-3 text-center font-bold">{x.cant}{x.hourly ? ' h' : ''}</td><td className="p-3"><p className="font-black text-slate-900">{String(s.nombre)}</p><p className="text-[8.5px] text-slate-400 mt-1">{invoiceConceptDescription(s, x)}</p></td><td className="p-3 text-center font-bold text-[#8B5CF6]">{x.duracion}</td><td className="p-3 text-right font-bold">B/. {(x.precio/x.cant).toFixed(2)}</td><td className="p-3 text-right font-black">B/. {x.precio.toFixed(2)}</td></tr>})}
             {trn>0&&<tr><td className="p-3 text-center font-bold">1</td><td className="p-3"><p className="font-black">Viáticos / Transporte</p><p className="text-[8.5px] text-slate-400 mt-1">Cobertura logística a {ubi}.</p></td><td className="p-3 text-center">—</td><td className="p-3 text-right font-bold">B/. {trn.toFixed(2)}</td><td className="p-3 text-right font-black">B/. {trn.toFixed(2)}</td></tr>}
             </tbody></table>
         </div>
