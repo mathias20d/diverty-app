@@ -197,15 +197,15 @@ test('an outdated device cannot accept a location that now requires transport re
 });
 
 
-test('a stale device cannot accept a manual Christmas request before its exact location is reviewed',async()=>{
+test('a manual Santa request accepts its remote written address without GPS or invented coordinates',async()=>{
   const f=fixture(), pending={...event,esNavidad:true,ubicacion:'Ubicación por confirmar',transporteRevisadoEnApp:true};
   f.rows.set(f.ref('eventos',event.id).path,pending);
-  assert.equal(await f.api.handleConfirmWebRequest({...pending,lat:9,lng:-79},'Santa 1'),false);
-  assert.equal(f.rows.get(f.ref('eventos',event.id).path).estado,'Pendiente');
-  await f.api.setDoc(f.ref('eventos',event.id),{lat:9,lng:-79},{merge:true});
   assert.equal(await f.api.handleConfirmWebRequest({...pending,lat:9,lng:-79},'Santa 1'),true);
-  assert.equal(f.rows.get(f.ref('eventos',event.id).path).estado,'Confirmado');
-  assert.equal(f.rows.get(f.ref('disponibilidad_web',event.id).path).lat,9);
+  const remote=f.rows.get(f.ref('eventos',event.id).path);
+  assert.equal(remote.estado,'Confirmado');assert.equal(remote.direccion,pending.direccion);assert.equal(remote.santaAsignado,'Santa 1');
+  assert.equal('lat' in remote,false);assert.equal('lng' in remote,false);
+  assert.equal('lat' in f.rows.get(f.ref('disponibilidad_web',event.id).path),false);
+  assert.equal(f.rows.get(f.ref('reservas_cliente',event.id).path).estado,'Confirmado');
 });
 
 

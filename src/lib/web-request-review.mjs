@@ -6,10 +6,8 @@ export function transportPending(event) {
 }
 export function requestReview(event) {
   const christmas = event?.esNavidad === true || /entregas de nochebuena/i.test(String(event?.servicio || ''));
-  const lat = event?.lat, lng = event?.lng;
-  const point = lat != null && lng != null && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) && Math.abs(Number(lat))<=90 && Math.abs(Number(lng))<=180 && !(Number(lat)===0 && Number(lng)===0);
   const issues = [];
-  if (!String(event?.direccion || '').trim() || (christmas && !point && !/(?:[?&](?:q|query|ll|center)=|@)-?\d+(?:\.\d+)?[, ]-?\d+(?:\.\d+)?/i.test(String(event?.direccion || '')))) issues.push('Ubicación');
+  if (!String(event?.direccion || '').trim()) issues.push('Ubicación');
   if (needsPlaceReference(event)) issues.push('Referencia');
   if (transportPending(event)) issues.push('Transporte');
   if (!christmas && event?.recursosRevisadosEnApp !== true) issues.push('Personal');

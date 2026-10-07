@@ -2,7 +2,7 @@
 
 La campana “Solicitudes web” conserva la gestión existente y añade Todas, Por revisar, Próximas (7 días en Panamá) y Falta abono. Las tarjetas muestran qué necesita revisión: ubicación, transporte, personal o Santa. Se ordenan por fecha/hora del evento. El filtro de abono es informativo; no introduce un requisito de pago para aprobar.
 
-La revisión de transporte usa la dirección del evento y los marcadores de la solicitud, incluyendo “Fuera de cobertura automática”. Guardar transporte cero explícitamente también permite resolver esa revisión. Las comprobaciones del documento remoto se conservan para impedir aceptar una solicitud desde información antigua. Navidad sigue exigiendo el punto exacto.
+La revisión de transporte usa la dirección del evento y los marcadores de la solicitud, incluyendo “Fuera de cobertura automática”. Guardar transporte cero explícitamente también permite resolver esa revisión. Las comprobaciones del documento remoto se conservan para impedir aceptar una solicitud desde información antigua. Las reservas de Santa se pueden aceptar con la dirección escrita, sin exigir coordenadas. **Añadir GPS (opcional)** permite guardar un pin cuando se dispone de él. Sin pin, el motor de rutas conserva su estimación de traslado de 15 minutos; no inventa coordenadas ni reemplaza la dirección.
 
 Las nuevas solicitudes creadas por el servicio central (`centralBookingVersion: 1`) se aprueban mediante `confirmWebBooking` cuando `config_web/global.centralBookingValidation` es verdadero. Si la llamada falla, la app muestra el error y no intenta aprobar directamente como alternativa. Las solicitudes históricas mantienen el flujo anterior.
 

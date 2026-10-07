@@ -16,6 +16,7 @@ test('pending list prioritizes event dates and preserves all requests across fil
 });
 test('review labels retain operational requirements without making a deposit mandatory',()=>{
   assert.deepEqual(requestReview({...event,requiereRevisionUbicacion:true}).issues,['Transporte','Personal']);
-  assert.deepEqual(requestReview({...event,esNavidad:true}).issues,['Ubicación','Asignar Santa']);
+  assert.deepEqual(requestReview({...event,esNavidad:true}).issues,['Asignar Santa']);
+  assert.deepEqual(requestReview({...event,esNavidad:true,santaAsignado:'Santa 1'}).issues,[]);
   assert.deepEqual(requestReview({...event,esNavidad:true,lat:9,lng:-79.5,santaAsignado:'Santa 1'}).issues,[]);
 });
