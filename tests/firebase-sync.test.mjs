@@ -1,4 +1,5 @@
 import {needsPlaceReference} from '../src/lib/location-reference.mjs';
+import {reservationGpsPoint} from '../src/lib/gps-point.mjs';
 import test from 'node:test';
 import { transportPending } from '../src/lib/web-request-review.mjs';
 import { bookingControlDates } from '../src/lib/booking-control.mjs';
@@ -33,7 +34,7 @@ function fixture() {
     writes.forEach(write => write());
   };
   const ctx = {
-    db: {}, appId: 'diverty-oficial', needsPlaceReference, transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
+    db: {}, appId: 'diverty-oficial', needsPlaceReference, reservationGpsPoint, transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
     doc: (_db, ...parts) => ({ id: parts.at(-1), path: parts.join('/') }),
     isEventRef: r => r.path.startsWith(base + 'eventos/'),
     availabilityRef: id => ref('disponibilidad_web', id), getDocRef: id => ref('eventos', id),

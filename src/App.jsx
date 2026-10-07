@@ -1,3 +1,4 @@
+import { reservationGpsPoint } from './lib/gps-point.mjs';
 import { useReservationViewport } from './lib/use-reservation-viewport.mjs';
 import IncrementalList from './components/IncrementalList.jsx';
 import AnimatedProgress from './components/AnimatedProgress.jsx';
@@ -58,18 +59,7 @@ const christmasTimeMinutes = value => {
   const m = String(value || '').match(/^(\d{1,2}):(\d{2})/);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
-const christmasEventGps = value => {
-  const valid = (a,b) => {
-    if(a == null || b == null || a === '' || b === '') return null;
-    const lat=Number(a),lng=Number(b);
-    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat)<=90 && Math.abs(lng)<=180 && !(lat===0 && lng===0) ? {lat,lng} : null;
-  };
-  const stored=valid(value?.lat,value?.lng); if(stored) return stored;
-  let raw=String(value?.direccion||'').trim();
-  try { raw=decodeURIComponent(raw); } catch { /* Keep the original text. */ }
-  const match=raw.match(/(?:[?&](?:q|query|ll|center)=|@|^)(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/i);
-  return match ? valid(match[1],match[2]) : null;
-};
+const christmasEventGps = reservationGpsPoint;
 
 const christmasDistanceKm = (a, b) => {
   if (!a || !b) return null;
@@ -806,7 +796,7 @@ const NavigationChoiceModal = memo(function NavigationChoiceModal({ modal, onClo
             <button type="button" onClick={()=>open(modal.googleUrl)} className="min-h-[112px] rounded-[22px] bg-[#F7F3FF] border border-[#7657FF]/15 text-[#7657FF] flex flex-col items-center justify-center gap-1.5 active:scale-[.97] shadow-sm"><MapIcon size={30}/><span className="font-black text-[12px]">Google Maps</span><span className="text-[9px] font-bold opacity-70">Mapa y ruta</span></button>
             <button type="button" onClick={()=>open(modal.wazeUrl)} className="min-h-[112px] rounded-[22px] bg-sky-50 border border-sky-100 text-sky-600 flex flex-col items-center justify-center gap-1.5 active:scale-[.97] shadow-sm"><MapPin size={30}/><span className="font-black text-[12px]">Waze</span><span className="text-[9px] font-bold opacity-70">Navegar ahora</span></button>
           </div>
-          <p className="text-[10px] font-semibold text-slate-400 text-center mt-4 leading-relaxed">Si la reserva tiene coordenadas GPS exactas, ambas aplicaciones abrirán el mismo punto.</p>
+          <p className="text-[10px] font-semibold text-slate-400 text-center mt-4 leading-relaxed">Maps y Waze abrirán las coordenadas guardadas. Comprueba que el pin coincida con el lugar del evento.</p>
         </div>
       </div>
     );

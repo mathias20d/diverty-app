@@ -17,9 +17,12 @@ PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromiu
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/panel-flow.cjs
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/lists-flow.cjs
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/keyboard-flow.cjs
+PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/maps-flow.cjs
 ```
 
 `ORIGIN` permite usar otro servidor local. Las pruebas simulan la autenticación y Firestore y bloquean las solicitudes externas; no modifican datos reales.
+
+Los enlaces de Google Maps se interpretan usando primero las coordenadas del pin (`!3d…!4d…`), antes que el centro de la vista (`@…`). Los valores numéricos guardados conservan prioridad. `maps-flow.cjs` comprueba que Google Maps y Waze abren ese mismo punto desde las tarjetas. El lector de coordenadas se mantiene también en `Diverty-/assets/js/diverty-gps-point.mjs`.
 
 El recorrido del panel usa reservas pendientes y confirmadas con abonos parciales y comprueba sus tarjetas en Inicio y Agenda, además de los cobros en Finanzas. Así detecta errores de componentes compartidos que no aparecen cuando todas las reservas están completadas.
 
