@@ -17,6 +17,14 @@ const confirmCentralRequest = async (...args) => args[0]?.centralBookingVersion 
 const PdfTemplate = lazy(() => import('./modules/documents/PdfTemplate.jsx'));
 
 const WebAdmin = lazy(() => import('./modules/web/WebAdmin.jsx'));
+const loadFinancesView = () => import('./modules/finances/FinancesView.jsx');
+const loadSettingsView = () => import('./modules/settings/SettingsView.jsx');
+const FinancesView = lazy(loadFinancesView);
+const SettingsView = lazy(loadSettingsView);
+const preloadSection = tab => {
+    const load = tab === 'finanzas' ? loadFinancesView : tab === 'config' ? loadSettingsView : null;
+    if (load) load().catch(() => {});
+};
 
 // The reservation subscribes independently so opening it leaves the active screen intact.
 const ReservationModalHost = memo(function ReservationModalHost({store, ...props}) {
@@ -858,37 +866,10 @@ const AppCard = memo(function AppCard({ children, title, icon: Icon, iconColor =
     ); 
 });
 
-function useCountUp(end, duration = 1000) { 
-    const [count, setCount] = useState(0); 
-    useEffect(() => { 
-        if (end === 0) { setCount(0); return; } 
-        let start = 0, stepTime = 16, steps = duration / stepTime, increment = end / steps, timer; 
-        const delay = setTimeout(() => { timer = setInterval(() => { start += increment; if ((increment > 0 && start >= end) || (increment < 0 && start <= end)) { setCount(end); clearInterval(timer); } else { setCount(start); } }, stepTime); }, 200); 
-        return () => { clearTimeout(delay); if (timer) clearInterval(timer); }; 
-    }, [end, duration]); 
-    return count; 
-}
 
-// La animación actualiza únicamente este número, sin volver a dibujar toda la app.
-const AnimatedMoney = memo(function AnimatedMoney({ value }) {
-    const amount = useCountUp(value);
-    return <span>{amount.toFixed(0)}</span>;
-});
 
-const AnimatedProgress = memo(function AnimatedProgress({ value }) { 
-    const [width, setWidth] = useState(0); const barRef = useRef(null); 
-    useEffect(() => { 
-        const o = new IntersectionObserver((e) => { if (e[0].isIntersecting) { setTimeout(() => setWidth(value), 200); o.disconnect(); } }, { threshold: 0.1 }); 
-        if (barRef.current) o.observe(barRef.current); 
-        return () => o.disconnect(); 
-    }, [value]); 
-    return (
-        <div ref={barRef} className="h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden bg-slate-200 shadow-inner" style={{ width: `${width}%` }}>
-            <div className="absolute inset-0 bg-gradient-to-r from-[#7657FF] via-[#8B5CF6] to-[#FF3EA5]"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent w-[200%] animate-[shimmer_2s_infinite]"></div>
-        </div>
-    ); 
-});
+
+
 
 const SkeletonCard = memo(function SkeletonCard() { 
     return (
@@ -1821,6 +1802,7 @@ export default function App({ firebaseUser }) {
   }, [isPrinting]);
 
   const handleTabChange = useCallback((tabId) => { 
+      preloadSection(tabId);
       utils.triggerHaptic('light');
       const currentTab = stateRef.current.activeTab;
       if (tabId !== currentTab) {
@@ -4029,276 +4011,68 @@ export default function App({ firebaseUser }) {
       );
   };
 
-  const renderFinanzas = () => {
-      const deudasPendientes = evtCalculoBase.filter(e => (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0);
-      const tieneDeudas = deudasPendientes.length > 0;
-      const ingresosRecibidos = evtCalculoBase.filter(e => Math.min(utils.safeNum(e.abono), utils.safeNum(e.total)) > 0).sort((a,b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
-      const tieneIngresos = ingresosRecibidos.length > 0;
-      const cuentasProveedores = evtCalculoBase.flatMap(ev => (ev.subcontratos || []).map((sc, subIndex) => ({ ev, sc, subIndex }))).filter(x => utils.safeNum(x.sc.costo) > 0).sort((a,b) => String(b.ev.fecha || '').localeCompare(String(a.ev.fecha || '')));
-      const cuentasProveedoresPendientes = cuentasProveedores.filter(x => !(x.sc.pagado === true || utils.normalizeText(x.sc.estadoPago) === 'pagado'));
-      const totalGanancia = chartData.reduce((s,d) => s + d.value, 0);
+  const renderFinanzas = () => <Suspense fallback={<p role="status" className="p-6 text-slate-500">Cargando finanzas…</p>}><FinancesView
+      key={`${financePeriod}:${financeYear}:${financeMonth}`}
+      Badge={Badge}
+      NOMBRES_MESES={NOMBRES_MESES}
+      UI={UI}
+      appSettings={appSettings}
+      chartData={chartData}
+      downloadExcel={downloadExcel}
+      evtCalculoBase={evtCalculoBase}
+      financeFocus={financeFocus}
+      financeMonth={financeMonth}
+      financePeriod={financePeriod}
+      financeYear={financeYear}
+      finanzasData={finanzasData}
+      finanzasMes={finanzasMes}
+      gastosPorCategoria={gastosPorCategoria}
+      handleCopiarCobros={handleCopiarCobros}
+      handleEstadoPagoProveedor={handleEstadoPagoProveedor}
+      handleMarcarCobrado={handleMarcarCobrado}
+      maxChartVal={maxChartVal}
+      monthlyReport={monthlyReport}
+      monthlyReportLoading={monthlyReportLoading}
+      openModal={openModal}
+      selectedFinanceMonth={selectedFinanceMonth}
+      selectedFinanceYear={selectedFinanceYear}
+      sendWhatsAppCall={sendWhatsAppCall}
+      setFinanceFocus={setFinanceFocus}
+      setFinancePeriod={setFinancePeriod}
+      setSelectedFinanceMonth={setSelectedFinanceMonth}
+      setSelectedFinanceYear={setSelectedFinanceYear}
+      stats={stats}
+      todayObj={todayObj}
+      utils={utils}
+    /></Suspense>;
 
-      return (
-          <div className="animate-fadeIn p-4 md:p-7 lg:p-8 max-w-5xl mx-auto space-y-5 pb-32 relative z-10">
-             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-               <div><h2 className={UI.title}>Finanzas</h2><p className="text-slate-500 text-sm mt-2 font-medium">Facturación, cobros pendientes, costos internos, proveedores y ganancia.</p></div>
-               <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center bg-white/95 backdrop-blur-md p-2 rounded-[24px] border border-slate-200/80 shadow-md w-full sm:w-auto">
-                 <div className="flex gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/50">
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('mes');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'mes' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Este Mes</button>
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('anio'); setSelectedFinanceYear(todayObj.getFullYear());}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'anio' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Año</button>
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('todos');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'todos' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Histórico</button>
-                   <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('seleccionado');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'seleccionado' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Otro Mes</button>
-                 </div>
-                 {financePeriod === 'seleccionado' && (
-                   <div className="flex gap-2 items-center animate-fadeIn py-1 px-2 border-l border-slate-200">
-                     <select value={selectedFinanceMonth} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceMonth(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#7657FF] cursor-pointer">{NOMBRES_MESES.map((name, idx) => (<option key={idx} value={idx + 1}>{name}</option>))}</select>
-                     <select value={selectedFinanceYear} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceYear(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#7657FF] cursor-pointer">{[2024, 2025, 2026, 2027, 2028].map(y => (<option key={y} value={y}>{y}</option>))}</select>
-                   </div>
-                 )}
-                 {financePeriod === 'anio' && (
-                   <div className="flex gap-2 items-center animate-fadeIn py-1 px-2 border-l border-slate-200">
-                     <select value={selectedFinanceYear} onChange={(e) => { utils.triggerHaptic('light'); setSelectedFinanceYear(parseInt(e.target.value)); }} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-[#7657FF] cursor-pointer">{[2024, 2025, 2026, 2027, 2028].map(y => (<option key={y} value={y}>{y}</option>))}</select>
-                   </div>
-                 )}
-                 <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block"></div>
-                 <button type="button" onClick={downloadExcel} className="p-2.5 sm:px-4 sm:py-2.5 hover:bg-emerald-50 text-emerald-600 rounded-xl transition-all duration-300 ease-out active:scale-[0.98] flex items-center justify-center gap-2 border border-transparent hover:border-emerald-200" title="Exportar a Excel"><Download size={18} strokeWidth={2.5}/> <span className="hidden sm:inline text-[11px] font-bold uppercase tracking-widest">Excel</span></button>
-               </div>
-             </div>
-
-             <div className="bg-gradient-to-br from-[#17142B] via-[#34256B] to-[#7657FF] rounded-[30px] p-5 sm:p-8 shadow-[0_24px_60px_rgba(118,87,255,0.24)] relative overflow-hidden border border-white/10 animate-slideDown">
-                <div className="absolute -top-32 -left-32 w-64 h-64 bg-[radial-gradient(circle,rgba(37,99,235,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
-                <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-[radial-gradient(circle,rgba(124,58,237,0.08)_0%,transparent_60%)] pointer-events-none transform-gpu"></div>
-                <div className="text-center relative z-10">
-                  <p className="text-white/60 font-bold uppercase tracking-[0.25em] text-[10px] mb-2 flex justify-center items-center gap-2"><Star size={16} className="text-amber-400 fill-amber-400 animate-spin-slow"/> GANANCIA ESTIMADA DE {financePeriod === 'mes' ? 'ESTE MES' : financePeriod === 'anio' ? `AÑO ${financeYear}` : financePeriod === 'todos' ? 'HISTÓRICO' : `${NOMBRES_MESES[financeMonth - 1].toUpperCase()} ${financeYear}`}</p>
-                  <h1 className={`text-5xl sm:text-6xl md:text-7xl font-black mb-5 tracking-tighter ${finanzasData.bT >= 0 ? 'text-white' : 'text-rose-300'}`}>${finanzasData.bT.toFixed(0)}<span className="text-2xl sm:text-3xl text-white/40">.{(finanzasData.bT % 1).toFixed(2).substring(2)}</span></h1>
-                  
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3 border-t border-slate-200/60 pt-4 mt-1">
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Facturado</p><p className="text-emerald-300 font-black text-xl sm:text-2xl tracking-tight">${finanzasData.facturado.toFixed(2)}</p></div>
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Cobrado</p><p className="text-white font-black text-xl sm:text-2xl tracking-tight">${finanzasData.cobrado.toFixed(2)}</p></div>
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Por cobrar</p><p className="text-rose-300 font-black text-xl sm:text-2xl tracking-tight">${finanzasData.porCobrar.toFixed(2)}</p></div>
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Gastos internos</p><p className="text-amber-300 font-black text-xl sm:text-2xl tracking-tight">-${finanzasData.gastosInternos.toFixed(2)}</p></div>
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Costo proveedores</p><p className="text-purple-200 font-black text-xl sm:text-2xl tracking-tight">-${finanzasData.proveedores.toFixed(2)}</p><p className="text-[8px] font-bold text-white/45 mt-1">Pendiente: ${finanzasData.proveedoresPendientes.toFixed(2)}</p></div>
-                    <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-left"><p className="text-white/55 font-bold text-[9px] uppercase tracking-widest mb-1.5">Margen estimado</p><p className="text-white font-black text-xl sm:text-2xl tracking-tight">{finanzasData.roi}%</p></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5 mt-4 pt-4 border-t border-white/10">
-                    <button type="button" onClick={() => { setFinanceFocus('cobros'); setTimeout(() => document.getElementById('cuentas-por-cobrar')?.scrollIntoView({behavior:'smooth', block:'start'}), 50); }} className="py-3.5 px-4 rounded-2xl bg-white text-[#5B3FD6] font-black text-[10px] uppercase tracking-[0.16em] flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg"><Clock size={16}/> Ver por cobrar</button>
-                    <button type="button" onClick={downloadExcel} className="py-3.5 px-4 rounded-2xl bg-white/10 text-white border border-white/15 font-black text-[10px] uppercase tracking-[0.16em] flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"><Download size={16}/> Exportar balance</button>
-                  </div>
-                </div>
-             </div>
-
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 animate-fadeInUp" style={{animationDelay: '100ms'}}>
-               <div className={`${UI.card} p-4 sm:p-5 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Ganancia Hoy</p><p className="text-3xl font-extrabold text-emerald-500 tracking-tight">$<AnimatedMoney value={stats.gananciaHoy} /></p></div>
-               <div className={`${UI.card} p-4 sm:p-5 flex flex-col justify-center`}><p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mb-2.5">Por Cobrar Período</p><p className="text-3xl font-extrabold text-rose-500 tracking-tight">${finanzasData.deudaTotalGlobal.toFixed(0)}</p></div>
-               <div className={`col-span-2 ${UI.card} p-4 sm:p-5 flex items-end justify-between gap-3 h-[105px]`}>
-                 <div className="flex-1 flex justify-between items-end h-full gap-2 sm:gap-3">
-                   {chartData.map((d, i) => { const hPercent = (d.value / maxChartVal) * 100; return (<div key={i} className="w-full flex flex-col items-center justify-end h-full gap-1.5 group relative"><div className="absolute -top-7 hidden sm:block bg-slate-900 text-white text-[9px] font-extrabold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap shadow-md">${d.value.toFixed(0)}</div><div className="w-full bg-slate-100/50 rounded-md relative overflow-hidden transition-all duration-300 ease-out group-hover:bg-slate-200/80 h-[58px]"><div className="absolute bottom-0 w-full bg-gradient-to-t from-[#7657FF] to-[#8B5CF6] transition-all duration-1000 ease-out" style={{height: `${hPercent}%`}}></div></div><span className="text-[9px] font-bold uppercase text-slate-400 tracking-[0.15em]">{d.date}</span></div>) })}
-                 </div>
-                 <div className="pl-6 border-l border-slate-200/80 flex flex-col justify-center h-full"><p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.2em] mb-2 leading-none">Ganancia Período</p><p className="text-2xl font-black text-slate-900 tracking-tight leading-none">${totalGanancia.toFixed(0)}</p></div>
-               </div>
-             </div>
-
-             <div className={`${UI.card} p-4 sm:p-6 animate-fadeInUp`} style={{animationDelay: '170ms'}}>
-               <div className="flex items-start justify-between gap-3 mb-4"><div><h4 className="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-2"><Receipt size={21} className="text-rose-500"/> Gastos del período</h4><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 mt-1">Registro rápido por categoría</p></div><div className="text-right"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Total interno</p><p className="text-xl font-black text-rose-500">-${finanzasData.gastosInternos.toFixed(2)}</p></div></div>
-               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                 <div className="rounded-[16px] bg-violet-50 border border-violet-100 p-3"><div className="flex items-center gap-2 text-violet-600"><Users size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Personal</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.personal.toFixed(2)}</p></div>
-                 <div className="rounded-[16px] bg-blue-50 border border-blue-100 p-3"><div className="flex items-center gap-2 text-blue-600"><Truck size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Transporte</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.transporte.toFixed(2)}</p></div>
-                 <div className="rounded-[16px] bg-pink-50 border border-pink-100 p-3"><div className="flex items-center gap-2 text-pink-600"><Sparkles size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Globos / mat.</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.globos.toFixed(2)}</p></div>
-                 <div className="rounded-[16px] bg-slate-50 border border-slate-200 p-3"><div className="flex items-center gap-2 text-slate-600"><Receipt size={16}/><span className="text-[9px] font-black uppercase tracking-wider">Otros</span></div><p className="text-xl font-black text-slate-900 mt-2">${gastosPorCategoria.otros.toFixed(2)}</p></div>
-               </div>
-             </div>
-
-             {financePeriod !== 'anio' && financePeriod !== 'todos' && (
-             <div className="rounded-[26px] bg-white border border-slate-200/80 shadow-[0_12px_34px_rgba(15,23,42,.06)] p-4 sm:p-5 animate-fadeInUp" style={{animationDelay:'185ms'}}>
-               <div className="flex items-start justify-between gap-3"><div className="flex gap-3"><div className="w-11 h-11 rounded-[15px] bg-emerald-50 text-emerald-600 flex items-center justify-center"><FileSpreadsheet size={20}/></div><div><h4 className="font-black text-lg text-slate-900">Cierre mensual automático</h4><p className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-400 mt-1">{NOMBRES_MESES[financeMonth-1]} {financeYear}</p></div></div>{monthlyReport?.finalized && <Badge color="emerald">Cerrado</Badge>}</div>
-               {monthlyReportLoading ? <p className="text-sm font-semibold text-slate-400 mt-4">Revisando reporte…</p> : monthlyReport?.finalized ? <div className="mt-4"><div className="grid grid-cols-3 gap-2"><div className="rounded-[14px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Reservas</p><p className="text-xl font-black text-slate-900 mt-1">{monthlyReport.reservas||0}</p></div><div className="rounded-[14px] bg-emerald-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-emerald-500">Facturado</p><p className="text-xl font-black text-emerald-600 mt-1">${utils.safeNum(monthlyReport.facturado).toFixed(0)}</p></div><div className="rounded-[14px] bg-violet-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-violet-500">Ganancia</p><p className="text-xl font-black text-violet-600 mt-1">${utils.safeNum(monthlyReport.ganancia).toFixed(0)}</p></div></div><p className="text-[10px] font-semibold text-slate-400 mt-3">Reporte archivado automáticamente en la nube. Puedes volver a este mes desde “Otro Mes”.</p></div> : <div className="mt-4 rounded-[16px] bg-blue-50 border border-blue-100 p-3 flex gap-2.5"><Clock size={17} className="text-[#7657FF] shrink-0"/><p className="text-[11px] font-semibold text-slate-600 leading-relaxed">Mes en curso. El reporte se prepara el último día y queda finalizado automáticamente al abrir la app después del cambio de mes.</p></div>}
-             </div>
-             )}
-
-             {financePeriod !== 'anio' && financePeriod !== 'todos' && (
-             <div className={`${UI.card} p-4 sm:p-6 animate-fadeInUp`} style={{animationDelay: '200ms'}}>
-               <div className="flex justify-between items-end mb-3"><div><h4 className="font-extrabold text-xl text-slate-900 tracking-tight flex items-center gap-2"><Award size={22} className="text-amber-500"/> Meta del Período</h4><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 mt-1">{financePeriod === 'todos' ? 'Progreso histórico acumulado' : `Día ${finanzasMes.diasTranscurridos} de ${finanzasMes.diasTotales} del mes`}</p></div><div className="text-right"><span className="text-3xl font-black text-emerald-500 tracking-tight">${finanzasMes.ingresosEsteMesGlobal.toFixed(0)} <span className="text-base font-bold text-slate-400">/ ${appSettings.metaMensual}</span></span></div></div>
-               <div className="w-full bg-slate-200/80 rounded-full h-2.5 mb-3 overflow-hidden"><AnimatedProgress value={finanzasMes.progresoMeta} /></div>
-               <div className={UI.flexBetween}><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600 bg-slate-100/80 px-3.5 py-1.5 rounded-[10px] border border-slate-200/50 shadow-sm">{finanzasMes.progresoMeta.toFixed(1)}% Alcanzado</p>{financePeriod !== 'todos' && (<p className={`text-[11px] font-bold uppercase tracking-[0.1em] px-3.5 py-1.5 rounded-[10px] border shadow-sm ${finanzasMes.proyeccion >= appSettings.metaMensual ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-500 border-rose-200'}`}>Faltan: $${Math.max(utils.safeNum(appSettings.metaMensual) - finanzasMes.ingresosEsteMesGlobal, 0).toFixed(0)}</p>)}</div>
-             </div>
-
-             )}
-
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                <div id="cuentas-por-cobrar" className={`flex flex-col gap-3 animate-fadeInUp scroll-mt-6 ${financeFocus === 'cobros' ? 'ring-2 ring-[#FF3EA5]/25 rounded-[30px] p-2 -m-2' : ''}`} style={{animationDelay: '300ms'}}>
-                  <div className="rounded-[28px] bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.07)] overflow-hidden">
-                    <div className="p-5 bg-gradient-to-r from-[#7657FF]/[0.08] via-white to-[#FF3EA5]/[0.08] border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0"><div className="flex items-center gap-2.5"><div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-[#7657FF] to-[#FF3EA5] text-white flex items-center justify-center shadow-[0_8px_20px_rgba(118,87,255,0.24)]"><Clock size={19}/></div><div><h4 className="font-black text-[20px] text-slate-900 tracking-tight leading-tight">Cuentas por cobrar</h4><p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 mt-1">{financePeriod === 'todos' ? 'Histórico' : financePeriod === 'anio' ? `Año ${financeYear}` : `${NOMBRES_MESES[financeMonth - 1]} ${financeYear}`}</p></div></div></div>
-                        {tieneDeudas && <button type="button" onClick={handleCopiarCobros} className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em] text-[#6547D9] bg-white hover:bg-[#7657FF]/5 py-2.5 px-3 rounded-[13px] border border-[#7657FF]/20 shadow-sm flex items-center gap-1.5 active:scale-[0.98] transition-all"><Copy size={14}/> Copiar</button>}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5 mt-4">
-                        <div className="rounded-[16px] bg-white/90 border border-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">Saldo pendiente</p><p className="text-2xl font-black text-rose-500 tracking-tight mt-1">${finanzasData.deudaTotalGlobal.toFixed(2)}</p></div>
-                        <div className="rounded-[16px] bg-white/90 border border-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">Clientes pendientes</p><p className="text-2xl font-black text-[#7657FF] tracking-tight mt-1">{deudasPendientes.length}</p></div>
-                      </div>
-                    </div>
-                    {!tieneDeudas ? <div className="min-h-[260px] flex flex-col items-center justify-center p-8 text-center"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mb-4"><CheckCircle2 size={28}/></div><p className="font-extrabold text-slate-900">Todo está cobrado</p><p className="text-[11px] font-medium text-slate-400 mt-2">No hay saldos pendientes en este período.</p></div> : <div className="p-3 space-y-3 max-h-[520px] overflow-y-auto scrollbar-hide">{deudasPendientes.map((ev) => { const total=utils.safeNum(ev.total); const recibido=Math.min(utils.safeNum(ev.abono),total); const pendiente=Math.max(total-recibido,0); const avance=total>0?Math.min((recibido/total)*100,100):0; return <div key={ev.id} className="rounded-[22px] bg-white border border-slate-200/80 shadow-[0_8px_24px_rgba(15,23,42,0.05)] p-4">
-                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-black text-[16px] text-slate-900 truncate capitalize">{String(ev.cliente || 'Cliente')}</p><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400 mt-1">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'} · {String(ev.servicio || 'Reserva')}</p></div><div className="text-right shrink-0"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Pendiente</p><p className="text-xl font-black text-rose-500 tracking-tight">${pendiente.toFixed(2)}</p></div></div>
-                      <div className="mt-3"><div className="flex justify-between text-[9px] font-bold mb-1.5"><span className="text-slate-400">Recibido ${recibido.toFixed(2)}</span><span className="text-[#7657FF]">{avance.toFixed(0)}% pagado</span></div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] transition-all" style={{width:`${avance}%`}}></div></div></div>
-                      <div className="grid grid-cols-[1fr_auto] gap-2 mt-3"><button type="button" onClick={() => handleMarcarCobrado(ev)} className="min-h-[44px] rounded-[14px] bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white font-black text-[9px] uppercase tracking-[0.13em] flex items-center justify-center gap-2 shadow-[0_8px_18px_rgba(118,87,255,0.22)] active:scale-[0.98] transition-transform"><CheckCircle2 size={15}/> Marcar cobrado</button><button type="button" onClick={() => sendWhatsAppCall(ev, 'recordatorio', appSettings.empresa)} className="w-12 min-h-[44px] rounded-[14px] bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center active:scale-[0.98] transition-transform" title="Enviar recordatorio por WhatsApp"><MessageCircle size={19}/></button></div>
-                    </div>})}</div>}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 animate-fadeInUp" style={{animationDelay: '350ms'}}>
-                  <div className="rounded-[28px] bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.07)] overflow-hidden">
-                    <div className="p-5 bg-gradient-to-r from-amber-50/90 via-white to-rose-50/50 border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2.5"><div className="w-10 h-10 rounded-[14px] bg-amber-500 text-white flex items-center justify-center shadow-sm"><Truck size={19}/></div><div><h4 className="font-black text-[20px] text-slate-900 tracking-tight">Cuentas por pagar</h4><p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-1">Servicios de proveedores asignados</p></div></div><div className="text-right"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Pendiente</p><p className="text-xl font-black text-amber-500">${finanzasData.proveedoresPendientes.toFixed(2)}</p></div></div>
-                      <div className="grid grid-cols-2 gap-2.5 mt-4"><div className="rounded-[16px] bg-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Pagado</p><p className="text-2xl font-black text-emerald-500 mt-1">${finanzasData.proveedoresPagados.toFixed(2)}</p></div><div className="rounded-[16px] bg-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Pendientes</p><p className="text-2xl font-black text-amber-500 mt-1">{cuentasProveedoresPendientes.length}</p></div></div>
-                    </div>
-                    {cuentasProveedores.length === 0 ? <div className="p-8 text-center text-sm font-semibold text-slate-400">No hay costos de proveedores en este período.</div> : <div className="p-3 space-y-3 max-h-[520px] overflow-y-auto scrollbar-hide">{cuentasProveedores.map(({ev,sc,subIndex}) => { const pagado=sc.pagado===true||utils.normalizeText(sc.estadoPago)==='pagado'; return <div key={`${ev.id}-${sc.id||subIndex}`} className="rounded-[22px] bg-white border border-slate-200/80 shadow-sm p-4"><div className="flex justify-between gap-3"><div className="min-w-0"><p className="font-black text-slate-900 truncate">{sc.nombre || 'Proveedor'}</p><p className="text-[10px] font-bold text-slate-500 mt-1">{sc.servicio || 'Servicio'} · {ev.cliente || 'Cliente'}</p><p className="text-[9px] font-semibold text-slate-400 mt-1">{ev.fecha ? String(ev.fecha).split('-').reverse().join('/') : 'Sin fecha'}</p></div><div className="text-right shrink-0"><p className={`text-[8px] font-black uppercase tracking-widest ${pagado?'text-emerald-500':'text-amber-500'}`}>{pagado?'Pagado':'Por pagar'}</p><p className={`text-xl font-black ${pagado?'text-emerald-500':'text-rose-500'}`}>${utils.safeNum(sc.costo).toFixed(2)}</p></div></div><button type="button" onClick={()=>handleEstadoPagoProveedor(ev,subIndex,!pagado)} className={`mt-3 w-full min-h-[43px] rounded-[14px] font-black text-[9px] uppercase tracking-[.13em] flex items-center justify-center gap-2 active:scale-[.98] transition-all ${pagado?'bg-slate-100 text-slate-600':'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm'}`}>{pagado?<><RefreshCw size={14}/> Marcar pendiente</>:<><CheckCircle2 size={15}/> Registrar pago</>}</button></div>})}</div>}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 animate-fadeInUp" style={{animationDelay: '400ms'}}>
-                  <div className="rounded-[28px] bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.07)] overflow-hidden">
-                    <div className="p-5 bg-gradient-to-r from-emerald-50/80 via-white to-[#7657FF]/[0.06] border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2.5 min-w-0"><div className="w-10 h-10 rounded-[14px] bg-gradient-to-br from-emerald-400 to-emerald-500 text-white flex items-center justify-center shadow-[0_8px_20px_rgba(16,185,129,0.20)]"><FileSpreadsheet size={19}/></div><div><h4 className="font-black text-[20px] text-slate-900 tracking-tight leading-tight">Ingresos del período</h4><p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 mt-1">Dinero realmente recibido</p></div></div><div className="text-right shrink-0"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Cobrado</p><p className="text-xl font-black text-emerald-500 tracking-tight">${finanzasData.cobrado.toFixed(2)}</p></div></div>
-                      <div className="grid grid-cols-2 gap-2.5 mt-4"><div className="rounded-[16px] bg-white/90 border border-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">Movimientos</p><p className="text-2xl font-black text-slate-900 mt-1">{ingresosRecibidos.length}</p></div><div className="rounded-[16px] bg-white/90 border border-white p-3 shadow-sm"><p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">Por cobrar</p><p className="text-2xl font-black text-rose-500 mt-1">${finanzasData.porCobrar.toFixed(2)}</p></div></div>
-                    </div>
-                    {!tieneIngresos ? <div className="min-h-[260px] flex flex-col items-center justify-center p-8 text-center"><div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mb-4"><FileSpreadsheet size={28}/></div><p className="font-extrabold text-slate-900">Aún no hay cobros recibidos</p><p className="text-[11px] font-medium text-slate-400 mt-2 max-w-[240px]">Los abonos y pagos registrados aparecerán aquí.</p></div> : <div className="p-3 space-y-3 max-h-[520px] overflow-y-auto scrollbar-hide">{ingresosRecibidos.map((e) => { const total=utils.safeNum(e.total); const recibido=Math.min(utils.safeNum(e.abono),total); const pendiente=Math.max(total-recibido,0); const avance=total>0?Math.min((recibido/total)*100,100):0; return <button type="button" key={e.id} onClick={() => openModal(e, false)} className="w-full text-left rounded-[22px] bg-white border border-slate-200/80 shadow-[0_8px_24px_rgba(15,23,42,0.05)] p-4 active:scale-[0.99] transition-transform">
-                      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-black text-[16px] text-slate-900 truncate capitalize">{String(e.cliente || 'Cliente')}</p><p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mt-1 line-clamp-2">{e.fecha ? String(e.fecha).split('-').reverse().join('/') : 'Sin fecha'} · {String(e.servicio || 'Reserva')}</p></div><div className="text-right shrink-0"><p className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Recibido</p><p className="text-xl font-black text-emerald-500 tracking-tight">+${recibido.toFixed(2)}</p></div></div>
-                      <div className="grid grid-cols-2 gap-2 mt-3"><div className="rounded-[13px] bg-slate-50 p-2.5"><p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Total reserva</p><p className="text-[13px] font-black text-slate-700 mt-0.5">${total.toFixed(2)}</p></div><div className={`rounded-[13px] p-2.5 ${pendiente>0?'bg-rose-50':'bg-emerald-50'}`}><p className={`text-[8px] font-black uppercase tracking-widest ${pendiente>0?'text-rose-400':'text-emerald-500'}`}>{pendiente>0?'Saldo pendiente':'Estado'}</p><p className={`text-[13px] font-black mt-0.5 ${pendiente>0?'text-rose-500':'text-emerald-600'}`}>{pendiente>0?`$${pendiente.toFixed(2)}`:'Pagado'}</p></div></div>
-                      <div className="mt-3"><div className="flex justify-between text-[9px] font-bold mb-1.5"><span className="text-slate-400">Progreso del pago</span><span className="text-[#7657FF]">{avance.toFixed(0)}%</span></div><div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-[#7657FF]" style={{width:`${avance}%`}}></div></div></div>
-                    </button>})}</div>}
-                  </div>
-                </div>
-             </div>
-          </div>
-      );
-  };
-
-  const renderConfig = () => {
-    const meta = Math.max(utils.safeNum(appSettings.metaMensual), 0);
-    const mesActual = eventosActivos.filter(e => {
-      const d = String(e.fecha || '');
-      const estado = utils.normalizeText(e.estado || '');
-      return d.startsWith(todayStr.slice(0,7)) && !isPendingWebRequest(e) && !/cancelado|rechazada|cot/.test(estado) && e.deletedLocally !== true;
-    });
-    const facturadoMes = mesActual.reduce((s,e)=>s+utils.safeNum(e.total),0);
-    const avanceMeta = meta > 0 ? Math.min((facturadoMes/meta)*100,100) : 0;
-    const empresa = appSettings.empresa || {};
-    const go = (view) => { utils.triggerHaptic('light'); setConfigView(view); };
-    const back = () => { utils.triggerHaptic('light'); setConfigView('home'); };
-    const sectionShell = (children) => (
-      <div className="animate-fadeIn min-h-full p-4 md:p-8 lg:p-10 max-w-4xl mx-auto pb-32 relative z-10 text-slate-900 bg-[radial-gradient(circle_at_10%_0%,rgba(118,87,255,.08),transparent_30%),radial-gradient(circle_at_95%_14%,rgba(255,62,165,.06),transparent_28%),linear-gradient(180deg,#F7F8FC_0%,#F4F6FB_100%)]">
-        {children}
-      </div>
-    );
-    const subHeader = (title, subtitle, Icon, accent='text-[#7657FF]') => (
-      <div className="mb-6">
-        <button type="button" onClick={back} className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500 bg-white/90 border border-white px-3 py-2 rounded-[13px] shadow-sm active:scale-[.97]"><ChevronLeft size={16}/> Ajustes</button>
-        <div className="flex items-center gap-3 mt-5"><div className="w-12 h-12 rounded-[17px] bg-white border border-white shadow-[0_10px_28px_rgba(15,23,42,.07)] flex items-center justify-center"><Icon size={23} className={accent}/></div><div><h2 className="text-2xl sm:text-3xl font-black tracking-[-.035em] text-slate-950">{title}</h2><p className="text-sm font-medium text-slate-500 mt-1">{subtitle}</p></div></div>
-      </div>
-    );
-    const menuItem = (view, Icon, title, desc, iconClass, iconBg, extra=null, danger=false) => (
-      <button type="button" onClick={()=>go(view)} className={`w-full text-left rounded-[23px] p-4 flex items-center gap-3 border shadow-[0_10px_28px_rgba(15,23,42,.055)] active:scale-[.985] transition-all ${danger?'bg-rose-50/90 border-rose-200':'bg-white/95 border-white'}`}>
-        <div className={`w-12 h-12 shrink-0 rounded-[16px] flex items-center justify-center ${iconBg}`}><Icon size={22} className={iconClass}/></div>
-        <div className="min-w-0 flex-1"><p className={`font-black text-[16px] tracking-tight ${danger?'text-rose-600':'text-slate-950'}`}>{title}</p><p className={`text-[11px] font-medium mt-0.5 leading-snug ${danger?'text-rose-400':'text-slate-500'}`}>{desc}</p>{extra}</div>
-        <ChevronRight size={20} className={danger?'text-rose-500':'text-slate-400'}/>
-      </button>
-    );
-
-    if (configView === 'business') return sectionShell(<>
-      {subHeader('Mi negocio','Información general de tu empresa.',Briefcase,'text-[#FF3EA5]')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
-        <div className="flex items-center gap-4 pb-6 border-b border-slate-100"><div className="w-24 h-24 rounded-[25px] bg-gradient-to-br from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-[3px] shadow-[0_14px_32px_rgba(184,61,255,.22)]"><img src={LOGO_URL} alt="Diverty" className="w-full h-full object-contain bg-white rounded-[22px] p-3"/></div><div><p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Identidad</p><h3 className="text-2xl font-black text-slate-950 mt-1">Diverty Eventos</h3><p className={`inline-flex items-center gap-1.5 mt-2 text-[10px] font-black uppercase tracking-wider ${isOnline?'text-emerald-500':'text-amber-500'}`}><Cloud size={14}/>{isOnline?'Firebase conectado':'Modo offline'}</p></div></div>
-        <div className="mt-6 rounded-[20px] bg-gradient-to-r from-[#F6F2FF] to-[#FFF1F8] border border-[#7657FF]/10 p-4"><p className="text-[10px] uppercase tracking-[.15em] font-black text-[#7657FF]">Administrador</p><p className="font-black text-slate-900 mt-1">Administrador Global</p><p className="text-xs text-slate-500 mt-1">La identidad visual actual se utiliza en el CRM y documentos.</p></div>
-      </div>
-    </>);
-
-    if (configView === 'billing') return sectionShell(<>
-      {subHeader('Facturación y Banco','Datos usados en contratos, facturas y WhatsApp.',Briefcase)}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
-        <div className="mb-6 rounded-[18px] bg-emerald-50 border border-emerald-100 p-4 flex gap-3"><Save size={20} className="text-emerald-500 shrink-0"/><div><p className="font-black text-emerald-700">Datos autoguardados</p><p className="text-xs font-medium text-emerald-600/80 mt-1">Los cambios se guardan automáticamente.</p></div></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">{[
-          ['nombreTitular','Nombre del titular o empresa'],['ruc','RUC / Identificación'],['banco','Entidad bancaria'],['tipoCuenta','Tipo de cuenta'],['numeroCuenta','Número de cuenta'],['telefono','Teléfono (Yappy / Contacto)']
-        ].map(([key,label])=><Field key={key} label={label} value={empresa[key]||''} onChange={e=>updateSettings({...appSettings,empresa:{...empresa,[key]:e.target.value}})}/>)}</div>
-        <div className="mt-6 bg-blue-50/80 p-4 rounded-[18px] border border-blue-100 flex items-start gap-3"><Info size={19} className="text-[#7657FF] shrink-0 mt-0.5"/><p className="text-xs font-medium text-slate-600 leading-relaxed">Estos datos se insertan automáticamente en contratos, facturas y mensajes de WhatsApp.</p></div>
-      </div>
-    </>);
-
-    if (configView === 'goal') return sectionShell(<>
-      {subHeader('Meta mensual','Define tu objetivo de ventas mensual.',Award,'text-amber-500')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] overflow-hidden">
-        <div className="p-6 bg-gradient-to-r from-[#7657FF] via-[#A33CFF] to-[#FF3EA5] text-white"><p className="text-[10px] font-black uppercase tracking-[.18em] text-white/75">Meta actual</p><div className="flex items-end gap-2 mt-2"><span className="text-4xl font-black">${meta.toFixed(0)}</span><span className="text-white/70 font-bold mb-1">mensual</span></div></div>
-        <div className="p-5 sm:p-6"><div className="flex justify-between text-xs font-black"><span className="text-[#7657FF]">{avanceMeta.toFixed(0)}% alcanzado</span><span className="text-slate-500">${facturadoMes.toFixed(0)} / ${meta.toFixed(0)}</span></div><div className="h-3 bg-slate-100 rounded-full overflow-hidden mt-3"><div className="h-full rounded-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5]" style={{width:`${avanceMeta}%`}}></div></div>
-          <div className="mt-6"><label className="text-[10px] font-black text-slate-400 uppercase tracking-[.18em]">Editar objetivo ($)</label><input type="number" value={appSettings.metaMensual} onChange={e=>updateSettings({...appSettings,metaMensual:utils.safeNum(e.target.value)})} className="mt-2 w-full h-16 rounded-[19px] border border-slate-200 bg-slate-50 px-5 text-2xl font-black outline-none focus:ring-4 focus:ring-[#7657FF]/10 focus:border-[#7657FF]/40"/></div>
-        </div>
-      </div>
-    </>);
-
-    if (configView === 'notifications') return sectionShell(<>
-      {subHeader('Notificaciones','Alertas importantes y token Push.',BellRing,'text-[#FF3EA5]')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5">
-        <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-emerald-50 flex items-center justify-center"><BellRing size={22} className="text-emerald-500"/></div><div className="flex-1"><p className="font-black text-slate-950">Notificaciones Push</p><p className="text-xs text-slate-500 mt-1">Obtén o renueva el token de este dispositivo.</p></div></div>
-        <button type="button" onClick={activarNotificaciones} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.13em] shadow-[0_12px_28px_rgba(184,61,255,.25)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><BellRing size={18}/> Obtener Token Push</span></button>
-        <div className="mt-4 rounded-[18px] bg-blue-50 border border-blue-100 p-4 flex gap-3"><Info size={18} className="text-[#7657FF] shrink-0"/><p className="text-xs font-medium text-slate-600 leading-relaxed">Las alertas web de reservas continúan apareciendo en la campana superior del CRM.</p></div>
-      </div>
-    </>);
-
-    if (configView === 'documents') return sectionShell(<>
-      {subHeader('Documentos','Información utilizada en contratos y facturas.',FileSpreadsheet,'text-blue-500')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[20px] bg-gradient-to-br from-blue-50 to-[#F4F0FF] border border-blue-100 p-5"><FileSpreadsheet size={28} className="text-[#7657FF]"/><h3 className="font-black text-xl text-slate-950 mt-4">Datos centralizados</h3><p className="text-sm font-medium text-slate-500 mt-2 leading-relaxed">Los contratos y facturas toman automáticamente la información guardada en Facturación y Banco.</p><button type="button" onClick={()=>go('billing')} className="mt-5 px-4 py-3 rounded-[15px] bg-white text-[#7657FF] border border-[#7657FF]/15 font-black text-[10px] uppercase tracking-wider shadow-sm">Revisar datos</button></div></div>
-    </>);
-
-    if (configView === 'resources') return sectionShell(<>
-      {subHeader('Personal disponible','Define tu capacidad simultánea. La app descontará automáticamente el personal ocupado por reservas que se cruzan en fecha y horario.',Users,'text-amber-500')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-7">
-        <div className="rounded-[22px] bg-gradient-to-br from-amber-50 via-white to-violet-50 border border-amber-100 p-5 mb-5"><p className="font-black text-slate-950">Capacidad operativa</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">La página compara estos límites con las reservas confirmadas que se cruzan en fecha y horario. Las solicitudes pendientes no descuentan personal hasta que las aceptes; antes de aceptar la app vuelve a comprobar la disponibilidad.</p></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-[22px] border border-violet-100 bg-violet-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white text-[#7657FF] flex items-center justify-center shadow-sm"><Users size={20}/></div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Animadores</label><input type="number" min="0" max="50" value={staffCapacity.animadores} onChange={e=>setStaffCapacity(prev=>({...prev,animadores:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-violet-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
-          <div className="rounded-[22px] border border-amber-100 bg-amber-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white text-amber-500 flex items-center justify-center shadow-sm"><Sparkles size={20}/></div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Payasos</label><input type="number" min="0" max="50" value={staffCapacity.payasos} onChange={e=>setStaffCapacity(prev=>({...prev,payasos:Math.max(0,Math.min(50,Number(e.target.value)||0))}))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-amber-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
-          <div className="rounded-[22px] border border-blue-100 bg-blue-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white text-blue-500 flex items-center justify-center shadow-sm"><CalendarDays size={20}/></div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Eventos simultáneos</label><input type="number" min="1" max="100" value={normalSimultaneousCapacity} onChange={e=>setNormalSimultaneousCapacity(Math.max(1,Math.min(100,Number(e.target.value)||1)))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-blue-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
-          <div className="rounded-[22px] border border-rose-100 bg-rose-50/70 p-4"><div className="w-11 h-11 rounded-[15px] bg-white flex items-center justify-center shadow-sm text-2xl">🎅</div><label className="block mt-4 text-[9px] font-black uppercase tracking-[.15em] text-slate-400">Santas Navidad</label><input type="number" min="1" max="20" value={christmasSantaCapacity} onChange={e=>setChristmasSantaCapacity(Math.max(1,Math.min(20,Number(e.target.value)||1)))} className="mt-2 w-full h-14 rounded-[16px] bg-white border border-rose-100 px-4 text-2xl font-black text-slate-950 outline-none"/></div>
-        </div>
-        <button type="button" onClick={()=>saveStaffCapacity(staffCapacity,normalSimultaneousCapacity,christmasSantaCapacity)} className="mt-5 w-full h-14 rounded-[18px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] text-white font-black text-[11px] uppercase tracking-[.13em] shadow-[0_12px_28px_rgba(184,61,255,.22)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><Save size={18}/> Guardar capacidad operativa</span></button>
-        <div className="mt-4 rounded-[18px] bg-blue-50 border border-blue-100 p-4 flex gap-3"><Info size={18} className="text-[#7657FF] shrink-0"/><p className="text-xs font-medium text-slate-600 leading-relaxed">La web usa estos límites para evitar solicitudes imposibles y para controlar los cupos simultáneos. En cada solicitud podrás revisar total, ocupados y libres, y corregir manualmente el personal requerido antes de aceptarla. La cantidad de Santas también se administra aquí, no desde el administrador visual de la web.</p></div>
-      </div>
-    </>);
-
-    if (configView === 'tools') return sectionShell(<>
-      {subHeader('Herramientas del sistema','Funciones administrativas de uso ocasional.',Settings,'text-[#7657FF]')}
-      <div className="space-y-4">
-        <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6"><div className="rounded-[22px] border border-[#7657FF]/15 bg-[#F7F4FF] p-5"><p className="font-black text-slate-950">Preparación de disponibilidad pública y numeración</p><p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">Ejecutar una vez después de actualizar los archivos y las reglas, sin otros equipos editando.</p><button type="button" className="mt-5 w-full h-13 py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] to-[#A33CFF] text-white font-black text-[10px] uppercase tracking-[.12em] shadow-[0_10px_24px_rgba(118,87,255,.22)]" onClick={async e=>{const b=e.currentTarget;b.disabled=true;try{await prepareDivertyData();showAlert('Preparación completada.',true);}catch(err){console.error(err);showAlert('Preparación incompleta. Reintenta con conexión.',false);}finally{b.disabled=false;}}}>Preparar actualización</button></div></div>
-        <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5 sm:p-6">
-          <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-red-50 flex items-center justify-center text-2xl">🎅</div><div className="min-w-0 flex-1"><p className="font-black text-slate-950">Operación Navidad</p><p className="text-xs font-medium text-slate-500 mt-1">Oculta el acceso al terminar la temporada sin borrar ninguna reserva.</p></div></div>
-          <button type="button" onClick={()=>setChristmasVisibility(!christmasModuleVisible)} className={`mt-5 w-full min-h-[52px] rounded-[16px] font-black text-[10px] uppercase tracking-[.12em] border active:scale-[.98] ${christmasModuleVisible?'bg-rose-50 text-rose-600 border-rose-200':'bg-emerald-50 text-emerald-600 border-emerald-200'}`}>{christmasModuleVisible?'Ocultar módulo de Navidad':'Mostrar módulo de Navidad'}</button>
-        </div>
-      </div>
-    </>);
-
-    if (configView === 'security') return sectionShell(<>
-      {subHeader('Seguridad y sesión','Control de acceso a este dispositivo.',Lock,'text-emerald-500')}
-      <div className="rounded-[30px] bg-white/95 border border-white shadow-[0_18px_48px_rgba(15,23,42,.07)] p-5"><div className="flex items-center gap-4"><div className="w-12 h-12 rounded-[16px] bg-emerald-50 flex items-center justify-center"><Lock size={22} className="text-emerald-500"/></div><div><p className="font-black text-slate-950">Sesión del administrador</p><p className="text-xs text-slate-500 mt-1">Cierra la sesión actual de Diverty CRM.</p></div></div><button type="button" onClick={handleLogout} className="mt-5 w-full h-14 rounded-[18px] bg-slate-950 text-white font-black text-[11px] uppercase tracking-[.13em] active:scale-[.98]">Cerrar sesión</button></div>
-    </>);
-
-    if (configView === 'danger') return sectionShell(<>
-      {subHeader('Zona de peligro','Acciones avanzadas del sistema.',AlertTriangle,'text-rose-500')}
-      <div className="rounded-[30px] bg-rose-50/90 border border-rose-200 shadow-[0_18px_48px_rgba(244,63,94,.08)] p-5 sm:p-6"><div className="flex gap-4"><div className="w-12 h-12 rounded-[16px] bg-white flex items-center justify-center shrink-0"><Trash2 size={22} className="text-rose-500"/></div><div><h3 className="font-black text-xl text-rose-600">Purgar sistema</h3><p className="text-sm font-medium text-rose-500/85 mt-2 leading-relaxed">Eliminará permanentemente reservas, historial de clientes y registros financieros locales y en la nube.</p></div></div><button type="button" onClick={handleWipeAll} className="mt-6 w-full h-14 rounded-[18px] bg-rose-600 text-white font-black text-[11px] uppercase tracking-[.15em] shadow-[0_12px_28px_rgba(225,29,72,.20)] active:scale-[.98]"><span className="inline-flex items-center gap-2"><Trash2 size={18}/> Purgar sistema</span></button></div>
-    </>);
-
-    return sectionShell(<>
-      <div className="pt-2 mb-6"><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.22em] text-[#7657FF]"><Settings size={15}/> Centro de control</div><h2 className="text-4xl sm:text-5xl font-black tracking-[-.045em] text-slate-950 mt-2">Ajustes</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Configura tu negocio y personaliza tu sistema.</p></div>
-      <div className="rounded-[30px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-[1px] shadow-[0_18px_44px_rgba(184,61,255,.24)] mb-6"><div className="rounded-[29px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] p-5 text-white flex items-center gap-4"><div className="w-20 h-20 rounded-[22px] bg-white p-2.5 shadow-lg shrink-0"><img src={LOGO_URL} alt="Diverty" className="w-full h-full object-contain"/></div><div className="min-w-0 flex-1"><p className="text-xl font-black">Diverty Eventos</p><p className="text-sm font-medium text-white/85 mt-1">Administrador Global</p><span className={`inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider ${isOnline?'bg-emerald-400/20 text-emerald-50':'bg-amber-400/20 text-amber-50'}`}><Cloud size={12}/>{isOnline?'En línea con Firebase':'Modo offline'}</span></div><ChevronRight size={22} className="text-white/75"/></div></div>
-      <div className="space-y-3">
-        {menuItem('business',Briefcase,'Mi negocio','Logo, identidad e información general.','text-[#FF3EA5]','bg-rose-50')}
-        {menuItem('billing',FileSpreadsheet,'Facturación y banco','Datos fiscales y cuenta bancaria para documentos.','text-[#7657FF]','bg-[#F2EEFF]',<span className="inline-flex mt-2 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-wider">Completo</span>)}
-        {menuItem('goal',Award,'Meta mensual','Objetivo de ventas y seguimiento.','text-amber-500','bg-amber-50',<div className="mt-2 flex items-center gap-2"><div className="h-1.5 flex-1 max-w-[140px] bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-[#7657FF] to-[#FF3EA5] rounded-full" style={{width:`${avanceMeta}%`}}></div></div><span className="text-[9px] font-black text-slate-400">{avanceMeta.toFixed(0)}%</span></div>)}
-        {menuItem('notifications',BellRing,'Notificaciones','Push, alertas web y permisos.','text-[#FF3EA5]','bg-rose-50')}
-        {menuItem('resources',Users,'Personal disponible','Animadores y payasos disponibles por horario.','text-amber-500','bg-amber-50',<span className="inline-flex mt-2 px-2.5 py-1 rounded-full bg-violet-50 text-[#7657FF] text-[8px] font-black uppercase tracking-wider">{staffCapacity.animadores} anim. · {staffCapacity.payasos} pay.</span>)}
-        {menuItem('documents',FileSpreadsheet,'Documentos','Información para contratos y facturas.','text-blue-500','bg-blue-50')}
-        {menuItem('tools',Settings,'Herramientas del sistema','Mantenimiento y numeración.','text-[#7657FF]','bg-[#F2EEFF]')}
-        {menuItem('security',Lock,'Seguridad y sesión','Cerrar sesión y gestión de acceso.','text-emerald-500','bg-emerald-50')}
-        {menuItem('danger',AlertTriangle,'Zona de peligro','Acciones avanzadas del sistema.','text-rose-500','bg-rose-100',null,true)}
-      </div>
-    </>);
-  };
+  const renderConfig = () => <Suspense fallback={<p role="status" className="p-6 text-slate-500">Cargando ajustes…</p>}><SettingsView
+      Field={Field}
+      LOGO_URL={LOGO_URL}
+      activarNotificaciones={activarNotificaciones}
+      appSettings={appSettings}
+      christmasModuleVisible={christmasModuleVisible}
+      christmasSantaCapacity={christmasSantaCapacity}
+      configView={configView}
+      eventosActivos={eventosActivos}
+      handleLogout={handleLogout}
+      handleWipeAll={handleWipeAll}
+      isOnline={isOnline}
+      isPendingWebRequest={isPendingWebRequest}
+      normalSimultaneousCapacity={normalSimultaneousCapacity}
+      prepareDivertyData={prepareDivertyData}
+      saveStaffCapacity={saveStaffCapacity}
+      setChristmasSantaCapacity={setChristmasSantaCapacity}
+      setChristmasVisibility={setChristmasVisibility}
+      setConfigView={setConfigView}
+      setNormalSimultaneousCapacity={setNormalSimultaneousCapacity}
+      setStaffCapacity={setStaffCapacity}
+      showAlert={showAlert}
+      staffCapacity={staffCapacity}
+      todayStr={todayStr}
+      updateSettings={updateSettings}
+      utils={utils}
+    /></Suspense>;
 
   return (
     <div className="diverty-app-shell font-outfit min-h-[100dvh] flex overflow-hidden selection:bg-[#FF3EA5]/30 transition-colors duration-200 relative bg-[#F4F6FB] text-slate-900">
@@ -4353,7 +4127,7 @@ export default function App({ firebaseUser }) {
          {NAV_ITEMS.map(i => {
             const Ic = i.icon; const a = activeTab === i.id;
             return (
-              <button key={i.id} onClick={() => handleTabChange(i.id)} className={`relative flex flex-1 min-w-0 flex-col items-center justify-center gap-1 h-[58px] rounded-[14px] transition-all duration-300 ${a ? 'text-[#FF3EA5] -translate-y-0.5 bg-gradient-to-b from-[#FF3EA5]/[0.055] to-[#7657FF]/[0.035]' : 'text-slate-400 hover:text-slate-700'}`}>
+              <button key={i.id} onPointerEnter={() => preloadSection(i.id)} onFocus={() => preloadSection(i.id)} onTouchStart={() => preloadSection(i.id)} onClick={() => handleTabChange(i.id)} className={`relative flex flex-1 min-w-0 flex-col items-center justify-center gap-1 h-[58px] rounded-[14px] transition-all duration-300 ${a ? 'text-[#FF3EA5] -translate-y-0.5 bg-gradient-to-b from-[#FF3EA5]/[0.055] to-[#7657FF]/[0.035]' : 'text-slate-400 hover:text-slate-700'}`}>
                  {a && <span className="absolute top-0 w-7 h-[3px] rounded-full bg-gradient-to-r from-[#FF3EA5] to-[#7657FF] shadow-[0_3px_10px_rgba(255,62,165,.28)]"></span>}<Ic size={a?23:21} strokeWidth={a?2.6:2.1} className={a ? 'drop-shadow-sm' : ''}/>
                  <span className={`max-w-full truncate text-[8px] sm:text-[9px] uppercase tracking-[0.04em] ${a?'font-black':'font-bold'}`}>{i.text}</span>
               </button>

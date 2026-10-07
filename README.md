@@ -19,3 +19,13 @@ PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromiu
 `ORIGIN` permite usar otro servidor local. Las pruebas simulan la autenticación y Firestore y bloquean las solicitudes externas; no modifican datos reales.
 
 El recorrido de reservas comprueba contactos, cantidades, horas, guardado, edición, abonos, gastos, borradores y PDF. El recorrido de rendimiento usa 1.200 reservas con ganancia positiva hoy, limita la CPU a 4× y comprueba que las animaciones no actualicen toda la app, que los informes no se calculen fuera de Finanzas y que el cambio de día/mes siga funcionando. Los importes de `performance-finance.json` se capturaron antes de esta optimización para comprobar que mes, año e histórico mantienen los mismos resultados.
+
+Finanzas y Ajustes se descargan cuando se necesitan. Las listas de Finanzas muestran grupos de 30 movimientos; “Mostrar más” permite acceder al resto. Los totales, gráficos, exportación y copia de cobros no se limitan al grupo visible. La prueba de rendimiento comprueba los siguientes grupos, sus pagos y los ajustes guardados.
+
+Para comprobar los archivos de producción tras compilar, inicia `node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort` y ejecuta:
+
+```sh
+PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/bundle-flow.cjs
+```
+
+Esta prueba bloquea solicitudes externas y comprueba que el inicio de sesión no descarga el panel ni Firestore, y que los módulos separados cargan sin errores. El SDK de Firestore tiene su propio archivo para reutilizar la caché cuando cambia el panel.
