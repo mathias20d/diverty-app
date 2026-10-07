@@ -2,8 +2,13 @@ module.exports=`const rows=window.__rows;let serial=0;const clone=x=>JSON.parse(
 export const collection=(_, ...parts)=>({path:parts.join('/')});
 export const doc=(first,...parts)=>first?.path?{path:first.path+'/'+(parts[0]||'created-'+(++serial)),id:parts[0]||'created-'+serial}:{path:parts.join('/'),id:parts.at(-1)};
 const snap=path=>({id:path.split('/').at(-1),exists:()=>!!rows[path],data:()=>clone(rows[path]||{})});
-export const getDoc=async ref=>snap(ref.path);
-export const getDocs=async ref=>({docs:Object.keys(rows).filter(p=>p.startsWith(ref.path+'/')&&!p.slice(ref.path.length+1).includes('/')).map(snap)});
+const read=async ref=>{(window.__reads ||= []).push(ref.path);const delay=window.__readDelays?.[ref.path]??window.__readDelay;if(delay)await new Promise(resolve=>setTimeout(resolve,delay));if(window.__failReads?.includes(ref.path))throw new Error('Simulated read failure');};
+export const getDoc=async ref=>{await read(ref);return {...snap(ref.path),metadata:{fromCache:!!window.__readsFromCache}};};
+export const getDocs=async ref=>{await read(ref);return {metadata:{fromCache:!!window.__readsFromCache},docs:Object.keys(rows).filter(p=>p.startsWith(ref.path+'/')&&!p.slice(ref.path.length+1).includes('/')).map(snap)};};
+const listeners=new Map();
+window.__emitSync=(metadata={hasPendingWrites:false,fromCache:false})=>{for(const [path,callbacks] of listeners){const snapshot=snap(path);const data=snapshot.data();const event={...snapshot,data:()=>clone(data),metadata};callbacks.forEach(({next})=>next(event));}};
+window.__failSync=()=>{for(const callbacks of listeners.values())callbacks.forEach(({error})=>error(new Error('Simulated sync failure')));listeners.clear();};
+export const onSnapshot=(ref,options,next,error)=>{(window.__listens ||= []).push(ref.path);const callbacks=listeners.get(ref.path)||new Set();const listener={next,error};callbacks.add(listener);listeners.set(ref.path,callbacks);queueMicrotask(()=>{if(callbacks.has(listener))next({...snap(ref.path),metadata:{hasPendingWrites:false,fromCache:false}});});return ()=>callbacks.delete(listener);};
 export const increment=value=>({__increment:value});
 const merge=(old={},next={})=>Object.fromEntries([...new Set([...Object.keys(old),...Object.keys(next)])].map(key=>{const value=next[key];return [key,value===undefined?old[key]:value?.__increment?(Number(old[key])||0)+value.__increment:value&&typeof value==='object'&&!Array.isArray(value)?merge(old[key],value):value];}));
-export const writeBatch=()=>{const pending=[];return {set:(ref,data,options)=>pending.push(()=>rows[ref.path]=options?.merge?merge(rows[ref.path],data):clone(data)),delete:ref=>pending.push(()=>delete rows[ref.path]),commit:async()=>{pending.forEach(fn=>fn());window.__commits++;}};};`;
+export const writeBatch=()=>{const pending=[];return {set:(ref,data,options)=>pending.push(()=>rows[ref.path]=options?.merge?merge(rows[ref.path],data):clone(data)),delete:ref=>pending.push(()=>delete rows[ref.path]),commit:async()=>{if(window.__commitDelay)await new Promise(resolve=>setTimeout(resolve,window.__commitDelay));if(window.__failCommit)throw new Error('Simulated write failure');pending.forEach(fn=>fn());window.__commits++;window.__emitSync();}};};`;

@@ -10,6 +10,7 @@ const sdk=require('./web-admin-sdk.cjs');
  await context.addInitScript(()=>{window.__rows={'artifacts/diverty-oficial/public/data/categorias_web/comida':{nombre:'Comida',activo:true,visible:true}};window.__messages=[];window.__commits=0;});
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!==origin)return route.abort();
+  if(url.pathname==='/@vite/client')return route.fulfill({contentType:'text/javascript',body:require('./vite-test-client.cjs')});
   if(url.pathname==='/'){const response=await route.fetch();return route.fulfill({response,body:(await response.text()).replace('/src/main.jsx','/tests/browser/web-admin-harness.jsx')});}
   if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:sdk});
   return route.continue();

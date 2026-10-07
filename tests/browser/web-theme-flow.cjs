@@ -16,6 +16,7 @@ const encode=v=>typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integ
   await context.route('**/*',async route=>{
    const url=new URL(route.request().url());requests.push(url.href);
    if(url.origin===origin){
+    if(url.pathname==='/@vite/client')return route.fulfill({contentType:'text/javascript',body:require('./vite-test-client.cjs')});
     if(url.pathname==='/'){const r=await route.fetch();return route.fulfill({response:r,body:(await r.text()).replace('/src/main.jsx','/tests/browser/web-admin-harness.jsx')});}
     if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:sdk});
     return route.continue();
