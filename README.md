@@ -41,3 +41,7 @@ PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromiu
 ```
 
 Esta prueba bloquea solicitudes externas y comprueba que el inicio de sesión no descarga el panel ni Firestore, y que los módulos separados cargan sin errores. El SDK de Firestore tiene su propio archivo para reutilizar la caché cuando cambia el panel.
+
+En **Web → Servicios y personajes → Nuevo servicio / personaje**, elige **Por cantidad** para configurar el precio unitario, el mínimo, el máximo opcional y cuánto aumenta cada botón. El cliente puede escribir la cantidad directamente. Para ofrecer personajes, elige **Personaje** y completa nombre, foto, precio y temática opcional. La primera ficha crea el catálogo Personajes si hace falta; **Guardar y agregar otro personaje** mantiene la categoría y la temática para agilizar la carga.
+
+Con el servidor de desarrollo activo, `node tests/browser/web-catalog-flow.cjs` comprueba creación, edición, límites inválidos, personajes y sincronización con Firestore simulado. `CATALOG_FIXTURE_PATH=/tmp/diverty-created-catalog.json` exporta los registros creados para probarlos en el recorrido público de `Diverty-`, sin escribir datos de prueba en producción.
