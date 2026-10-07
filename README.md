@@ -15,11 +15,14 @@ Las pruebas de navegador necesitan Playwright y Chromium. Con el servidor de des
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/reservation-flow.cjs
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/performance-flow.cjs
 PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/panel-flow.cjs
+PLAYWRIGHT_MODULE=/ruta/a/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/browser/lists-flow.cjs
 ```
 
 `ORIGIN` permite usar otro servidor local. Las pruebas simulan la autenticación y Firestore y bloquean las solicitudes externas; no modifican datos reales.
 
 El recorrido del panel usa reservas pendientes y confirmadas con abonos parciales y comprueba sus tarjetas en Inicio y Agenda, además de los cobros en Finanzas. Así detecta errores de componentes compartidos que no aparecen cuando todas las reservas están completadas.
+
+Agenda y el selector de productos y servicios muestran grupos de 30 resultados con “Mostrar más”. La búsqueda abarca todos los registros y el calendario conserva los conteos completos. `lists-flow.cjs` comprueba 1.200 reservas y 302 conceptos: carga del siguiente grupo, edición, búsqueda de registros posteriores, calendario y selección de servicios. `EVENT_COUNT=300 MEASURE_ONLY=1` ejecuta solo la medición de Agenda con CPU reducida a 4×; los tiempos son de una prueba local con datos simulados.
 
 El recorrido de reservas comprueba contactos, cantidades, horas, guardado, edición, abonos, gastos, borradores y PDF. El recorrido de rendimiento usa 1.200 reservas con ganancia positiva hoy, limita la CPU a 4× y comprueba que las animaciones no actualicen toda la app, que los informes no se calculen fuera de Finanzas y que el cambio de día/mes siga funcionando. Los importes de `performance-finance.json` se capturaron antes de esta optimización para comprobar que mes, año e histórico mantienen los mismos resultados.
 
