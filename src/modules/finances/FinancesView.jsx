@@ -1,4 +1,5 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import AnimatedProgress from '../../components/AnimatedProgress.jsx';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Award, CheckCircle2, Clock, Copy, Download, FileSpreadsheet, MessageCircle, Receipt, RefreshCw, Sparkles, Star, Truck, Users } from 'lucide-react';
 
 function useCountUp(end, duration = 1000) { 
@@ -15,21 +16,6 @@ function useCountUp(end, duration = 1000) {
 const AnimatedMoney = memo(function AnimatedMoney({ value }) {
     const amount = useCountUp(value);
     return <span>{amount.toFixed(0)}</span>;
-});
-
-const AnimatedProgress = memo(function AnimatedProgress({ value }) { 
-    const [width, setWidth] = useState(0); const barRef = useRef(null); 
-    useEffect(() => { 
-        const o = new IntersectionObserver((e) => { if (e[0].isIntersecting) { setTimeout(() => setWidth(value), 200); o.disconnect(); } }, { threshold: 0.1 }); 
-        if (barRef.current) o.observe(barRef.current); 
-        return () => o.disconnect(); 
-    }, [value]); 
-    return (
-        <div ref={barRef} className="h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden bg-slate-200 shadow-inner" style={{ width: `${width}%` }}>
-            <div className="absolute inset-0 bg-gradient-to-r from-[#7657FF] via-[#8B5CF6] to-[#FF3EA5]"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent w-[200%] animate-[shimmer_2s_infinite]"></div>
-        </div>
-    ); 
 });
 
 const ListProgress = memo(function ListProgress({ shown, total, onMore, label }) {
