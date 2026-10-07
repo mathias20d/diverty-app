@@ -30,6 +30,9 @@ const sdk=require('./web-admin-sdk.cjs');
  await page.getByLabel('Cantidad máxima',{exact:true}).fill('500');await page.getByRole('button',{name:'Guardar cambios'}).click();
  await page.getByRole('button',{name:'Editar',exact:true}).first().waitFor();await page.getByRole('button',{name:'Editar',exact:true}).first().click();
  assert.equal(await page.getByLabel('Cantidad mínima',{exact:true}).inputValue(),'50');assert.equal(await page.getByLabel('Nombre de la unidad',{exact:true}).inputValue(),'hot dog');
+ await page.getByLabel('Cantidad máxima',{exact:true}).fill('');await page.getByLabel('Cantidad mínima',{exact:true}).fill('1200');await page.getByRole('button',{name:'Guardar cambios'}).click();
+ assert.equal(await page.evaluate(()=>window.__commits),1);assert.match(await page.evaluate(()=>window.__messages.at(-1)),/1000/);
+ await page.getByLabel('Cantidad mínima',{exact:true}).fill('50');await page.getByLabel('Cantidad máxima',{exact:true}).fill('500');
  await page.getByRole('button',{name:'Guardar cambios'}).click();
  await page.getByRole('button',{name:'Nuevo servicio / personaje'}).click();await page.getByRole('button',{name:'Personaje',exact:true}).click();
  for(const [index,name,price] of [[0,'Héroe de prueba A','80'],[1,'Héroe de prueba B','95']]){
@@ -40,12 +43,19 @@ const sdk=require('./web-admin-sdk.cjs');
   if(index===0){await page.waitForFunction(input=>input.value==='',await page.getByLabel('Nombre',{exact:true}).elementHandle());}
  }
  await page.getByRole('button',{name:'Editar',exact:true}).nth(2).waitFor();
+ for(const [name,min,max] of [['Hot dogs máximo predeterminado','50',''],['Hot dogs máximo ampliado','1200','2000']]){
+  await page.getByRole('button',{name:'Nuevo servicio / personaje'}).click();await page.getByRole('button',{name:'Por cantidad',exact:true}).click();
+  assert.equal(await page.getByLabel('Cantidad máxima',{exact:true}).inputValue(),'1000');
+  await page.getByLabel('Nombre',{exact:true}).fill(name);await page.getByLabel('Precio por unidad',{exact:true}).fill('2');await page.getByLabel('Cantidad mínima',{exact:true}).fill(min);await page.getByLabel('Cantidad máxima',{exact:true}).fill(max);await page.getByLabel('Imagen interna',{exact:true}).fill('/assets/logo-256.webp');
+  await page.getByRole('button',{name:'Guardar cambios'}).click();await page.getByRole('button',{name:'Nuevo servicio / personaje'}).waitFor();
+ }
  const result=await page.evaluate(()=>({rows:window.__rows,commits:window.__commits}));
  const products=Object.entries(result.rows).filter(([p])=>p.includes('/catalogo_web/')).map(([p,data])=>({...data,id:p.split('/').at(-1)}));
  const categories=Object.entries(result.rows).filter(([p])=>p.includes('/categorias_web/')).map(([p,data])=>({...data,id:p.split('/').at(-1)}));
- assert.equal(products.length,3);assert.equal(products.find(x=>x.nombre==='Hot dogs de prueba').tipoCobro,'unidad');
+ assert.equal(products.length,5);assert.equal(products.find(x=>x.nombre==='Hot dogs de prueba').tipoCobro,'unidad');
+ assert.equal(products.find(x=>x.nombre==='Hot dogs máximo predeterminado').cantidadMaxima,1000);assert.equal(products.find(x=>x.nombre==='Hot dogs máximo ampliado').cantidadMaxima,2000);
  assert.equal(products.filter(x=>x.tipoServicio==='personaje').length,2);assert.ok(categories.some(x=>x.id==='personajes'&&x.visible));
- assert.equal(result.rows['artifacts/diverty-oficial/public/data/config_web/web_sync'].versions.catalogo_web,4);
+ assert.equal(result.rows['artifacts/diverty-oficial/public/data/config_web/web_sync'].versions.catalogo_web,6);
  assert.deepEqual(errors,[]);
  if(process.env.CATALOG_FIXTURE_PATH)fs.writeFileSync(process.env.CATALOG_FIXTURE_PATH,JSON.stringify({products,categories}));
  console.log('PASS: create/edit quantity products, reject invalid bounds, create character category, add two characters and sync every save.');
