@@ -1,3 +1,4 @@
+import {portalIndex} from '../src/lib/customer-portal.mjs';
 import {needsPlaceReference} from '../src/lib/location-reference.mjs';
 import {reservationGpsPoint} from '../src/lib/gps-point.mjs';
 import test from 'node:test';
@@ -34,7 +35,7 @@ function fixture() {
     writes.forEach(write => write());
   };
   const ctx = {
-    db: {}, appId: 'diverty-oficial', needsPlaceReference, reservationGpsPoint, transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
+    portalIndex, db: {}, appId: 'diverty-oficial', needsPlaceReference, reservationGpsPoint, transportPending, bookingControlDates, confirmCentralRequest:async()=>null,
     doc: (_db, ...parts) => ({ id: parts.at(-1), path: parts.join('/') }),
     isEventRef: r => r.path.startsWith(base + 'eventos/'),
     availabilityRef: id => ref('disponibilidad_web', id), getDocRef: id => ref('eventos', id),
@@ -68,6 +69,18 @@ test('confirmation updates the event, customer status and public operational pro
   assert.equal(publicData.resourceRequirements.animadores, 1);
   for (const field of ['cliente', 'telefono', 'ownerUid', 'total', 'abono']) assert.equal(field in publicData, false);
   await assert.rejects(f.api.transitionEventStatus(event.id, 'Confirmado', { requirePendingWeb: true }), /ALREADY_PROCESSED/);
+});
+
+test('manual reservations without a browser owner receive a private searchable index that follows edits and deletion', async () => {
+  const f=fixture();
+  const manual={...event,id:'manual',ownerUid:'',cliente:'María Peña',telefono:'+507 6070-2108'};
+  await f.api.setDoc(f.ref('eventos',manual.id),manual);
+  assert.deepEqual(f.rows.get(f.ref('portal_busqueda',manual.id).path),{nombreKey:'maria pena',telefonoKey:'60702108'});
+  assert.equal(f.rows.has(f.ref('reservas_cliente',manual.id).path),false);
+  await f.api.setDoc(f.ref('eventos',manual.id),{telefono:'60000000'},{merge:true});
+  assert.equal(f.rows.get(f.ref('portal_busqueda',manual.id).path).telefonoKey,'60000000');
+  await f.api.deleteDoc(f.ref('eventos',manual.id));
+  assert.equal(f.rows.has(f.ref('portal_busqueda',manual.id).path),false);
 });
 
 test('changing date and time republishes availability and customer tracking together', async () => {

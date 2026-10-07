@@ -1,3 +1,4 @@
+import { portalIndex } from './lib/customer-portal.mjs';
 import { reservationGpsPoint } from './lib/gps-point.mjs';
 import { useReservationViewport } from './lib/use-reservation-viewport.mjs';
 import IncrementalList from './components/IncrementalList.jsx';
@@ -274,6 +275,9 @@ const clientStatus = value => Object.fromEntries(['ownerUid','cliente','telefono
 const projectEvent = (writer, ref, value) => {
   if (value.ownerUid) writer.set(clientStatusRef(ref.id), clientStatus(value));
   else writer.delete(clientStatusRef(ref.id));
+  const portalRef = doc(db,'artifacts',appId,'public','data','portal_busqueda',ref.id);
+  const index = portalIndex(value);
+  if(index) writer.set(portalRef,index); else writer.delete(portalRef);
   const slot = publicSlot(value);
   if (slot) writer.set(availabilityRef(ref.id), slot);
   else writer.delete(availabilityRef(ref.id));
@@ -353,7 +357,7 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
   }
   for (const {ref, value} of events.values()) {
     if (value) projectEvent(tx, ref, value);
-    else { tx.delete(availabilityRef(ref.id)); tx.delete(clientStatusRef(ref.id)); }
+    else { tx.delete(availabilityRef(ref.id)); tx.delete(clientStatusRef(ref.id)); tx.delete(doc(db,'artifacts',appId,'public','data','portal_busqueda',ref.id)); }
   }
   for (const lock of locks.values()) {
     const old = readValues.get(lock.ref.path);
@@ -1620,7 +1624,7 @@ export default function App({ firebaseUser }) {
 
   useEffect(() => {
       if (!firebaseUser || firebaseUser.uid !== ADMIN_UID) return;
-      prepareDivertyData().catch(err => console.warn('No se pudo reconciliar la disponibilidad pública:', err));
+      prepareDivertyData().then(()=>import('./lib/portal-sync.mjs')).then(module=>module.prepareCustomerPortal(db,appId)).catch(err => console.warn('No se pudo preparar la disponibilidad o el portal:', err?.code || 'unavailable'));
   }, [firebaseUser]);
 
   useEffect(() => {

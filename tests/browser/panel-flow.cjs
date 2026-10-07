@@ -35,6 +35,10 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  if(process.env.EXPECT_PANEL_FAILURE){await page.getByRole('alert').filter({hasText:'No se pudo cargar el panel'}).waitFor();assert.ok(errors.some(e=>e.includes('AnimatedProgress is not defined')));console.log('REPRODUCED: '+JSON.stringify(errors));return;}
  await page.getByRole('button',{name:'Nueva Reserva',exact:true}).waitFor({timeout:15000});
 
+ await page.waitForFunction(()=>window.__rows['artifacts/diverty-oficial/public/data/configuracion/migracion_portal_v1']?.done===true);
+ assert.deepEqual(await page.evaluate(()=>window.__rows['artifacts/diverty-oficial/public/data/portal_busqueda/event-0000']),{nombreKey:'cliente 0',telefonoKey:'60000000'});
+ assert.deepEqual(await page.evaluate(()=>window.__rows['artifacts/diverty-oficial/public/data/portal_busqueda/event-0001']),{nombreKey:'cliente 1',telefonoKey:'60000001'});
+ console.log('PASS: existing manual reservations get private name/phone lookup indices in the background.');
  await page.locator('[data-reservation-id="event-0000"]').waitFor();
  assert.equal(await page.locator('[data-reservation-id]').count(),2);
  assert.equal(await page.getByRole('alert').filter({hasText:'No se pudo cargar el panel'}).count(),0);

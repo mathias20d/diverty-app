@@ -2,7 +2,7 @@ const clone=x=>JSON.parse(JSON.stringify(x));
 const rows=window.__rows;
 export const getFirestore=()=>({});
 export const enableIndexedDbPersistence=async()=>{};
-export const collection=(_,...parts)=>({path:parts.join('/')});
+export const collection=(_,...parts)=>({path:parts.join('/'),id:parts.at(-1)});
 export const doc=collection;
 export const where=(field,op,value)=>({field,op,value});
 export const orderBy=field=>({sort:field});
