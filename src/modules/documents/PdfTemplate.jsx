@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { Briefcase, Calendar, Download, FileSignature, Printer, Share2, Users, X } from 'lucide-react';
+import {serviceDurationHours} from '../../lib/service-duration.mjs';
 import { billingMode } from '../../lib/reservation-lines.mjs';
 
 const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, catalogoPaquetes = [] }) {
@@ -97,10 +98,7 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
           : [];
         const rawDetails = [...includeLines, ...descLines, ...topLevelLines].filter(x => !/^\d+(?:[.,]\d+)?\s*(?:h|hr|hrs|hora|horas)(?:\s*\([^)]*\))?$/i.test(x));
         const detalles = [...new Map(rawDetails.map(x => [utils.normalizeText(x), x])).values()].slice(0, 12);
-        const durationText = [servicio.duracion, servicio.duracionTexto, servicio.descripcion, catalogMatch.duracion, catalogMatch.duracionTexto, catalogMatch.descripcion, ...includeLines].filter(Boolean).join(' ');
-        const m = durationText.match(/(\d+(?:[.,]\d+)?)\s*(?:h|hr|hrs|hora|horas)\b/i);
-        const fallback = n.includes('plan recreativo') ? 2 : (n.includes('plan diverty') ? 3 : 0);
-        const hrs = utils.normalizeText(servicio.tipoCobro || '') === 'unidad' ? 0 : utils.safeNum(servicio.duracionHoras) || utils.safeNum(catalogMatch.duracionHoras) || (m ? Number(String(m[1]).replace(',', '.')) : 0) || fallback;
+        const hrs = serviceDurationHours(servicio,catalogMatch);
         const hourly = billingMode({...catalogMatch, ...servicio}) === 'hora';
         const duracion = hourly ? `${cant} ${cant === 1 ? 'Hora' : 'Horas'}` : (hrs > 0 ? `${hrs} ${hrs === 1 ? 'Hora' : 'Horas'}` : '—');
         return { cant, duracion, detalles, hourly, precio: utils.safeNum(servicio.precio) };

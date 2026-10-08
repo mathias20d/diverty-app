@@ -1,3 +1,4 @@
+import {serviceDurationHours} from './service-duration.mjs';
 const amount = value => Number.isFinite(Number(value)) ? Number(value) : 0;
 const money = value => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -20,7 +21,7 @@ export function editReservationLine(line, patch) {
   next.precio = 'precio' in patch ? Math.max(0, amount(patch.precio)) : money(price * quantity);
   if ('precio' in patch) next.precioOriginal = quantity > 0 ? next.precio / quantity : 0;
   if (mode === 'hora') next.duracionHoras = quantity;
-  else if (mode === 'unidad') next.duracionHoras = 0;
+  else next.duracionHoras = serviceDurationHours(next);
   return next;
 }
 

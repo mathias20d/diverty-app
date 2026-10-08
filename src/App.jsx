@@ -1,3 +1,4 @@
+import {serviceDurationHours} from './lib/service-duration.mjs';
 import { portalIndex } from './lib/customer-portal.mjs';
 import { reservationGpsPoint } from './lib/gps-point.mjs';
 import { useReservationViewport } from './lib/use-reservation-viewport.mjs';
@@ -191,7 +192,7 @@ const inferResourceRequirements = value => {
     return new RegExp(`\\b${plural}\\b`).test(text) ? 1 : 0;
   };
   const serviceDurations = Array.isArray(value?.serviciosSeleccionados)
-    ? value.serviciosSeleccionados.map(x => Math.max(0, Number(x?.duracionHoras) || 0)).filter(Boolean)
+    ? value.serviciosSeleccionados.map(x => serviceDurationHours(x)).filter(Boolean)
     : [];
   const durationMinutes = Math.max(
     30,

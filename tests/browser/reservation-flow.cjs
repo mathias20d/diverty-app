@@ -128,6 +128,12 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  await page.locator('#reservation-pdf-test tr').filter({hasText:'Pintacaritas'}).getByText('0.5 Horas',{exact:true}).waitFor();
  assert.match(await page.locator('#reservation-pdf-test table').innerText(),/12\.50/);
  console.log('PASS: invoice shows unit/hour rates and line totals; half-hour quotation retains its selected service.');
+ for(const printType of ['factura','cotizacion','contrato']){
+  await page.evaluate(printType=>{const {root,React,Pdf,props}=window.__pdfTest;const line={nombre:'Diverty Amigo(a)',tipoCobro:'paquete',cantidad:1,precio:95,precioOriginal:95,duracionHoras:1,incluye:['1 Animador (a)','Animación Infantil 1 Hora','Pintacaritas Básicas 1 Hora','Duración 2 Horas']};root.render(React.createElement(Pdf,{...props,printType,printData:{...props.printData,total:95,transporte:0,servicio:line.nombre,serviciosSeleccionados:[line]}}));},printType);
+  const row=page.locator('#reservation-pdf-test tr').filter({hasText:'Diverty Amigo(a)'});await row.getByText('2 Horas',{exact:true}).waitFor();assert.match(await row.innerText(),/95\.00/);assert.equal(await row.getByText('1 Hora',{exact:true}).count(),0);
+ }
+ console.log('PASS: historical Diverty Amigo invoices, quotations and contracts show 2 total hours and retain $95.');
+
  assert.deepEqual(errors,[]);
  assert.ok(await page.evaluate(()=>window.__appRenders>0),'App instrumentation executed');
  assert.deepEqual(parentRenders,[0,0,0,0,0],'opening reservations should not render App');
