@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
+      input: { main: 'index.html', negocios: 'negocios.html' },
       output: {
         // El SDK no cambia con cada mejora del panel; conserva su caché aparte.
         onlyExplicitManualChunks: true,

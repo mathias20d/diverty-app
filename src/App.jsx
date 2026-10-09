@@ -9,8 +9,9 @@ import { createPortal } from 'react-dom';
 import { Calendar, Users, Settings, Plus, Edit, Trash2, X, FileSignature, Clock, MapPin, Info, Download, Receipt, MessageCircle, RefreshCw, AlertTriangle, CheckCircle2, Cloud, Search, CalendarDays, ChevronRight, ChevronLeft, Star, BellRing, TrendingUp, DollarSign, Briefcase, Lock, Mail, Smartphone, FileText, Check, Sparkles, Map as MapIcon, Zap, PieChart, ChevronDown, Sun, Award, FileSpreadsheet, Copy, Share2, Home, Menu, BarChart3, ArrowUpRight, ArrowDownRight, ArrowDownWideNarrow, Save, Minus, Printer, ShieldCheck, Truck, Handshake, PenLine, Globe2 } from 'lucide-react';
 import { getFirestore, collection, doc, setDoc as rawSetDoc, getDoc, getDocs, getDocsFromCache, query, where, onSnapshot, deleteDoc as rawDeleteDoc, enableIndexedDbPersistence, runTransaction as rawRunTransaction, writeBatch, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
+import { app as legacyApp, auth as legacyAuth, ADMIN_UID as legacyAdminUid, LOGO_URL as legacyLogo } from './lib/firebase-auth.mjs';
 
+import { businessId, DIVERTY_PROJECT_ID, workspaceStorageKey } from './lib/business-workspace.mjs';
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
 import { loadPdfLibrary } from './lib/pdf.mjs';
 import { hasPlaceDescription, needsPlaceReference } from './lib/location-reference.mjs';
@@ -19,7 +20,6 @@ import { pendingRequests, requestReview, transportPending } from './lib/web-requ
 import { peakResourceUsage } from './lib/resource-usage.mjs';
 import { addReservationLine, billingMode, clientReservation, editReservationLine, reservationServices, unitPrice } from './lib/reservation-lines.mjs';
 import { createReservationModalStore } from './lib/reservation-modal-store.mjs';
-const confirmCentralRequest = async (...args) => args[0]?.centralBookingVersion === 1 ? (await import('./lib/central-booking.mjs')).confirmCentralRequest(...args) : null;
 const PdfTemplate = lazy(() => import('./modules/documents/PdfTemplate.jsx'));
 
 const DateAvailabilityManager = lazy(() => import('./components/DateAvailabilityManager.jsx'));
@@ -33,6 +33,45 @@ const preloadSection = tab => {
     if (load) load().catch(() => {});
 };
 
+
+
+export const utils = {
+  normalizeText: (t) => String(t || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+  getSafeLocal: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } },
+  setSafeLocal: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
+  triggerHaptic: (t = 'light') => { if (window?.navigator?.vibrate) try { window.navigator.vibrate(t === 'light' ? 30 : 50); } catch (e) {} },
+  safeNum: (v) => { if (typeof v === 'number') return isNaN(v) ? 0 : v; if (!v) return 0; const p = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(p) ? 0 : p; },
+  formatTime12h: (t) => { if (!t) return 'Por definir'; const [h, m] = String(t).split(':'); if (!h || !m) return t; let hrs = parseInt(h, 10); const suf = hrs >= 12 ? 'PM' : 'AM'; return `${hrs % 12 || 12}:${m} ${suf}`; },
+  getLocalYYYYMMDD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+  getWeekRange: (b = new Date()) => { const t = new Date(b), d = t.getDay() === 0 ? -6 : 1 - t.getDay(), s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
+  openWhatsAppBusiness: (phone, msg) => { const clean = String(phone || '').replace(/\D/g, ''); const text = encodeURIComponent(msg || ''); const fallback = `https://api.whatsapp.com/send?phone=${clean}&text=${text}`; const isAndroid = /Android/i.test(navigator.userAgent || ''); if (isAndroid) { const intent = `intent://send?phone=${clean}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=${encodeURIComponent(fallback)};end`; window.location.href = intent; return; } const link = document.createElement('a'); link.href = fallback; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
+};
+
+// Each panel closes over immutable references: pending work from one account
+// cannot be redirected into the next account's workspace after logout.
+const baseUtils = utils;
+export function createWorkspaceApp(workspace = null) {
+  const commercial = workspace?.commercial === true;
+  if (workspace && (!commercial || workspace.projectId === DIVERTY_PROJECT_ID
+    || workspace.appId !== businessId(workspace.adminUid)
+    || workspace.auth?.currentUser?.uid !== workspace.adminUid
+    || !workspace.app || !workspace.db
+    || workspace.app.options?.projectId !== workspace.projectId
+    || workspace.auth.app !== workspace.app || workspace.db.app !== workspace.app)) throw new Error('BUSINESS_ACCESS_DENIED');
+  const app = workspace?.app || legacyApp, auth = workspace?.auth || legacyAuth;
+  const ADMIN_UID = workspace?.adminUid || legacyAdminUid;
+  const LOGO_URL = commercial ? '/business-icon.svg' : legacyLogo;
+  const BUSINESS_NAME = workspace?.businessName || 'Diverty Eventos';
+  const projectId = workspace?.projectId || DIVERTY_PROJECT_ID;
+  const utils = { ...baseUtils,
+    getSafeLocal: key => baseUtils.getSafeLocal(workspaceStorageKey(projectId, workspace?.appId || 'diverty-oficial', key)),
+    setSafeLocal: (key, value) => baseUtils.setSafeLocal(workspaceStorageKey(projectId, workspace?.appId || 'diverty-oficial', key), value)
+  };
+  const confirmCentralRequest = async (...args) => {
+    if (args[0]?.centralBookingVersion !== 1) return null;
+    if (commercial) throw new Error('CENTRAL_BOOKING_NOT_CONFIGURED');
+    return (await import('./lib/central-booking.mjs')).confirmCentralRequest(...args);
+  };
 // The reservation subscribes independently so opening it leaves the active screen intact.
 const ReservationModalHost = memo(function ReservationModalHost({store, ...props}) {
     const config = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
@@ -40,10 +79,10 @@ const ReservationModalHost = memo(function ReservationModalHost({store, ...props
 });
 
 // --- 1. CONFIGURACIÓN FIREBASE Y CONSTANTES ---
-const db = getFirestore(app);
-enableIndexedDbPersistence(db).catch(() => {});
-const appId = 'diverty-oficial'; const META_MENSUAL = 1500;
-const DATOS_EMPRESA = { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
+const db = workspace?.db || getFirestore(app);
+if (!commercial) enableIndexedDbPersistence(db).catch(() => {});
+const appId = workspace?.appId || 'diverty-oficial'; const META_MENSUAL = 1500;
+const DATOS_EMPRESA = commercial ? { nombreComercial: BUSINESS_NAME, nombreTitular: '', ruc: '', banco: '', tipoCuenta: '', numeroCuenta: '', telefono: '', email: auth.currentUser?.email || '', web: '' } : { nombreTitular: "AILEN DENNISKA CAMARENA MENDOZA", ruc: "Panamá RUC DV 79 8 957349", banco: "Banco General", tipoCuenta: "Cuenta de ahorros", numeroCuenta: "0472960083979", telefono: "6667-7965", email: "corporativo@divertyeventos.online", web: "Divertyeventos.online" };
 const ZONAS_TRANSPORTE = { "Ciudad de Panamá": 0, "Panamá Centro": 0, "San Miguelito": 0, "Punta Pacífica": 5, "Costa del Este": 5, "Albrook / Clayton": 5, "Panamá Norte (hasta Villa Grecia)": 15, "Panamá Este (después de Megamall hasta Pacora)": 15, "Arraiján / Panamá Pacífico": 15, "Costa Verde / hasta 3 km": 20, "La Chorrera (fuera de 3 km de Costa Verde)": 25 };
 const NAV_ITEMS = [ {id:'inicio', icon:Home, text:'Inicio'}, {id:'eventos', icon:Calendar, text:'Agenda'}, {id:'clientes', icon:Users, text:'Clientes'}, {id:'proveedores', icon:Truck, text:'Proveedores'}, {id:'finanzas', icon:PieChart, text:'Finanzas'}, {id:'web', icon:Globe2, text:'Web'}, {id:'config', icon:Settings, text:'Ajustes'} ];
 const defaultFormData = Object.freeze({ cliente: '', ruc: '', email: '', telefono: '', tipoEvento: 'Cumpleaños', ninos: '', fecha: '', hora: '', ubicacion: 'Panamá Centro', direccion: '', comentarios: '', servicio: '', serviciosSeleccionados: [], transporte: '', gastos: '', detalleGastos: '', subcontratos: [], costosSeparados: true, total: '', abono: '', estado: 'Pendiente', colisionAprobada: false, vigenciaCotizacion: 7, fechaEmisionCotizacion: '' });
@@ -507,17 +546,7 @@ const COLORS = { blue: 'bg-[#7657FF]/10 text-[#7657FF] border-[#7657FF]/20', ros
 try { window?.Capacitor?.Plugins?.SplashScreen?.hide?.(); } catch (_) {}
 
 // --- 3. FUNCIONES UTILITARIAS ---
-export const utils = {
-  normalizeText: (t) => String(t || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), 
-  getSafeLocal: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } }, 
-  setSafeLocal: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
-  triggerHaptic: (t = 'light') => { if (window?.navigator?.vibrate) try { window.navigator.vibrate(t === 'light' ? 30 : 50); } catch (e) {} }, 
-  safeNum: (v) => { if (typeof v === 'number') return isNaN(v) ? 0 : v; if (!v) return 0; const p = parseFloat(String(v).replace(/[^0-9.-]/g, '')); return isNaN(p) ? 0 : p; },
-  formatTime12h: (t) => { if (!t) return 'Por definir'; const [h, m] = String(t).split(':'); if (!h || !m) return t; let hrs = parseInt(h, 10); const suf = hrs >= 12 ? 'PM' : 'AM'; return `${hrs % 12 || 12}:${m} ${suf}`; },
-  getLocalYYYYMMDD: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
-  getWeekRange: (b = new Date()) => { const t = new Date(b), d = t.getDay() === 0 ? -6 : 1 - t.getDay(), s = new Date(t); s.setDate(t.getDate() + d); s.setHours(0, 0, 0, 0); const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999); return { start: s, end: e }; },
-  openWhatsAppBusiness: (phone, msg) => { const clean = String(phone || '').replace(/\D/g, ''); const text = encodeURIComponent(msg || ''); const fallback = `https://api.whatsapp.com/send?phone=${clean}&text=${text}`; const isAndroid = /Android/i.test(navigator.userAgent || ''); if (isAndroid) { const intent = `intent://send?phone=${clean}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;S.browser_fallback_url=${encodeURIComponent(fallback)};end`; window.location.href = intent; return; } const link = document.createElement('a'); link.href = fallback; link.target = '_blank'; link.rel = 'noopener noreferrer'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
-};
+
 
 // CRM Clientes 2.1: agrupa el historial por nombre normalizado.
 // El teléfono se conserva como dato de contacto, pero no separa al mismo cliente
@@ -630,9 +659,9 @@ function getWhatsAppMessage(ev, type, empresa) {
         case 'cotizacion': return `¡Hola *${ev.cliente}*! ✨\nTe comparto la cotización para tu evento el *${fec}*.\n🎉 *Paquetes:* ${ev.servicio}\n💰 *Inversión Total:* $${tot.toFixed(2)}\n📌 *Cotización válida hasta:* ${vigHasta}\n\n*He adjuntado el PDF con todos los detalles a este mensaje.*\n\nLa fecha se reserva al confirmar disponibilidad y realizar el abono acordado. ¡Estamos a la orden! 🥳`;
         case 'recibo': return `¡Hola *${ev.cliente}*! 🥳\nTu reserva está *Confirmada* ✅\n📅 *Fecha:* ${fec}\n⏰ *Hora:* ${hor}\n📍 *Lugar:* ${ev.ubicacion}\n💰 *Total:* $${tot.toFixed(2)}\n💳 *Abono recibido:* $${abo.toFixed(2)}\n⚠️ *Saldo a cancelar en evento:* $${saldo}\n\n*Te adjunto el recibo oficial en PDF.*\n¡Gracias por preferirnos! ✨`;
         case 'recordatorio': return `¡Hola *${ev.cliente}*! 🥳\n¡Se acerca tu gran día! Recuerda tu evento para el *${fec}* a las *${hor}*.\n📍 Llegaremos a *${ev.ubicacion}*.\n💰 Saldo pendiente: *$${saldo}*.\n¡Nos vemos pronto para la diversión! ✨`;
-        case 'cobro': return `¡Hola *${ev.cliente}*! 👋\nTe contactamos de Diverty Eventos.\nTe recordamos amablemente que tienes un saldo pendiente de *$${saldo}* para asegurar tu fecha del *${fec}*.\n\nSi deseas realizar el abono mediante Yappy o Transferencia, por favor avísanos por aquí. ¡Estamos a tu disposición! ✨`;
+        case 'cobro': return `¡Hola *${ev.cliente}*! 👋\nTe contactamos de ${BUSINESS_NAME}.\nTe recordamos amablemente que tienes un saldo pendiente de *$${saldo}* para asegurar tu fecha del *${fec}*.\n\nSi deseas realizar el abono mediante Yappy o Transferencia, por favor avísanos por aquí. ¡Estamos a tu disposición! ✨`;
         case 'banco': return `¡Hola *${ev.cliente}*! 👋\nNuestros datos bancarios:\n🏦 *Banco:* ${empresa.banco}\n📋 *Tipo:* ${empresa.tipoCuenta}\n🔢 *Cuenta:* ${empresa.numeroCuenta}\n👤 *Nombre:* ${empresa.nombreTitular}\nPor favor envía comprobante. ¡Gracias! ✨`;
-        case 'contrato_prov': return `¡Hola *${ev.nombre}*! 👋\nTe comparto el Contrato de Prestación de Servicios de parte de Diverty Eventos.\nPor favor, revísalo y confirmamos detalles.\n¡Saludos! ✨`;
+        case 'contrato_prov': return `¡Hola *${ev.nombre}*! 👋\nTe comparto el Contrato de Prestación de Servicios de parte de ${BUSINESS_NAME}.\nPor favor, revísalo y confirmamos detalles.\n¡Saludos! ✨`;
         case 'agradecimiento': default: return `¡Hola *${ev.cliente}*! 🌟\n¡GRACIAS por permitirnos estar en tu evento!\n¿Qué tal la pasaron? Nos encantaría ver fotitos 📸🎉\n¡Un abrazo mágico de todo el equipo! ✨`;
     }
 }
@@ -1160,7 +1189,7 @@ const ClientCardItem = memo(function ClientCardItem({ c, idx, isExpanded, onTogg
       return Math.max(utils.safeNum(ev.total) - utils.safeNum(ev.abono), 0) > 0;
     }), [historial, utils]);
     const phoneClean=String(c.telefono).replace(/\D/g,'');
-    const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de Diverty Eventos. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en Diverty Eventos estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
+    const msgPromo=`¡Hola ${c.nombre}! 😊 Te saludamos de ${BUSINESS_NAME}. Tenemos nuevas promociones exclusivas en nuestros paquetes infantiles. ¿Te gustaría conocerlas? 🎉`, msgRecordatorio=`¡Hola ${c.nombre}! 🥳 Te recordamos que en ${BUSINESS_NAME} estamos listos para hacer de tu próxima celebración un día inolvidable. ¡Escríbenos cuando lo necesites! 🎈`;
     const grad=c.isVIP?'from-amber-400 via-orange-500 to-rose-500':'from-[#7657FF] to-[#8B5CF6]';
 
     return(<div className={`${UI.card} flex flex-col relative overflow-hidden transition-all duration-500 hover:-translate-y-2 animate-fadeInUp`} style={{animationFillMode:'both',animationDelay:`${idx*20}ms`}}>
@@ -1364,10 +1393,10 @@ const EventFormModal = memo(function EventFormModal({ isOpen, initialData, isCot
 });
 
 // --- APP COMPONENT ---
-export default function App({ firebaseUser }) {
+function OperationalApp({ firebaseUser }) {
   const lastActivityRef = useRef(Date.now()); 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [appSettings, setAppSettings] = useState(() => readAppSettings(utils.getSafeLocal('diverty_settings'), { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }));
+  const [appSettings, setAppSettings] = useState(() => readAppSettings(commercial ? JSON.stringify(workspace.initialSettings) : utils.getSafeLocal('diverty_settings'), { metaMensual: META_MENSUAL, empresa: DATOS_EMPRESA }));
   // Mantiene día/mes financiero vivo aunque la app permanezca abierta durante medianoche.
   useEffect(() => {
       const refreshDay = () => {
@@ -1588,8 +1617,8 @@ export default function App({ firebaseUser }) {
   // la fuente oficial; este ID solo evita que un dispositivo procese su propia señal dos veces.
   const deviceIdRef = useRef((() => {
       try {
-          let id = localStorage.getItem('diverty_device_id');
-          if (!id) { id = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; localStorage.setItem('diverty_device_id', id); }
+          let id = utils.getSafeLocal('diverty_device_id');
+          if (!id) { id = `dev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; utils.setSafeLocal('diverty_device_id', id); }
           return id;
       } catch { return `dev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`; }
   })());
@@ -1741,7 +1770,7 @@ export default function App({ firebaseUser }) {
   }, [isPrinting]);
 
   useEffect(() => {
-      if (!firebaseUser) { setMessaging(null); return; }
+      if (commercial || !firebaseUser) { setMessaging(null); return; }
       let cancelled = false;
       import('firebase/messaging').then(async sdk => {
           if (await sdk.isSupported() && !cancelled) setMessaging({ sdk, instance: sdk.getMessaging(app) });
@@ -1847,6 +1876,7 @@ export default function App({ firebaseUser }) {
       setAppSettings(prev => {
          const updated = typeof newSettings === 'function' ? newSettings(prev) : newSettings;
          utils.setSafeLocal('diverty_settings', JSON.stringify(updated));
+         if (commercial) rawSetDoc(getConfigRef('appSettings'), updated).catch(() => showAlert('No se pudieron guardar los ajustes en la nube. Reintenta.', false));
          return updated;
       });
   }, []); 
@@ -3353,6 +3383,7 @@ export default function App({ firebaseUser }) {
   const handleCopiarCobros = useCallback(() => { utils.triggerHaptic('success'); let text = "📋 *REPORTE DE COBROS PENDIENTES* 📋\n\n"; eventosActivos.filter(e => { const est = utils.normalizeText(e.estado); return (utils.safeNum(e.total) - utils.safeNum(e.abono)) > 0 && !isArchivedReservation(e) && !isPendingWebRequest(e) && !est.includes('cotizaci') && !est.includes('cot.'); }).forEach(e => { text += `👤 *${e.cliente}*\n📅 Fecha: ${e.fecha}\n💰 Debe: $${(utils.safeNum(e.total) - utils.safeNum(e.abono)).toFixed(2)}\n📞 WA: ${e.telefono}\n\n`; }); navigator.clipboard.writeText(text); showAlert("Lista de cobros copiada al portapapeles", true); }, [eventosActivos, showAlert]);
 
   const activarNotificaciones = useCallback(async () => {
+    if (commercial) { showAlert("Las notificaciones externas se configurarán en la siguiente etapa del piloto.", false); return; }
     if (!messaging) { showAlert("Notificaciones no disponibles.", false); return; }
     try { if (!('Notification' in window)) { showAlert("Navegador no soporta notificaciones.", false); return; } if (!('serviceWorker' in navigator)) { showAlert("Service Worker no disponible.", false); return; } const permiso = await Notification.requestPermission(); if (permiso !== "granted") { showAlert("Debes permitir notificaciones", false); return; } showAlert("Generando token, espera...", true); const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { updateViaCache: 'none' }); await swRegistration.update().catch(() => {}); await navigator.serviceWorker.ready; const token = await messaging.sdk.getToken(messaging.instance, { vapidKey: "BEmGfQ2ANNd-fwu25Nd7OyRnzCbX8pdIoYxreafTsk5R5PKoAIfom-tDJIMS4Slpu5XjK0vvwLxHCS5_09B8YrQ", serviceWorkerRegistration: swRegistration }); if (token) { await setDoc(doc(db, "tokens", token), { token: token, createdAt: new Date(), updatedAt: new Date(), userAgent: navigator.userAgent || '', enabled: true }); console.log("Notificaciones registradas correctamente."); showAlert("✅ ¡Notificaciones activadas!", true); } else { showAlert("No se generó ningún token.", false); } } catch (error) { console.error("Error obteniendo token:", error); const detalle = error?.code || error?.name || error?.message || "desconocido"; showAlert(`Error al obtener token: ${detalle}`, false); }
   }, [messaging, showAlert]);
@@ -3538,7 +3569,7 @@ export default function App({ firebaseUser }) {
              <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-7">
                  <div className="text-left max-w-xl">
                      <p className="text-white/70 text-[13px] sm:text-sm font-bold mb-1.5 tracking-wide">Buenas tardes ☀️</p>
-                     <h1 className="text-[34px] leading-none sm:text-5xl font-black mb-2 tracking-[-0.045em] text-white">Hola Diverty <span className="inline-block">👋</span></h1>
+                     <h1 className="text-[34px] leading-none sm:text-5xl font-black mb-2 tracking-[-0.045em] text-white">Hola {commercial ? BUSINESS_NAME : 'Diverty'} <span className="inline-block">👋</span></h1>
                      <p className="text-slate-300/90 font-semibold text-[13px] sm:text-base leading-relaxed max-w-md">Gestiona tus reservas, contratos y finanzas al instante.</p>
                  </div>
                  <div className="hidden sm:flex w-28 h-28 rounded-[30px] bg-white/[0.07] border border-white/10 items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_40px_rgba(118,87,255,.18)]"><CalendarDays size={56} className="text-fuchsia-300 drop-shadow-[0_0_18px_rgba(232,121,249,.45)]" strokeWidth={1.8}/></div>
@@ -3869,7 +3900,7 @@ export default function App({ firebaseUser }) {
                         <div className="mt-2 rounded-[16px] bg-[#F7F3FF] border border-[#7657FF]/10 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-[#7657FF]">Servicio</p><p className="text-sm font-black text-slate-900 mt-1 whitespace-pre-wrap">{ev.servicio||'Entrega de Nochebuena'}</p>{ev.descripcionEvento&&<p className="text-[11px] font-semibold text-slate-600 mt-2 whitespace-pre-wrap leading-relaxed">{ev.descripcionEvento}</p>}</div>
                         <div className="mt-2 rounded-[16px] bg-slate-50 p-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Dirección / GPS</p><p className="text-[11px] font-bold text-slate-700 mt-1 break-words whitespace-pre-wrap">{ev.direccion||'No indicada'}</p>{ev.referenciaLugar&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Referencia</p><p className="text-[11px] font-bold text-slate-700 mt-1 whitespace-pre-wrap">{ev.referenciaLugar}</p></>}{ev.comentarios&&<><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mt-3">Comentarios</p><p className="text-[11px] font-semibold text-slate-600 mt-1 whitespace-pre-wrap">{ev.comentarios}</p></>}</div>
                         <div className="mt-3"><p className="text-[8px] font-black uppercase tracking-wider text-slate-400 mb-2">Santa asignado</p><div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">{enabledSantas.map(name=><button key={name} type="button" onClick={()=>reassignSanta(ev,name)} className={`shrink-0 px-3 py-2.5 rounded-[13px] text-[9px] font-black uppercase tracking-wider border ${String(ev.santaAsignado||'')===name?'bg-red-600 text-white border-red-600':'bg-white text-slate-600 border-slate-200'}`}>{name}</button>)}</div></div>
-                        <div className="grid grid-cols-2 gap-2 mt-3">{phone?<button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${ev.cliente||''}, te contactamos de Diverty Eventos sobre tu entrega de Navidad.`)} className="min-h-[46px] rounded-[14px] bg-emerald-50 text-emerald-600 border border-emerald-100 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MessageCircle size={16}/> WhatsApp</button>:<div/>}<button type="button" onClick={()=>openGoogleMaps(ev.direccion, ev.ubicacion, ev)} className="min-h-[46px] rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MapPin size={16}/> GPS / Waze</button></div>
+                        <div className="grid grid-cols-2 gap-2 mt-3">{phone?<button type="button" onClick={()=>utils.openWhatsAppBusiness(phone,`Hola ${ev.cliente||''}, te contactamos de ${BUSINESS_NAME} sobre tu entrega de Navidad.`)} className="min-h-[46px] rounded-[14px] bg-emerald-50 text-emerald-600 border border-emerald-100 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MessageCircle size={16}/> WhatsApp</button>:<div/>}<button type="button" onClick={()=>openGoogleMaps(ev.direccion, ev.ubicacion, ev)} className="min-h-[46px] rounded-[14px] bg-[#7657FF]/10 text-[#7657FF] border border-[#7657FF]/15 font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-2"><MapPin size={16}/> GPS / Waze</button></div>
                         {!delivered ? <button type="button" onClick={()=>markChristmasDelivered(ev)} className="mt-2 w-full min-h-[52px] rounded-[15px] bg-emerald-500 text-white border border-emerald-500 font-black text-[10px] uppercase tracking-[.12em] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(16,185,129,.18)] active:scale-[.98]"><CheckCircle2 size={18}/> Marcar entrega realizada</button> : <button type="button" onClick={()=>reopenChristmasDelivery(ev)} className="mt-2 w-full min-h-[46px] rounded-[15px] bg-white text-slate-500 border border-slate-200 font-black text-[9px] uppercase tracking-[.1em] flex items-center justify-center gap-2 active:scale-[.98]"><RefreshCw size={15}/> Volver a pendiente</button>}
                         <button type="button" onClick={()=>deleteChristmas(ev)} className="mt-2 w-full min-h-[48px] rounded-[15px] bg-rose-50 text-rose-600 border border-rose-200 font-black text-[10px] uppercase tracking-[.12em] flex items-center justify-center gap-2 active:scale-[.98]"><Trash2 size={17}/> Eliminar reserva y liberar cupo</button>
                       </div>}
@@ -3918,7 +3949,7 @@ export default function App({ firebaseUser }) {
           <div className="mb-8 rounded-[30px] overflow-hidden bg-gradient-to-br from-[#111B35] via-[#27205A] to-[#7657FF] p-[1px] shadow-[0_22px_48px_rgba(76,55,160,.20)]">
             <div className="rounded-[29px] bg-gradient-to-br from-[#111B35] via-[#27205A] to-[#7657FF] p-5 text-white relative overflow-hidden">
               <div className="absolute -right-12 -top-16 w-44 h-44 rounded-full bg-[#FF3EA5]/20 blur-2xl"></div>
-              <div className="flex items-center justify-between mb-5 relative"><div><p className="text-[9px] uppercase tracking-[.2em] font-black text-white/55">Cartera de clientes</p><p className="text-xl font-black mt-1">Tu comunidad Diverty</p></div><div className="w-11 h-11 rounded-[15px] bg-white/10 border border-white/10 flex items-center justify-center"><Users size={22}/></div></div>
+              <div className="flex items-center justify-between mb-5 relative"><div><p className="text-[9px] uppercase tracking-[.2em] font-black text-white/55">Cartera de clientes</p><p className="text-xl font-black mt-1">{commercial ? `Clientes de ${BUSINESS_NAME}` : 'Tu comunidad Diverty'}</p></div><div className="w-11 h-11 rounded-[15px] bg-white/10 border border-white/10 flex items-center justify-center"><Users size={22}/></div></div>
               <div className="grid grid-cols-3 gap-2 relative">
                 <button type="button" onClick={()=>setClientFilter('todos')} className={`rounded-[20px] p-3.5 text-left border transition-all ${clientFilter==='todos'?'bg-white text-slate-950 border-white shadow-lg':'bg-white/8 text-white border-white/10'}`}><Users size={18} className={clientFilter==='todos'?'text-[#7657FF]':'text-white/70'}/><p className="text-2xl font-black mt-3">{totalClientes}</p><p className={`text-[8px] font-black uppercase tracking-[.13em] mt-1 ${clientFilter==='todos'?'text-slate-400':'text-white/55'}`}>Clientes</p></button>
                 <button type="button" onClick={()=>setClientFilter('vip')} className={`rounded-[20px] p-3.5 text-left border transition-all ${clientFilter==='vip'?'bg-white text-slate-950 border-white shadow-lg':'bg-white/8 text-white border-white/10'}`}><Award size={18} className="text-amber-400"/><p className="text-2xl font-black mt-3">{totalVip}</p><p className={`text-[8px] font-black uppercase tracking-[.13em] mt-1 ${clientFilter==='vip'?'text-slate-400':'text-white/55'}`}>VIP</p></button>
@@ -3933,7 +3964,7 @@ export default function App({ firebaseUser }) {
                  <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
                      {contactCandidates.map((c, idx) => {
                          const phoneClean = String(c.telefono).replace(/\D/g,'');
-                         const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de Diverty Eventos. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`;
+                         const msg = `¡Hola ${c.nombre}! 👋 Te saludamos de ${BUSINESS_NAME}. Ha pasado un tiempo desde tu última fiesta. ¿Tienes alguna celebración próxima? ¡Tenemos nuevas promociones! 🎉`;
                          return <div key={`contact-${c.clientKey}`} className="snap-center shrink-0 w-[84%] sm:w-80 rounded-[26px] bg-white border border-[#7657FF]/10 p-5 shadow-[0_16px_34px_rgba(69,51,135,.10)]"><div className="flex items-center gap-3 mb-4"><div className="w-12 h-12 rounded-[16px] bg-gradient-to-br from-[#7657FF] to-[#D62CFF] text-white flex items-center justify-center font-black">{String(c.nombre||'?').split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase()}</div><div className="min-w-0 flex-1"><p className="font-black text-slate-950 text-lg truncate">{c.nombre}</p><span className="inline-flex mt-1 items-center gap-1 text-[9px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-full"><Clock size={11}/> Sin compras hace {c.daysSince} días</span></div></div><button type="button" onClick={()=>utils.openWhatsAppBusiness(phoneClean,msg)} className="w-full py-3.5 rounded-[16px] bg-gradient-to-r from-[#7657FF] via-[#A843F3] to-[#FF3EA5] text-white font-black text-[11px] uppercase tracking-[.1em] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(118,87,255,.22)]"><MessageCircle size={17}/> Enviar promo</button></div>;
                      })}
                  </div>
@@ -4071,6 +4102,8 @@ export default function App({ firebaseUser }) {
   const renderConfig = () => <Suspense fallback={<p role="status" className="p-6 text-slate-500">Cargando ajustes…</p>}><SettingsView
       Field={Field}
       LOGO_URL={LOGO_URL}
+      businessName={BUSINESS_NAME}
+      commercial={commercial}
       activarNotificaciones={activarNotificaciones}
       appSettings={appSettings}
       christmasModuleVisible={christmasModuleVisible}
@@ -4112,6 +4145,8 @@ export default function App({ firebaseUser }) {
         <PdfTemplate
           utils={utils}
           logoUrl={LOGO_URL}
+          brandName={commercial ? BUSINESS_NAME : 'Diverty Eventos Panamá'}
+          shortBrandName={commercial ? BUSINESS_NAME : 'Diverty'}
           printData={printData}
           printType={printType}
           pdfScale={pdfScale}
@@ -4128,7 +4163,7 @@ export default function App({ firebaseUser }) {
 
       <div className="flex-1 flex flex-col min-w-0 relative z-10 h-[100dvh] overflow-hidden">
           <header style={{backgroundColor:'rgba(7,17,38,0.985)'}} className="backdrop-blur-2xl border-b border-white/10 px-4 sm:px-6 py-3 flex justify-between items-center z-40 sticky top-0 shadow-[0_10px_28px_rgba(2,6,23,0.22)]">
-             <div className="flex items-center gap-3"><div className="bg-white/[0.08] p-1.5 rounded-[13px] border border-white/10 shadow-sm ring-1 ring-white/[0.03]"><img src={LOGO_URL} alt="Logo" className="h-7 w-7 object-contain" /></div><h1 className="text-[19px] sm:text-xl font-black text-white tracking-[-0.025em] flex items-center gap-2">Diverty CRM {!isOnline && <Cloud size={18} className="text-amber-500 animate-pulse"/>}</h1></div>
+             <div className="flex items-center gap-3"><div className="bg-white/[0.08] p-1.5 rounded-[13px] border border-white/10 shadow-sm ring-1 ring-white/[0.03]"><img src={LOGO_URL} alt="Logo" className="h-7 w-7 object-contain" /></div><h1 className="text-[19px] sm:text-xl font-black text-white tracking-[-0.025em] flex items-center gap-2">{commercial ? `${BUSINESS_NAME} · Piloto` : 'Diverty CRM'} {!isOnline && <Cloud size={18} className="text-amber-500 animate-pulse"/>}</h1></div>
              <button aria-label="Solicitudes web" onClick={() => setIsNotifOpen(true)} className="relative p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-[14px] transition-all">
                 <BellRing size={22} />
                 {eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa').length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-[#FF2F9A] text-white text-[9px] font-black rounded-full border-2 border-[#071126] flex items-center justify-center shadow-md">{Math.min(99,eventosActivos.filter(e => utils.normalizeText(e.estado) === 'pendiente' && utils.normalizeText(e.origen) === 'web directa').length)}</span>}
@@ -4140,7 +4175,7 @@ export default function App({ firebaseUser }) {
             {activeTab === 'clientes' && renderClientes()}
             {activeTab === 'proveedores' && renderProveedores()}
             {activeTab === 'finanzas' && (financeLoading || isHistoryLoading ? <p className="p-6">Actualizando período…</p> : financeLoadError ? <p className="p-6 text-red-600">{financeLoadError}</p> : renderFinanzas())}
-            {activeTab === 'web' && <Suspense fallback={<div className="py-16 text-center text-slate-400 font-bold">Cargando administrador web…</div>}><WebAdmin db={db} appId={appId} currentUser={firebaseUser} showAlert={showAlert} /></Suspense>}
+            {activeTab === 'web' && <Suspense fallback={<div className="py-16 text-center text-slate-400 font-bold">Cargando administrador web…</div>}>{commercial ? <div className="p-6 max-w-2xl mx-auto"><h2 className="text-2xl font-bold">Página de reservas de tu negocio</h2><p className="mt-4 text-slate-600">Tu administrador ya tiene su propio espacio. La página pública, las imágenes y las notificaciones externas se conectarán en la próxima etapa del piloto.</p><p className="mt-3 text-sm text-slate-500">Puedes crear reservas, servicios y clientes desde las otras secciones.</p></div> : <WebAdmin db={db} appId={appId} currentUser={firebaseUser} showAlert={showAlert} />}</Suspense>}
             {activeTab === 'config' && renderConfig()}
           </main>
       </div>
@@ -4158,4 +4193,12 @@ export default function App({ firebaseUser }) {
       </nav>
     </div>
   );
+}
+
+  return OperationalApp;
+}
+
+const DivertyPanel = createWorkspaceApp();
+export default function App({ firebaseUser }) {
+  return <DivertyPanel firebaseUser={firebaseUser} />;
 }

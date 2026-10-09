@@ -1,0 +1,46 @@
+rules_version = '2';
+// Only for a SEPARATE commercial pilot Firebase project. Do not deploy these
+// rules to diverty-eventos: its public booking protocol is different.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function account() {
+      return request.auth != null
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'password';
+    }
+    function owner(id) { return account() && id == 'business-' + request.auth.uid; }
+    function profilePath(id) { return /databases/$(database)/documents/businesses/$(id); }
+    function ready(id) {
+      return owner(id) && exists(profilePath(id)) && get(profilePath(id)).data.ownerUid == request.auth.uid;
+    }
+    function profileShape(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id','ownerUid','name','email','createdAt'])
+        && d.id == id && d.ownerUid == request.auth.uid
+        && d.name is string && d.name.size() >= 2 && d.name.size() <= 80
+        && d.email == request.auth.token.email
+        && d.createdAt is string && d.createdAt.size() <= 40;
+    }
+    match /businesses/{id} {
+      allow get: if owner(id);
+      allow create: if owner(id) && profileShape(id);
+      // Account identifiers and creation time cannot be transferred or reset.
+      allow update: if ready(id) && profileShape(id)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email']);
+      allow list, delete: if false;
+    }
+    match /artifacts/{id}/public/data/{section}/{record} {
+      allow read: if ready(id)
+        && section in ['eventos','proveedores','configuracion','config_web','booking_control',
+          'disponibilidad_web','reservas_cliente','portal_busqueda','categorias_web',
+          'catalogo_web','campanas_web','temas_web','transporte_web','galeria_web','resenas_web','cupones_web'];
+      allow write: if owner(id)
+        && getAfter(profilePath(id)).data.ownerUid == request.auth.uid
+        && section in ['eventos','proveedores','configuracion','config_web','booking_control',
+          'disponibilidad_web','reservas_cliente','portal_busqueda','categorias_web',
+          'catalogo_web','campanas_web','temas_web','transporte_web','galeria_web','resenas_web','cupones_web'];
+    }
+    // Reserved for future verified purchases. Clients cannot mint a licence.
+    match /licenses/{id} { allow get: if ready(id); allow write, list: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

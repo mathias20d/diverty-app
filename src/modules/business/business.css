@@ -1,0 +1,30 @@
+.business-entry{min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,460px);align-items:center;gap:64px;max-width:1160px;margin:auto;padding:56px 40px;box-sizing:border-box;color:#15203a;font-family:system-ui,sans-serif}
+body:has(.business-entry){background:radial-gradient(ellipse at 0 20%,#e9e5ff,transparent 60%),#f7f8fc}
+.business-wordmark{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:750;margin-bottom:64px}
+.business-eyebrow{display:block;font-size:11px;letter-spacing:.14em;font-weight:750;color:#7657ff;margin-bottom:14px}
+.business-intro h2{font-size:clamp(30px,4vw,48px);line-height:1.12;letter-spacing:-.045em;font-weight:800;margin:0 0 22px}
+.business-intro h2 span{color:#7657ff}
+.business-intro p,.business-entry-card>p{font-size:15px;line-height:1.65;color:#637089;margin:0 0 24px}
+.business-features{display:grid;gap:13px;font-size:14px;font-weight:600}
+.business-intro .business-pilot{margin:32px 0 0;font-size:12px}
+.business-entry-card{background:#fff;border:1px solid #e5e8f2;border-radius:28px;padding:34px;box-shadow:0 20px 80px #15203a0a;min-width:0}
+.business-entry-card h1{font-size:27px;line-height:1.2;letter-spacing:-.035em;font-weight:750;margin:0 0 12px}
+.business-entry-card form{display:grid;gap:18px}
+.business-entry-card label{display:grid;gap:8px;font-size:13px;font-weight:650}
+.business-entry-card input{width:100%;min-height:48px;padding:12px 14px;box-sizing:border-box;border:1px solid #dce1ed;border-radius:12px;background:#fafbfe;color:#15203a;font-size:16px}
+.business-entry-card input:focus{outline:3px solid #7657ff22;border-color:#7657ff}
+.business-primary{border:0;border-radius:13px;background:#7657ff;color:#fff;min-height:50px;padding:14px 18px;font-size:15px;font-weight:700;width:100%;cursor:pointer;transition:background .15s}
+.business-primary:hover{background:#6042e3}
+.business-primary:disabled{opacity:.6;cursor:wait}
+.business-entry-actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-top:22px}
+.business-entry-actions button{background:none;border:none;padding:3px 0;color:#7657ff;font-size:13px;font-weight:600;cursor:pointer}
+.business-entry-card .business-footnote{margin:26px 0 0;font-size:11px;color:#8792a7}
+.business-error,.business-notice{font-size:13px;line-height:1.6;padding:13px 15px;margin-bottom:20px;border-radius:12px}
+.business-error{background:#fff1f3;color:#a82342;border:1px solid #f6d3dc}
+.business-notice{background:#f0edff;color:#514389;border:1px solid #e3dcff}
+.business-loading{text-align:center}.business-loading p{font-size:14px;color:#637089}
+.business-spinner{display:inline-block;width:30px;height:30px;border-radius:50%;border:3px solid #e8e3ff;border-top-color:#7657ff;margin-bottom:22px;animation:business-spin .8s linear infinite}
+@keyframes business-spin{to{transform:rotate(360deg)}}
+.diverty-app-shell header>div{min-width:0;flex:1}.diverty-app-shell header h1{font-size:16px;overflow:hidden;text-overflow:ellipsis;display:block;white-space:nowrap}
+@media(max-width:760px){.business-entry{grid-template-columns:minmax(0,1fr);gap:24px;padding:28px 18px;max-width:480px}.business-wordmark{margin-bottom:24px}.business-intro h2{font-size:29px}.business-intro>p:not(.business-pilot),.business-features{display:none}.business-intro .business-pilot{margin-top:14px;font-size:11px}.business-entry-card{padding:26px 22px;border-radius:24px}.business-entry-card h1{font-size:25px}}
+@media(prefers-reduced-motion:reduce){.business-spinner{animation:none}}
