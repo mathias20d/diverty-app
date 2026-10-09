@@ -5,3 +5,4 @@ dist/
 .env.*.local
 *-debug.log
 firebase-business/site/
+firebase-business/.firebase/
