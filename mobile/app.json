@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Diverty",
+    "slug": "diverty-oficial-native",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.divertypanama.reservas"
+    },
+    "android": {
+      "package": "com.divertypanama.reservas"
+    },
+    "plugins": []
+  }
+}

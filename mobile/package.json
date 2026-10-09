@@ -1,0 +1,23 @@
+{
+  "name": "diverty-native",
+  "private": true,
+  "version": "0.1.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "check": "expo install --check",
+    "export:android": "expo export --platform android",
+    "export:ios": "expo export --platform ios"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "expo": "~57.0.27",
+    "expo-status-bar": "~57.0.1",
+    "firebase": "^12.0.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0"
+  }
+}
