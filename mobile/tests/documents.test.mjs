@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_COMPANY, documentData, documentHTML, ensureDocumentNumber } from '../src/documents.mjs';
+import {CONTRACT_CLAUSES} from '../src/domain/contract-clauses.mjs';
+import {readFileSync} from 'node:fs';
+test('contract uses all original web clauses and preserves amounts, booked services and unsigned signature spaces',()=>{
+ const web=readFileSync(new URL('../../src/modules/documents/PdfTemplate.jsx',import.meta.url),'utf8');
+ assert.equal(CONTRACT_CLAUSES.length,12);for(const clause of CONTRACT_CLAUSES){assert.ok(web.includes(clause.title));assert.ok(web.includes(clause.text));}
+ const input={cliente:'<script>test</script>',total:120,abono:30,transporte:20,servicio:'Animación',numeroContrato:'CON-00003',serviciosSeleccionados:[{nombre:'Animación',precio:100,cantidad:1,duracionHoras:2,incluye:['Juegos','<img src=x>']}]};
+ const html=documentHTML(input,'contrato',DEFAULT_COMPANY);for(const clause of CONTRACT_CLAUSES)assert.ok(html.includes(clause.text));assert.ok(html.includes('CON-00003'));assert.ok(html.includes('B/. 120.00'));assert.ok(html.includes('B/. 90.00'));assert.ok(html.includes('Firma del cliente'));assert.ok(!html.includes('<script>'));assert.ok(!html.includes('<img src=x>'));assert.ok(html.includes('&lt;img src=x&gt;'));assert.equal(documentData(input,'contrato').total,120);
+});
 const event = {
   cliente: 'Cliente prueba',
   fecha: '2026-10-10',

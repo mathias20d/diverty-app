@@ -20,6 +20,7 @@ test('native navigation connects clients, calendar availability, payments, expen
  records.set(base+'configuracion/serviciosCustom',{paquetes:[{id:'catalog-native',nombre:'Servicio de catálogo',precio:40,tipoCobro:'paquete'}]});
  records.set(base+'configuracion/contador_factura',{ultimo:7});
  records.set(base+'configuracion/contador_cotizacion',{ultimo:3});
+ records.set(base+'configuracion/contador_contrato',{ultimo:2});
  records.set(base+'proveedores/provider1',{nombre:'Proveedor de prueba',telefono:'60000000',activo:true,servicios:[{id:'s1',nombre:'Pintacaritas',costo:30,activo:true}]});
  records.set(base+'categorias_web/comida',{nombre:'Comida',orden:1,activo:true,visible:true,custom:'preserved'});
  const files=[],shares=[],previews=[],clipboard=[];
@@ -152,6 +153,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   assert.equal(records.get(base+'eventos/current').numeroFactura,'FAC-00008');
   await press('Vista previa / imprimir');assert.equal(previews.length,1);assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);
   await press('Cotización');await press('Compartir PDF');assert.equal(records.get(base+'eventos/current').numeroCotizacion,'COT-00004');
+  await press('Contrato');await press('Compartir PDF');assert.ok(files.at(-1).html.includes('12. Aceptación.'));assert.ok(files.at(-1).html.includes('Firma del cliente'));assert.equal(records.get(base+'eventos/current').numeroContrato,'CON-00003');await press('Compartir PDF');assert.equal(records.get(base+'configuracion/contador_contrato').ultimo,3);
   await press('Volver a la reserva');await press('Volver');await press('Finanzas','tab');assert.ok(hasText('$60.00'));
   await press('Agenda','tab');await Renderer.act(async()=>input('Buscar reservas').props.onChangeText('60702108'));await Renderer.act(async()=>buttons('Factura').at(-1).props.onPress());assert.ok(hasText('FACTURA COMERCIAL'));assert.ok(hasText('FAC-00008'));await press('Volver a la reserva');
   assert.ok(records.has(base+'configuracion/syncBus'));assert.ok(!records.has(base+'config_web/syncBus'));

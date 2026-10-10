@@ -169,3 +169,12 @@ Abonos y saldo → Corregir recibido ajusta el total recibido sin cambiar el pre
 Se admite cero, se exige un máximo de dos decimales y se impide que el recibido supere el total. Las transacciones detectan cambios de revisión, conservan las proyecciones de disponibilidad y cliente y no recrean reservas eliminadas. Las operaciones pendientes se guardan por usuario y reserva en el teléfono; reintentar tras perder la confirmación de red conserva el mismo ID y no duplica el ajuste.
 
 Validación: 56 pruebas nativas y 61 web, incluida la repetición después de una confirmación de red perdida, y exportaciones Android/iOS. Sin escrituras de producción durante pruebas. Contratos, Santa con rutas anteriores, equivalencia visual exacta y herramientas avanzadas aún pendientes. Comprueba Versión 0.6.0 al reiniciar Expo.
+
+
+## Contratos de cliente — 0.7.0
+
+Detalle de reserva → Facturas y cotizaciones → Contrato genera y comparte el contrato de servicio con las doce cláusulas copiadas literalmente del Contract de la web, servicios contratados, duración, transporte, precio, abonos, saldo y espacios para firma del cliente y de Diverty. Generar no firma ni acepta el contrato.
+
+Usa numeroContrato y configuracion/contador_contrato con el prefijo CON, y conserva la numeración al repetir. Si el contador no está preparado, exige prepararlo desde la web, como los otros documentos. Las condiciones no se reformularon ni se incorporaron cláusulas nuevas. La disposición de PDF nativo adapta la plantilla al motor de impresión; aún no se afirma equivalencia visual exacta con toda la web. Contratos de proveedores y Santa con rutas anteriores siguen pendientes.
+
+57 pruebas nativas y 61 web; muestra A4 renderizada y revisada visualmente, y exportaciones Android/iOS. No se escribieron datos de producción. Los avisos de Firebase/consola reportados por el usuario siguen pendientes del mensaje exacto para diagnóstico; no se ocultaron ni se consideran resueltos. Comprueba Versión 0.7.0 al reiniciar Expo.
