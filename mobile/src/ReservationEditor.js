@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,KeyboardAvoidingView,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
-import {collection,doc,getDoc,getDocs,query,runTransaction,setDoc,where} from 'firebase/firestore';
+import {collection,doc,getDoc,getDocs,query,setDoc,where} from 'firebase/firestore';
+import {runTransaction} from './booking-transactions';
 import {db,DATA_PATH} from './firebase';
 import {addReservationLine,editReservationLine,reservationServices,unitPrice} from './domain/reservation-lines.mjs';
 import {panamaToday} from './domain/date-availability.mjs';
@@ -39,7 +40,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
     const current=await tx.get(ref);
     const closures=await tx.get(doc(db,...DATA_PATH,'config_web','fechas_cerradas'));
     if(!creatingQuote&&(!original||original.fecha!==patch.fecha)&&closures.data()?.fechas?.[patch.fecha]===true)throw new Error('La fecha está cerrada. Elige otro día.');
-    if(original){if(!current.exists())throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
+    if(original){if(!current.exists()||current.data().deletedLocally)throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
     else {if(current.exists())return;tx.set(ref,{...patch,id:saveId.current,createdAt:now,updatedAt:now,_rev:1,estado:creatingQuote?'Cotización':'Pendiente',abono:0,deletedLocally:false,costosSeparados:true});}
    });
    setDoc(doc(db,...DATA_PATH,'configuracion','syncBus'),{entityType:'evento',entityId:saveId.current,action:'update',deviceId:'diverty-native',changedAt:now,nonce:saveId.current+'-'+now}).catch(()=>{});

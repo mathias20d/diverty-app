@@ -231,3 +231,9 @@ Detalle de reserva → Seguimiento del evento incorpora la secuencia del adminis
 Cancelar reserva requiere confirmación, guarda cancelledAt y libera la disponibilidad pública mediante la transacción migrada. Conserva total, abonos, pagosItems, gastos y proveedores. Las escrituras detectan revisiones de otros dispositivos; repetir una etapa ya confirmada no incrementa revisión ni marca de tiempo. Los botones se bloquean durante actualización, carga, error o datos de caché. Solicitudes web, cotizaciones, Navidad y reservas archivadas conservan sus flujos propios.
 
 75 pruebas nativas y 61 web. La prueba integrada recorre las etapas, comprueba el historial intacto, estado del portal y cancelación con eliminación de disponibilidad. No se escribieron datos reales. Queda pendiente revisar el seguimiento visual en Expo Go y comparar la disposición completa con la web.
+
+## Versión 0.11.1 — sincronización al guardar reservas
+
+Crear y editar reservas reutiliza las transacciones del administrador web (`src/App.jsx`): sincroniza disponibilidad, búsqueda del portal, seguimiento del cliente y cupos por horario. Cambiar la fecha libera el cupo anterior. Una reserva eliminada lógicamente no puede restaurarse desde un formulario antiguo. Las cotizaciones no ocupan disponibilidad.
+
+Verificación con datos ficticios: 75 pruebas nativas y 61 web; creación, cambio de fecha, liberación de cupo, cotización y edición tras eliminación. Exportaciones Android/iOS. Pendiente en teléfono: comprobar sincronización con la web y compartir factura y contrato en Expo Go. No se modificaron datos de producción. Siguen pendientes la equivalencia visual completa y las funciones indicadas en el alcance.
