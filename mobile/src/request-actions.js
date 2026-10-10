@@ -4,6 +4,7 @@ import {app,db,DATA_PATH} from './firebase';
 import {runTransaction,getResourceAvailability,inferResourceRequirements} from './booking-transactions';
 import {assertPending,assertReview,requestPatch,christmasRequest} from './request-data.mjs';
 import {resourcesFromConfig} from './admin-settings.mjs';
+import {santaConfirmationPatch} from './legacy-santa.mjs';
 const ref=id=>doc(db,...DATA_PATH,'eventos',id);
 async function signal(id){try{await setDoc(doc(db,...DATA_PATH,'configuracion','syncBus'),{entityType:'evento',entityId:id,action:'update',deviceId:'diverty-native',changedAt:new Date().toISOString(),nonce:`${id}-${Date.now()}`});}catch{/* Reservation is already committed; listeners remain the source of truth. */}}
 export async function updateRequest(event,kind,value){
@@ -18,15 +19,19 @@ export async function confirmRequest(event,santaAsignado=''){
  if(current.centralBookingVersion===1&&config.centralBookingValidation===true){
   await httpsCallable(getFunctions(app,'us-central1'),'confirmWebBooking')({id:event.id,santaAsignado});await signal(event.id);return;
  }
- if(christmasRequest(current))throw new Error('LEGACY_SANTA');
  const rows=await getDocs(query(collection(db,...DATA_PATH,'eventos'),where('fecha','==',current.fecha)));
  await runTransaction(db,async tx=>{
   const snapshot=await tx.get(ref(event.id)),remote=snapshot.exists()?snapshot.data():null;assertPending(remote,event._rev);assertReview(remote);
   const cfg=(await tx.get(configRef)).data()||{};
   if(cfg.centralBookingValidation===true&&remote.centralBookingVersion===1)throw new Error('STALE_CONFIG');
   const events=[];for(const row of rows.docs){if(row.id===event.id)continue;const snap=await tx.get(ref(row.id));if(snap.exists())events.push({...snap.data(),id:row.id});}
-  if(!getResourceAvailability({...remote,id:event.id},events,resourcesFromConfig(cfg)).feasible)throw new Error('NO_CAPACITY');
-  const resourceRequirements=inferResourceRequirements(remote),now=new Date().toISOString();
-  tx.set(ref(event.id),{estado:'Confirmado',resourceRequirements,duracionMinutos:resourceRequirements.durationMinutes,recursosRevisadosEnApp:remote.recursosRevisadosEnApp===true,_rev:Number(remote._rev||0)+1,updatedAt:now},{merge:true});
+  let patch;
+  if(christmasRequest(remote))patch=santaConfirmationPatch({...remote,id:event.id},events,cfg,santaAsignado);
+  else {
+   if(!getResourceAvailability({...remote,id:event.id},events,resourcesFromConfig(cfg)).feasible)throw new Error('NO_CAPACITY');
+   const resourceRequirements=inferResourceRequirements(remote);
+   patch={resourceRequirements,duracionMinutos:resourceRequirements.durationMinutes,recursosRevisadosEnApp:remote.recursosRevisadosEnApp===true};
+  }
+  tx.set(ref(event.id),{...patch,estado:'Confirmado',_rev:Number(remote._rev||0)+1,updatedAt:new Date().toISOString()},{merge:true});
  });await signal(event.id);
 }

@@ -24,7 +24,7 @@ React Native y Expo para Android e iPhone. Las pantallas de administración util
 - Operación Navidad: visitas del 24 y 25 de diciembre de 2026, rutas por Santa, reasignación, entregas realizadas, reapertura y eliminación confirmada.
 - Administrar página web: Catálogos, Servicios y personajes, Campañas, Temas, Galería, Cupones y Banner y ajustes, con las colecciones oficiales y sincronización de la web.
 
-La app y la web actuales permanecen disponibles. Las correcciones auditadas de cobros/gastos, contratos y revisión de solicitudes web ya están migradas. La confirmación Santa anterior a la validación central, edición de horarios especiales, herramientas avanzadas y notificaciones nativas siguen pendientes; esta versión todavía no sustituye todas las funciones de la app oficial. El menú principal ya sigue el orden del administrador web. La equivalencia visual exacta y la migración completa de todas las pantallas siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
+La app y la web actuales permanecen disponibles. Las correcciones auditadas de cobros/gastos, contratos y revisión de solicitudes web ya están migradas. La edición de horarios especiales, herramientas avanzadas y notificaciones nativas siguen pendientes; esta versión todavía no sustituye todas las funciones de la app oficial. El menú principal ya sigue el orden del administrador web. La equivalencia visual exacta y la migración completa de todas las pantallas siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
 
 ## Windows: probar en Android o iPhone
 
@@ -53,7 +53,7 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 ## Siguientes etapas
 
 1. Validar navegación, proveedores y PDF en Android/iPhone reales.
-2. Completar la confirmación de solicitudes Santa anteriores a la validación central y la edición de horarios especiales.
+2. Completar la edición de horarios especiales conservando cupos y proyecciones.
 3. Completar herramientas avanzadas y comparar la equivalencia visual de todas las pantallas con la web.
 4. Registrar dispositivos y configurar notificaciones push nativas; las notificaciones del navegador no se trasladan automáticamente.
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
@@ -215,3 +215,11 @@ Inicio y Agenda abren Operación Navidad para las entregas del 24 y 25 de diciem
 Permite reasignar Santa, marcar entrega realizada, devolver a pendiente y eliminar una reserva tras confirmación. Las transacciones leen datos actuales, comprueban revisión y capacidad, conservan abonos/proveedores y utilizan el wrapper migrado que actualiza disponibilidad_web, reservas_cliente, portal_busqueda y booking_control. Reasignar un horario conflictivo requiere confirmación explícita. Cerrar una temporada oculta el módulo solo en este teléfono; Herramientas del sistema permite volver a mostrarlo sin borrar datos.
 
 71 pruebas nativas y 61 web. La prueba de navegación recorre reasignación, rutas, entrega/reapertura, eliminación con proyecciones y visibilidad. No se escribieron datos de producción. Continúan pendientes la confirmación de solicitudes Santa anteriores a la validación central, edición de horarios especiales, herramientas avanzadas y notificaciones nativas. No se afirma equivalencia visual exacta; requiere comparación en teléfonos físicos.
+
+## Aceptar solicitudes Santa anteriores — 0.10.0
+
+Solicitud Web → Asignar Santa → Aceptar reserva ya procesa las solicitudes navideñas anteriores a centralBookingVersion=1. Valida la capacidad actual y el motor de rutas migrado (visita de 30 minutos y traslados por GPS, 15 minutos si falta un pin); muestra errores para Santa deshabilitado o ruta incompatible. Las visitas canceladas, realizadas, eliminadas, solicitudes sin aceptar y otras fechas no bloquean esa ruta. No confirma solicitudes con referencia o transporte pendientes de revisión.
+
+El destino de la escritura conserva los mismos campos de la confirmación web: Confirmado, esNavidad, recursoNavidad y santaAsignado, con incremento de revisión. Lee datos actuales en la transacción y usa las proyecciones migradas para disponibilidad, estado del cliente, portal y booking_control. La validación central sigue usando exclusivamente confirmWebBooking cuando está activa para esa reserva, sin recurrir a confirmación local si falla. La ruta anterior utiliza consulta y transacción como el administrador existente; no introduce una nueva garantía de asignación de servidor.
+
+73 pruebas nativas y 61 web. La prueba integrada verifica conflicto, Santa deshabilitado, aceptación con otro Santa, conservación del abono, proyecciones y bloqueo de repetición. Pruebas con datos ficticios; sin escrituras en producción. Pendiente comprobar aceptación en Expo Go con una solicitud real que el administrador desee aceptar y equivalencia visual.
