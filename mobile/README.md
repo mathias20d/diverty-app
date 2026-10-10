@@ -8,9 +8,12 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 - Persistencia de sesión en el dispositivo.
 - Agenda de próximas reservas en tiempo real, con estados de carga, error y reintento.
 - Mismo Firebase `diverty-eventos` y ruta `artifacts/diverty-oficial/public/data/eventos`.
-- Esta etapa consulta reservas; no crea ni modifica documentos de producción.
+- Nueva reserva y edición con datos del cliente, servicios por unidad/hora/paquete y transporte.
+- Busca clientes por el teléfono exacto guardado en reservas anteriores.
+- Guardar escribe en Firebase oficial, con revisión de edición simultánea y respeto de fechas cerradas. Las pruebas automatizadas no escriben en producción.
+- Conserva abonos, gastos y proveedores existentes; cambiar horarios de reservas especiales sigue en la app actual para mantener los cupos.
 
-La app y la web actuales permanecen disponibles. Crear/editar reservas, abonos, gastos, PDF, calendario y notificaciones nativas requieren las siguientes etapas; esta versión inicial todavía no sustituye la app oficial.
+La app y la web actuales permanecen disponibles. Gestión de abonos, gastos, PDF, calendario y notificaciones nativas requieren las siguientes etapas; esta versión inicial todavía no sustituye la app oficial.
 
 ## Windows: probar en Android o iPhone
 
@@ -44,3 +47,17 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
 
 No se ha configurado EAS ni creado una cuenta o proyecto Firebase nuevo. Las identificaciones `com.divertypanama.reservas` son iniciales y deben verificarse antes de registrar las apps en las tiendas.
+
+## Actualizar la prueba en Windows
+
+Detén Metro con Ctrl+C. Desde `diverty-nativa/mobile`:
+
+```powershell
+git pull --ff-only
+npm.cmd ci
+npx.cmd expo start --lan --clear
+```
+
+Vuelve a escanear el QR. Cada tarjeta tiene Editar reserva; Nueva reserva aparece encima de la agenda. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. No se ha verificado el guardado con tu cuenta en un teléfono real. Los cambios sí afectan los datos oficiales al pulsar Guardar.
+
+La lógica de líneas y duración en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
