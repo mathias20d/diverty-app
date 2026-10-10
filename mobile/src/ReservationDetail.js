@@ -70,8 +70,8 @@ export default function ReservationDetail({
   <Action title="Volver" secondary disabled={busy} onPress={onClose} /><Text style={ui.heading}>Detalle de reserva</Text><LoadState loading={loading} error={error} cached={cached} reload={() => setRetry(value => value + 1)} />
   {!exists ? <Text style={ui.error}>La reserva ya no está disponible.</Text> : <>
    <View style={ui.card}><Text style={ui.title}>{current.cliente || 'Cliente'}</Text><Text style={ui.body}>{dateLabel(current.fecha)} · {current.hora || 'Hora por definir'}</Text><Text style={{
-          color: '#7042d9',
-          fontWeight: '700'
+          color: '#7657FF',
+          fontFamily: 'Outfit_700Bold'
         }}>{webRequest(current) ? 'Solicitud web por revisar' : current.estado || 'Pendiente'}</Text><Text style={ui.body}>{current.telefono || 'Teléfono no registrado'}</Text>{current.email ? <Text style={ui.muted}>{current.email}</Text> : null}<Action title="Contactar por WhatsApp" secondary disabled={!whatsappUrl(current.telefono)} onPress={() => openLink(whatsappUrl(current.telefono))} /></View>
    <View style={ui.card}><Text style={ui.title}>Lugar del evento</Text><Text style={ui.body}>{current.ubicacion || 'Lugar por confirmar'}</Text>{current.direccion ? <Text style={ui.body}>{current.direccion}</Text> : null}{current.referenciaLugar ? <Text style={ui.muted}>{current.referenciaLugar}</Text> : null}<Action title="Abrir ubicación guardada" secondary disabled={!mapsUrl(current)} onPress={() => openLink(mapsUrl(current))} /></View>
    <View style={ui.card}><Text style={ui.title}>Productos y servicios</Text>{lines.length ? lines.filter(Boolean).map((line, index) => <View key={line.id || index} style={{

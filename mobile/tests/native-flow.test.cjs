@@ -71,6 +71,8 @@ test('native navigation connects clients, calendar availability, payments, expen
   if(request==='expo-linear-gradient')return {LinearGradient:'View'};
   if(request==='expo-image-picker')return {launchImageLibraryAsync:async()=>({canceled:true})};
   if(request==='expo-clipboard')return {setStringAsync:async value=>clipboard.push(value)};
+  if(request==='lucide-react-native')return new Proxy({},{get:(_,name)=>String(name)});
+  if(request.endsWith('.png'))return 1;
   if(request==='react-native-webview')return {WebView:'WebView'};
   if(request==='expo-print')return {printToFileAsync:async value=>{if(printFailure)throw new Error('PRINT_TEST_FAILURE');files.push(value);return {uri:'file:///host/Print/denied-document.pdf',base64:Buffer.from('%PDF-1.4 test').toString('base64')};},printAsync:async value=>previews.push(value)};
   if(request==='expo-file-system')return {Paths:{cache:{uri:'file:///experience/cache/'}},File:class {constructor(directory,name){this.uri=directory.uri+name;this.exists=false;this.size=0;}create(){this.exists=true;}write(value,options){if(options){assert.equal(options.encoding,'base64');this.size=Buffer.from(value,'base64').length;}else this.size=Buffer.byteLength(value);}}};

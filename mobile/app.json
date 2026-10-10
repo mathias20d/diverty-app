@@ -2,7 +2,7 @@
   "expo": {
     "name": "Diverty",
     "slug": "diverty-oficial-native",
-    "version": "0.14.0",
+    "version": "0.15.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
@@ -10,7 +10,8 @@
       "bundleIdentifier": "com.divertypanama.reservas"
     },
     "android": {
-      "package": "com.divertypanama.reservas"
+      "package": "com.divertypanama.reservas",
+      "versionCode": 2
     },
     "plugins": [
       "expo-sharing",
@@ -27,6 +28,7 @@
       "eas": {
         "projectId": "d2286263-135e-4d42-bbdc-9040d85dff45"
       }
-    }
+    },
+    "icon": "./assets/diverty-logo.png"
   }
 }

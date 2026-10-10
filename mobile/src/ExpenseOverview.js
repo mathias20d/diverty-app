@@ -18,4 +18,4 @@ export default function ExpenseOverview({event}){
  </View>;
 }
 
-const s=StyleSheet.create({panel:{backgroundColor:'#f7f5fc',borderRadius:12,padding:12,gap:7,marginTop:4},row:{flexDirection:'row',justifyContent:'space-between',gap:12},label:{color:'#686878',fontSize:13,flex:1},cost:{color:'#b42342',fontWeight:'700',fontSize:14},profit:{color:'#14805e',fontWeight:'700',fontSize:14},error:{color:'#b42342'},latest:{color:'#393947',fontSize:13,lineHeight:19,borderTopWidth:1,borderTopColor:'#e7e4f0',paddingTop:8,marginTop:2}});
+const s=StyleSheet.create({panel:{backgroundColor:'#f7f5fc',borderRadius:12,padding:12,gap:7,marginTop:4},row:{flexDirection:'row',justifyContent:'space-between',gap:12},label:{color:'#64748B',fontSize:13,flex:1},cost:{color:'#b42342',fontFamily:'Outfit_700Bold',fontSize:14},profit:{color:'#14805e',fontFamily:'Outfit_700Bold',fontSize:14},error:{color:'#b42342'},latest:{color:'#475569',fontSize:13,lineHeight:19,borderTopWidth:1,borderTopColor:'#E2E8F0',paddingTop:8,marginTop:2}});

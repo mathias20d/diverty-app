@@ -1,7 +1,10 @@
+import {Home,Calendar,Users,Truck,PieChart,Globe2,Settings,BellRing,LogOut} from 'lucide-react-native';
+import {LinearGradient} from 'expo-linear-gradient';
+import {WEB_THEME as T,WEB_FONTS as F} from './web-theme.mjs';
 import {duplicateReservationDraft} from './reservation-duplicate.mjs';
 import React, { useState } from 'react';
 import appConfig from '../app.json';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase';
 import { panamaToday } from './domain/date-availability.mjs';
@@ -85,70 +88,20 @@ export default function Workspace() {
     event
   })} /> : null;
   return <View style={{
-    flex: 1
+    backgroundColor:T.background,flex: 1
   }}>
   <View style={{
       flex: 1,
       display: route ? 'none' : 'flex'
     }} accessibilityElementsHidden={!!route} importantForAccessibility={route ? 'no-hide-descendants' : 'auto'}>
-  <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración · Versión {appConfig.expo.version}</Text></View><View><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => push({type:'web'}))}><Text style={s.link}>Administrar página web</Text></Pressable><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.')))}><Text style={s.link}>Salir</Text></Pressable></View></View>
+  <View style={s.header}><View style={{flexDirection:'row',alignItems:'center',gap:10}}><Image source={require('../assets/diverty-logo.png')} style={{width:40,height:40,borderRadius:13,backgroundColor:'#fff'}} resizeMode="contain"/><Text style={s.brand}>Diverty CRM</Text></View><View style={{flexDirection:'row',alignItems:'center',gap:3}}><Pressable accessibilityRole="button" accessibilityLabel="Solicitudes web" disabled={blocked} onPress={()=>navigate(()=>push({type:'requests'}))} style={s.headerButton}><BellRing size={22} color="#CBD5E1"/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Administrar página web" disabled={blocked} onPress={()=>navigate(()=>push({type:'web'}))} style={s.headerButton}><Globe2 size={21} color="#CBD5E1"/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Salir" disabled={blocked} onPress={()=>navigate(()=>signOut(auth).catch(()=>Alert.alert('No se pudo cerrar la sesión')))} style={s.headerButton}><LogOut size={18} color="#CBD5E1"/></Pressable></View></View>
   {tab === 'inicio' ? <HomeScreen onChristmas={() => push({type:'christmas'})} onRequests={() => push({type:'requests'})} data={data} today={today} settings={settings} onNew={create} onOpen={open} onAgenda={() => setTab('agenda')}/> : tab === 'ajustes' ? <SettingsScreen settings={settings} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onSignOut={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión'))}/> : tab === 'agenda' ? <AgendaScreen onChristmas={settings.preferences.christmasModuleVisible ? () => push({type:'christmas'}) : null} data={data} scope={scope} setScope={setScope} onCalendar={() => setTab('calendario')} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onContract={provider => push({type:'provider-document',provider})} onEdit={original => push({
         type: 'provider-editor',
         original
       })} /> : <FinanceScreen data={data} month={month} onMove={move} />}
-  <View style={s.tabs}>{tabs.map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{
-          selected: tab === value || value === 'agenda' && tab === 'calendario',
-          disabled: blocked
-        }} disabled={blocked} style={[s.tab, tab === value && s.active]} onPress={() => navigate(() => value === 'web' ? push({type:'web'}) : setTab(value))}><Text style={[s.tabText, tab === value && s.activeText]}>{label}</Text></Pressable>)}</View>
+  <View style={s.tabs}>{tabs.map(([value,label])=>{const selected=tab===value||value==='agenda'&&tab==='calendario',Icon=({inicio:Home,agenda:Calendar,clientes:Users,proveedores:Truck,finanzas:PieChart,web:Globe2,ajustes:Settings})[value];return <Pressable key={value} accessibilityRole="tab" accessibilityState={{selected,disabled:blocked}} disabled={blocked} style={[s.tab,selected&&s.active]} onPress={()=>navigate(()=>value==='web'?push({type:'web'}):setTab(value))}>{selected?<LinearGradient colors={[T.pink,T.purple]} start={{x:0,y:0}} end={{x:1,y:0}} style={s.indicator}/>:null}<Icon size={selected?23:21} strokeWidth={selected?2.6:2.1} color={selected?T.pink:'#94A3B8'}/><Text numberOfLines={1} style={[s.tabText,selected&&s.activeText]}>{label}</Text></Pressable>;})}</View>
   </View>
   {routeView}
  </View>;
 }
-const s = StyleSheet.create({
-  header: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderColor: '#e7e4f0'
-  },
-  brand: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#7042d9'
-  },
-  link: {
-    padding: 10,
-    fontWeight: '700',
-    color: '#7042d9'
-  },
-  tabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderColor: '#e7e4f0',
-    backgroundColor: '#fff',
-    gap: 4
-  },
-  tab: {
-    flex: 1,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 12
-  },
-  active: {
-    backgroundColor: '#eee9fb'
-  },
-  tabText: {
-    fontWeight: '700',
-    fontSize: 9,
-    color: '#686878'
-  },
-  activeText: {
-    color: '#7042d9'
-  }
-});
+const s=StyleSheet.create({header:{backgroundColor:T.navy,paddingHorizontal:14,paddingVertical:12,flexDirection:'row',justifyContent:'space-between',alignItems:'center',borderBottomWidth:1,borderColor:'#FFFFFF18'},brand:{fontSize:20,fontFamily:F.black,color:'#fff',letterSpacing:-.5},headerButton:{padding:9,borderRadius:14},tabs:{height:70,flexDirection:'row',paddingHorizontal:6,paddingTop:6,backgroundColor:'#fff',borderTopWidth:1,borderColor:'#F1F5F9',shadowColor:'#0F172A',shadowOffset:{width:0,height:-5},shadowOpacity:.07,shadowRadius:15,elevation:12},tab:{flex:1,minWidth:0,height:58,gap:4,justifyContent:'center',alignItems:'center',borderRadius:14},active:{backgroundColor:'#FFF4FA'},indicator:{position:'absolute',top:0,height:3,width:28,borderRadius:3},tabText:{fontFamily:F.bold,fontSize:8,color:'#94A3B8',textTransform:'uppercase',letterSpacing:.3},activeText:{fontFamily:F.black,color:T.pink}});

@@ -295,3 +295,11 @@ Build EAS cfb145ba-0e05-4d67-aece-13c455a3c7d2, distribución interna, paquete c
 Instalación: https://expo.dev/accounts/johanosorii0456/projects/diverty-oficial-native/builds/cfb145ba-0e05-4d67-aece-13c455a3c7d2
 
 La compilación nativa terminó; la prueba física de inicio de sesión, reservas y compartir factura/contrato está pendiente. No se publicó en Google Play ni se ejecutaron operaciones sobre datos Firebase reales.
+
+## Versión 0.15.0 — corrección de identidad visual web
+
+Fuente Outfit empaquetada (400/600/700/800/900), iconos Lucide, logo Diverty local y tokens de src/App.jsx: encabezado #071126, texto #0F172A, rosa #FF3EA5, violeta #7657FF, fondo #F7F8FC, botones degradados rosa/violeta, bordes slate, tarjetas redondeadas y sombras. El menú inferior conserva las siete secciones con sus iconos, tamaños, mayúsculas y marca activa rosa/degradada del menú web. El encabezado recupera Diverty CRM y accesos iconográficos a solicitudes, Web y salida.
+
+Inicio recupera saludo grande, hero oscuro, banner Navidad, métricas en dos columnas y accesos rápidos; las tarjetas de reserva incorporan franja de estado, badge, iconos de fecha/servicio/ubicación y documentos. Formularios, detalle, calendario, Web y Finanzas reutilizan tipografía, colores y componentes comunes. El editor usa también los botones degradados compartidos. Login y el icono de instalación usan la identidad Diverty.
+
+146 pruebas de funciones aprobadas y exportaciones Android/iOS. Dependencias comprobadas con Expo. Android versionCode 2 reutiliza la firma anterior para actualizar el APK. Pendiente comparación visual en teléfono físico: este bloque aproxima la identidad y las pantallas principales al código web; no demuestra equivalencia píxel a píxel ni migra por sí solo las pantallas y layouts restantes. Animaciones, desenfoques web, disposición detallada de cada módulo y horarios especiales siguen pendientes. No se modificaron datos Firebase ni se reactivó la automatización.

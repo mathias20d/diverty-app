@@ -1,3 +1,4 @@
+import {Action as SharedAction,ui} from './native-ui';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,KeyboardAvoidingView,Platform,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from 'react-native';
 import {collection,doc,getDoc,getDocs,query,setDoc,where} from 'firebase/firestore';
@@ -10,7 +11,7 @@ import useScreenBack from './useScreenBack';
 import {canConvertQuote} from './reservation-management.mjs';
 import {commercialPatch,saveCustomService} from './commercial-tools.mjs';
 const initial={cliente:'',telefono:'',email:'',hora:'',ubicacion:'',transporte:'0',serviciosSeleccionados:[]};
-function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.action,disabled&&{opacity:.5}]}><Text style={s.actionText}>{title}</Text></Pressable>;}
+function Action(props){return <SharedAction {...props}/>;}
 export default function ReservationEditor({original,initialValues={},converting=false,onClose,onSaved}) {
  const [form,setForm]=useState(()=>({...initial,fecha:panamaToday(),...initialValues,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||initialValues.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const quoteMode=!converting&&/^cot/i.test(String(original?.estado||initialValues.estado||''));
@@ -65,4 +66,4 @@ export default function ReservationEditor({original,initialValues={},converting=
  <Action title={busy?'Guardando…':'Guardar reserva'} onPress={save} disabled={busy}/><Action title="Cancelar" disabled={busy} onPress={cancel}/>
  </ScrollView></KeyboardAvoidingView>;
 }
-const s=StyleSheet.create({page:{padding:22,paddingBottom:40,gap:14},heading:{fontSize:24,fontWeight:'800',color:'#202034'},card:{backgroundColor:'#fff',borderRadius:18,padding:16,gap:12},label:{fontSize:14,fontWeight:'700',color:'#555365',marginBottom:6},input:{borderWidth:1,borderColor:'#dbd9e7',borderRadius:12,padding:12,fontSize:16,color:'#202034'},action:{backgroundColor:'#7042d9',borderRadius:12,padding:14,marginTop:6},actionText:{color:'#fff',textAlign:'center',fontWeight:'700'},line:{borderTopWidth:1,borderColor:'#e5e2ef',paddingTop:16,gap:8},modes:{flexDirection:'row',justifyContent:'space-between',padding:12},selected:{color:'#7042d9',fontWeight:'900'},total:{fontSize:20,fontWeight:'800',color:'#7042d9'}});
+const s=StyleSheet.create({page:{backgroundColor:'#F7F8FC',padding:14,paddingBottom:40,gap:14},heading:{fontSize:24,fontFamily:'Outfit_800ExtraBold',color:'#0F172A'},card:{backgroundColor:'#fff',borderRadius:26,padding:18,gap:12},label:{fontSize:14,fontFamily:'Outfit_700Bold',color:'#555365',marginBottom:6},input:{borderWidth:1,borderColor:'#E2E8F0',borderRadius:16,padding:14,fontSize:16,color:'#0F172A'},action:{backgroundColor:'#7657FF',borderRadius:12,padding:14,marginTop:6},actionText:{color:'#fff',textAlign:'center',fontFamily:'Outfit_700Bold'},line:{borderTopWidth:1,borderColor:'#e5e2ef',paddingTop:16,gap:8},modes:{flexDirection:'row',justifyContent:'space-between',padding:12},selected:{color:'#7657FF',fontFamily:'Outfit_900Black'},total:{fontSize:20,fontFamily:'Outfit_800ExtraBold',color:'#7657FF'}});
