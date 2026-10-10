@@ -25,6 +25,8 @@ import {ADMIN_MENU as tabs} from './admin-settings.mjs';
 import useAdminSettings from './useAdminSettings';
 import HomeScreen from './HomeScreen';
 import SettingsScreen from './SettingsScreen';
+import RequestsScreen from './RequestsScreen';
+import RequestReviewScreen from './RequestReviewScreen';
 export default function Workspace() {
   const today = panamaToday();
   const settings = useAdminSettings();
@@ -59,10 +61,10 @@ export default function Workspace() {
     setMonth(next);
     setSelected(next === today.slice(0, 7) ? today : `${next}-01`);
   }
-  const routeView = route?.type === 'web' ? <WebAdminScreen onClose={back}/> : route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
+  const routeView = route?.type === 'requests' ? <RequestsScreen onClose={back} onOpen={event => push({type:'request-review',event})}/> : route?.type === 'request-review' ? <RequestReviewScreen event={route.event} onClose={back}/> : route?.type === 'web' ? <WebAdminScreen onClose={back}/> : route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
     back();
     Alert.alert('Reserva guardada', 'Los datos se guardaron en Diverty.');
-  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen onCompanySaved={settings.acceptCompany} event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail event={route.event} onClose={back} onEdit={original => push({
+  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen onCompanySaved={settings.acceptCompany} event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail onReview={event => push({type:'request-review',event})} event={route.event} onClose={back} onEdit={original => push({
     type: 'editor',
     original
   })} onPayment={event => push({
@@ -86,7 +88,7 @@ export default function Workspace() {
       display: route ? 'none' : 'flex'
     }} accessibilityElementsHidden={!!route} importantForAccessibility={route ? 'no-hide-descendants' : 'auto'}>
   <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración · Versión {appConfig.expo.version}</Text></View><View><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => push({type:'web'}))}><Text style={s.link}>Administrar página web</Text></Pressable><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.')))}><Text style={s.link}>Salir</Text></Pressable></View></View>
-  {tab === 'inicio' ? <HomeScreen data={data} today={today} settings={settings} onNew={create} onOpen={open} onAgenda={() => setTab('agenda')}/> : tab === 'ajustes' ? <SettingsScreen settings={settings} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onSignOut={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión'))}/> : tab === 'agenda' ? <AgendaScreen data={data} scope={scope} setScope={setScope} onCalendar={() => setTab('calendario')} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onEdit={original => push({
+  {tab === 'inicio' ? <HomeScreen onRequests={() => push({type:'requests'})} data={data} today={today} settings={settings} onNew={create} onOpen={open} onAgenda={() => setTab('agenda')}/> : tab === 'ajustes' ? <SettingsScreen settings={settings} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onSignOut={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión'))}/> : tab === 'agenda' ? <AgendaScreen data={data} scope={scope} setScope={setScope} onCalendar={() => setTab('calendario')} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onEdit={original => push({
         type: 'provider-editor',
         original
       })} /> : <FinanceScreen data={data} month={month} onMove={move} />}

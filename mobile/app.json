@@ -2,7 +2,7 @@
   "expo": {
     "name": "Diverty",
     "slug": "diverty-oficial-native",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
@@ -14,7 +14,14 @@
     },
     "plugins": [
       "expo-sharing",
-      ["expo-image-picker", {"photosPermission": "Diverty usa las fotos que selecciones para el catálogo y la galería de tu página web.", "cameraPermission": false, "microphonePermission": false}]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Diverty usa las fotos que selecciones para el catálogo y la galería de tu página web.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }

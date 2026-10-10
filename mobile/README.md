@@ -151,3 +151,12 @@ Menú: Inicio, Agenda, Clientes, Proveedores, Finanzas, Web, Ajustes. El calenda
 Ajustes conserva las nueve categorías web. Mi negocio, Facturación y banco y Documentos comparten los datos locales del teléfono con el editor de PDF; Meta mensual también se guarda por usuario en el teléfono. Personal disponible guarda animadores, payasos y capacidades en config_web/global mediante una transacción que conserva otros campos y detecta cambios concurrentes. Notificaciones, herramientas avanzadas y zona de peligro están identificadas como pendientes y no ejecutan migraciones ni borrados. No se afirma equivalencia gráfica exacta todavía.
 
 Validación: 49 pruebas nativas y 61 web; exportaciones Android/iOS. No se escribieron datos de producción durante las pruebas. Para probar, reinicia Expo con `npx.cmd expo start --lan --clear` desde esta carpeta y comprueba Versión 0.4.0.
+
+
+## Solicitudes web — 0.5.0
+
+Inicio → Solicitudes web abre Alertas Web con los filtros Todas, Por revisar, Próximas y Falta abono. También se puede revisar una solicitud desde su detalle de Agenda. La revisión permite guardar referencia, confirmar transporte y personal, aceptar y rechazar; no requiere abono para aceptar. Los cambios conservan los abonos y detectan revisiones de otros dispositivos.
+
+Las reservas centralBookingVersion=1 con centralBookingValidation activo utilizan la función oficial confirmWebBooking en us-central1, sin recurrir a la confirmación local si falla. Las normales anteriores reutilizan la lógica de personal y transacción del administrador web, incluidas las proyecciones disponibilidad_web, reservas_cliente, portal_busqueda, bloqueos de horario y booking_control. Esta ruta anterior conserva la comprobación de personal del administrador web; no incorpora un servidor nuevo de asignación. Las solicitudes Santa anteriores deben aceptarse desde la web hasta migrar las reglas de traslado y ruta. Rechazar libera la proyección y el bloqueo de horario mediante las mismas reglas web.
+
+52 pruebas nativas y 61 web, con Firebase simulado y sin escrituras de producción; exportaciones Android/iOS verificadas. La equivalencia visual exacta del administrador y contratos, correcciones de pagos/gastos y herramientas avanzadas siguen pendientes. Reinicia Expo y comprueba Versión 0.5.0.

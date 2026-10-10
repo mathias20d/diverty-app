@@ -56,8 +56,8 @@ test('native navigation connects clients, calendar availability, payments, expen
   setDoc:async(ref,patch,options)=>{records.set(ref.path,options?.merge?{...records.get(ref.path),...patch}:patch);notify();},
   runTransaction:async(_,callback)=>{
    const writes=[];
-   const result=await callback({get:async ref=>document(ref),set:(ref,patch,options)=>writes.push({ref,patch,options})});
-   writes.forEach(({ref,patch,options})=>records.set(ref.path,options?.merge?{...records.get(ref.path),...patch}:patch));notify();if(lostAcknowledgement){lostAcknowledgement=false;throw new Error('NETWORK_ACK_LOST');}return result;
+   const result=await callback({get:async ref=>document(ref),set:(ref,patch,options)=>writes.push({ref,patch,options}),delete:ref=>writes.push({ref,remove:true})});
+   writes.forEach(({ref,patch,options,remove})=>remove?records.delete(ref.path):records.set(ref.path,options?.merge?{...records.get(ref.path),...patch}:patch));notify();if(lostAcknowledgement){lostAcknowledgement=false;throw new Error('NETWORK_ACK_LOST');}return result;
   }
  };
  const asyncStorage={getItem:async key=>storage.get(key)||null,setItem:async(key,value)=>storage.set(key,value),removeItem:async key=>storage.delete(key)};
@@ -72,6 +72,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   if(request==='expo-print')return {printToFileAsync:async value=>{files.push(value);return {uri:'file:///fake-document.pdf'};},printAsync:async value=>previews.push(value)};
   if(request==='expo-sharing')return {isAvailableAsync:async()=>true,shareAsync:async(uri,options)=>shares.push({uri,options})};
   if(request==='firebase/firestore')return firestore;
+  if(request==='firebase/functions')return {getFunctions:(_,region)=>{assert.equal(region,'us-central1');return {};},httpsCallable:(_,name)=>{assert.equal(name,'confirmWebBooking');return async payload=>{assert.equal(payload.id,'central-test');throw new Error('CENTRAL_TEST_FAILURE');};}};
   if(request==='firebase/auth')return {signOut:async()=>{}};
   if(request==='@react-native-async-storage/async-storage')return asyncStorage;
   if(request.endsWith('firebase')&&Module._resolveFilename(request,parent)===firebaseFile)return {db:{},auth:{currentUser:{uid:'test-admin'}},DATA_PATH:['artifacts','diverty-oficial','public','data']};
@@ -177,6 +178,15 @@ test('native navigation connects clients, calendar availability, payments, expen
   await press('Agregar servicio manual');await Renderer.act(async()=>input('Precio unitario ($) servicio 1').props.onChangeText('40'));await press('Guardar reserva');
   assert.ok([...records.values()].some(value=>value.cliente==='Cotización nativa'&&value.estado==='Cotización'));
   await press('Ajustes','tab');await press('Personal disponible');await Renderer.act(async()=>input('animadores').props.onChangeText('0'));await press('Guardar ajustes');assert.equal(records.get(base+'config_web/global').recursosDisponibles.animadores,0);assert.equal(records.get(base+'config_web/global').bannerText,'Promoción test');
+  const webEvent={id:'web-native-test',cliente:'Solicitud nativa',telefono:'60002222',origen:'Web Directa',estado:'Pendiente',fecha:today,hora:'23:00',direccion:'PH Prueba',servicio:'Animador',total:100,abono:20,transporte:10,_rev:1,ownerUid:'test-customer',resourceRequirements:{animadores:1,payasos:0,durationMinutes:120}};
+  records.set(base+'eventos/'+webEvent.id,webEvent);await Renderer.act(async()=>notify());await press('Inicio','tab');await press('Solicitudes web (1)');await Renderer.act(async()=>buttons('Revisar solicitud').at(-1).props.onPress());assert.ok(hasText('Solicitud nativa'));
+  await Renderer.act(async()=>input('Transporte de la solicitud').props.onChangeText('15,25'));await press('Confirmar transporte');assert.equal(records.get(base+'eventos/'+webEvent.id).total,105.25);assert.equal(records.get(base+'eventos/'+webEvent.id).abono,20);
+  await press('Aceptar reserva');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Aceptar').onPress());assert.ok(hasText('No hay suficiente personal'));assert.equal(records.get(base+'eventos/'+webEvent.id).estado,'Pendiente');
+  records.set(base+'config_web/global',{...records.get(base+'config_web/global'),recursosDisponibles:{animadores:3,payasos:1}});await Renderer.act(async()=>notify());await press('Aceptar reserva');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Aceptar').onPress());assert.equal(records.get(base+'eventos/'+webEvent.id).estado,'Confirmado');assert.equal(records.get(base+'reservas_cliente/'+webEvent.id).estado,'Confirmado');assert.equal(records.get(base+'disponibilidad_web/'+webEvent.id).resourceRequirements.animadores,1);assert.ok(records.has(base+'portal_busqueda/'+webEvent.id));
+  const actions=require('../src/request-actions');const central={...webEvent,id:'central-test',_rev:1,centralBookingVersion:1};records.set(base+'eventos/central-test',central);records.set(base+'config_web/global',{centralBookingValidation:true});await assert.rejects(actions.confirmRequest(central),/CENTRAL_TEST_FAILURE/);assert.equal(records.get(base+'eventos/central-test').estado,'Pendiente');
+  await Renderer.act(async()=>actions.rejectRequest(central));assert.equal(records.get(base+'eventos/central-test').estado,'Rechazada');assert.ok(!records.has(base+'disponibilidad_web/central-test'));assert.equal(records.get(base+'reservas_cliente/central-test').estado,'Rechazada');
+  const latest=records.get(base+'eventos/'+webEvent.id);await assert.rejects(actions.updateRequest({...latest,id:webEvent.id},'transport','0'),/ALREADY_PROCESSED/);assert.equal(records.get(base+'eventos/'+webEvent.id).total,105.25);
+  records.set(base+'eventos/deleted-review',{...webEvent,id:'deleted-review'});await Renderer.act(async()=>notify());await Renderer.act(async()=>buttons('Revisar solicitud').at(-1).props.onPress());records.delete(base+'eventos/deleted-review');await Renderer.act(async()=>notify());assert.ok(hasText('procesada o eliminada'));
  }finally{
   if(view)await Renderer.act(async()=>view.unmount());
   Module._load=oldLoad;Module._extensions['.js']=oldJS;
