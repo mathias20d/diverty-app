@@ -200,3 +200,9 @@ Si el catálogo no carga, Usar servicios guardados en la reserva permite generar
 Proveedores → Contrato marco y Reserva → Proveedores del evento → Subcontrato del evento permiten compartir PDF o imprimir. Las doce cláusulas se copian literalmente de la web. El subcontrato agrupa únicamente los servicios asignados al proveedor y sus costos guardados. Ambos usan el contador oficial contador_subcontrato: el marco guarda numeroSubcontrato en el proveedor; el evento guarda numeroSubcontratoEvento en sus asignaciones. Repetir conserva el número; importes o contadores inválidos bloquean la generación. Los datos de empresa deben guardarse antes en Ajustes o Facturas y cotizaciones.
 
 64 pruebas nativas y 61 web, exportaciones Android/iOS y muestra A4 revisada. No se escribieron datos de producción. La disposición de impresión adapta la web; equivalencia visual exacta de toda la app y rutas anteriores de Santa siguen pendientes. La generación física en Expo Go necesita verificación en el teléfono.
+
+## Compartir PDF en Expo Go — 0.8.1
+
+El error Not allowed to read file under given URL aparece al pasar a Expo Sharing la ruta de impresión del host, fuera de los directorios autorizados de la experiencia de Expo Go. La app solicita los bytes base64 a Expo Print y los escribe con File de expo-file-system en Paths.cache antes de compartir. No lee ni copia la ruta rechazada. El mismo flujo cubre factura, cotización, contrato de cliente, acuerdo marco y subcontrato de evento. La numeración oficial se conserva al reintentar.
+
+Facturas y contratos muestran la etapa (numeración, creación, guardado, compartir) y un aviso visible con el detalle del error. 66 pruebas nativas: bytes PDF exactos en caché, ruta de impresión inaccesible, fallos de creación/compartir sin renumerar y navegación completa. Dependencias compatibles con SDK 57. La comprobación final en el teléfono requiere reiniciar Metro y cerrar Expo Go.

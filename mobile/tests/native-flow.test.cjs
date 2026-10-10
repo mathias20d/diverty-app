@@ -41,7 +41,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   return {docs,empty:docs.length===0,metadata:{fromCache:false}};
  }
  const notify=()=>listeners.forEach(({ref,callback})=>callback(snapshot(ref)));
- let catalogFailure=false;
+ let catalogFailure=false,printFailure=false,shareFailure=false;
  const firestore={
   increment:value=>({__increment:value}),
   writeBatch:()=>{
@@ -71,8 +71,9 @@ test('native navigation connects clients, calendar availability, payments, expen
   if(request==='expo-image-picker')return {launchImageLibraryAsync:async()=>({canceled:true})};
   if(request==='expo-clipboard')return {setStringAsync:async value=>clipboard.push(value)};
   if(request==='react-native-webview')return {WebView:'WebView'};
-  if(request==='expo-print')return {printToFileAsync:async value=>{files.push(value);return {uri:'file:///fake-document.pdf'};},printAsync:async value=>previews.push(value)};
-  if(request==='expo-sharing')return {isAvailableAsync:async()=>true,shareAsync:async(uri,options)=>shares.push({uri,options})};
+  if(request==='expo-print')return {printToFileAsync:async value=>{if(printFailure)throw new Error('PRINT_TEST_FAILURE');files.push(value);return {uri:'file:///host/Print/denied-document.pdf',base64:Buffer.from('%PDF-1.4 test').toString('base64')};},printAsync:async value=>previews.push(value)};
+  if(request==='expo-file-system')return {Paths:{cache:{uri:'file:///experience/cache/'}},File:class {constructor(directory,name){this.uri=directory.uri+name;this.exists=false;this.size=0;}create(){this.exists=true;}write(value,options){assert.equal(options.encoding,'base64');this.size=Buffer.from(value,'base64').length;}}};
+  if(request==='expo-sharing')return {isAvailableAsync:async()=>true,shareAsync:async(uri,options)=>{if(shareFailure)throw new Error('SHARE_TEST_FAILURE');assert.ok(uri.startsWith('file:///experience/cache/'));shares.push({uri,options});}};
   if(request==='firebase/firestore')return firestore;
   if(request==='firebase/functions')return {getFunctions:(_,region)=>{assert.equal(region,'us-central1');return {};},httpsCallable:(_,name)=>{assert.equal(name,'confirmWebBooking');return async payload=>{assert.equal(payload.id,'central-test');throw new Error('CENTRAL_TEST_FAILURE');};}};
   if(request==='firebase/auth')return {signOut:async()=>{}};
@@ -150,7 +151,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   await press('Volver a la reserva');await press('Facturas y cotizaciones');
   assert.ok(buttons('Compartir PDF')[0].props.disabled);
   assert.ok(hasText('Revisa los datos de empresa'));await press('Guardar datos y habilitar PDF');assert.ok(hasText('Documento listo para generar'));await press('Compartir PDF');
-  assert.equal(shares.at(-1).uri,'file:///fake-document.pdf');assert.equal(shares.at(-1).options.mimeType,'application/pdf');assert.ok(files.at(-1).html.includes('2 h'));
+  assert.ok(shares.at(-1).uri.startsWith('file:///experience/cache/FAC-00008-'));assert.equal(shares.at(-1).options.mimeType,'application/pdf');assert.ok(files.at(-1).html.includes('2 h'));
   assert.equal(records.get(base+'eventos/current').numeroFactura,'FAC-00008');
   await press('Vista previa / imprimir');assert.equal(previews.length,1);assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);
   await press('Cotización');await press('Compartir PDF');assert.equal(records.get(base+'eventos/current').numeroCotizacion,'COT-00004');
@@ -194,6 +195,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   const originalPayments=structuredClone(records.get(base+'eventos/current').pagosItems);await press('Corregir recibido');await Renderer.act(async()=>input('Importe corregido').props.onChangeText('10'));lostAcknowledgement=true;await press('Guardar corrección');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Guardar').onPress());assert.ok(hasText('Corrección pendiente'));await press('Reintentar corrección');assert.equal(records.get(base+'eventos/current').abono,10);assert.equal(records.get(base+'eventos/current').total,100);assert.deepEqual(records.get(base+'eventos/current').pagosItems,originalPayments);assert.equal(records.get(base+'eventos/current').ajustesFinancieros.length,1);
   await press('Volver a la reserva');await press('Gastos del evento');const originalExpenses=structuredClone(records.get(base+'eventos/current').gastosItems),originalProviders=structuredClone(records.get(base+'eventos/current').subcontratos);await press('Corregir gastos internos');await Renderer.act(async()=>input('Importe corregido').props.onChangeText('5'));await press('Guardar corrección');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Guardar').onPress());assert.equal(records.get(base+'eventos/current').gastos,5);assert.deepEqual(records.get(base+'eventos/current').gastosItems,originalExpenses);assert.deepEqual(records.get(base+'eventos/current').subcontratos,originalProviders);assert.ok(hasText('Gastos corregidos:'));
   await press('Volver a la reserva');catalogFailure=true;await press('Facturas y cotizaciones');assert.ok(buttons('Compartir PDF')[0].props.disabled);await press('Usar servicios guardados en la reserva');assert.ok(!buttons('Compartir PDF')[0].props.disabled);await press('Compartir PDF');assert.equal(shares.at(-1).options.mimeType,'application/pdf');assert.ok(files.at(-1).html.includes('FAC-00008'));assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);
+  printFailure=true;await press('Compartir PDF');assert.ok(alerts.at(-1).message.includes('PRINT_TEST_FAILURE'));assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);printFailure=false;shareFailure=true;await press('Compartir PDF');assert.ok(alerts.at(-1).message.includes('El PDF se creó'));assert.ok(alerts.at(-1).message.includes('SHARE_TEST_FAILURE'));shareFailure=false;await press('Contrato');await press('Compartir PDF');assert.ok(files.at(-1).html.includes('CON-00003'));assert.equal(records.get(base+'configuracion/contador_contrato').ultimo,3);
   await press('Volver a la reserva');await press('Proveedores del evento');records.set(base+'configuracion/contador_subcontrato',{ultimo:4});await press('Subcontrato del evento');await press('Compartir PDF');assert.ok(files.at(-1).html.includes('SUB-00005'));assert.ok(files.at(-1).html.includes('SUBCONTRATO DEL EVENTO'));assert.equal(records.get(base+'configuracion/contador_subcontrato').ultimo,5);await press('Compartir PDF');assert.equal(records.get(base+'configuracion/contador_subcontrato').ultimo,5);
   await press('Volver');await press('Volver a la reserva');await press('Volver');await press('Proveedores','tab');await press('Contrato marco');await press('Compartir PDF');assert.ok(files.at(-1).html.includes('ACUERDO MARCO DE PROVEEDOR'));assert.ok(files.at(-1).html.includes('SUB-00006'));assert.equal(records.get(base+'configuracion/contador_subcontrato').ultimo,6);
  }finally{

@@ -3,6 +3,8 @@ import {ScrollView,Text} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import {File,Paths} from 'expo-file-system';
+import {sharePDF} from './pdf-sharing.mjs';
 import {doc,runTransaction} from 'firebase/firestore';
 import {auth,db,DATA_PATH} from './firebase';
 import {Action,ui} from './native-ui';
@@ -21,7 +23,7 @@ export default function ProviderDocumentsScreen({provider,event,onClose}) {
       if(share && !await Sharing.isAvailableAsync())throw new Error('SHARING_UNAVAILABLE');
       const result=await ensureProviderNumber({runTransaction,db,providerRef:doc(db,...DATA_PATH,'proveedores',provider.id),eventRef:event?doc(db,...DATA_PATH,'eventos',event.id):null,counterRef:doc(db,...DATA_PATH,'configuracion','contador_subcontrato'),providerId:provider.id,now:new Date().toISOString()});
       const html=providerDocumentHTML(result.provider,result.event,result.number,company);
-      if(share){const file=await Print.printToFileAsync({html,width:595,height:842});await Sharing.shareAsync(file.uri,{mimeType:'application/pdf',UTI:'com.adobe.pdf'});}else await Print.printAsync({html});
+      if(share){await sharePDF({Print,Sharing,File,Paths,html,name:result.number,title:event?'Subcontrato del evento':'Acuerdo marco de proveedor'});}else await Print.printAsync({html});
     }catch(e){const messages={COUNTER_NOT_READY:'Prepara la numeración desde Ajustes → Preparar actualización en el administrador web.',INVALID_DOCUMENT_COUNTER:'El contador de subcontratos requiere revisión.',NO_ASSIGNED_SERVICES:'Este proveedor ya no tiene servicios asignados a esta reserva.',PROVIDER_NOT_FOUND:'El proveedor ya no está disponible.',EVENT_NOT_FOUND:'La reserva ya no está disponible.',CONFLICTING_NUMBERS:'Los servicios tienen números de subcontrato distintos. Revisa esta reserva en el administrador web.',SHARING_UNAVAILABLE:'Compartir archivos no está disponible en este dispositivo.',INVALID_PROVIDER_COST:'Revisa los costos guardados del proveedor.'};setError(messages[e.message] || firestoreErrorMessage(e,'No pudimos generar el contrato. Reintenta.'));}
     finally{lock.current=false;setBusy(false);}
   }
