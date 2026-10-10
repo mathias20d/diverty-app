@@ -5,11 +5,14 @@ import {db,DATA_PATH} from './firebase';
 import {addReservationLine,editReservationLine,reservationServices,unitPrice} from './domain/reservation-lines.mjs';
 import {panamaToday} from './domain/date-availability.mjs';
 import {mergeReservation,reservationPatch} from './reservation-data.mjs';
-const initial={cliente:'',telefono:'',email:'',fecha:panamaToday(),hora:'',ubicacion:'',transporte:'0',serviciosSeleccionados:[]};
+import useScreenBack from './useScreenBack';
+const initial={cliente:'',telefono:'',email:'',hora:'',ubicacion:'',transporte:'0',serviciosSeleccionados:[]};
 function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.action,disabled&&{opacity:.5}]}><Text style={s.actionText}>{title}</Text></Pressable>;}
-export default function ReservationEditor({original,onClose,onSaved}) {
- const [form,setForm]=useState(()=>({...initial,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+export default function ReservationEditor({original,initialValues={},onClose,onSaved}) {
+ const [form,setForm]=useState(()=>({...initial,fecha:panamaToday(),...initialValues,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const saving=useRef(false),saveId=useRef(original?.id||doc(collection(db,...DATA_PATH,'eventos')).id);
+ const cancel=()=>Alert.alert('Cerrar formulario','¿Descartar los cambios sin guardar?',[{text:'Seguir editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:onClose}]);
+ useScreenBack(cancel,busy);
  useEffect(()=>{let active=true;getDoc(doc(db,...DATA_PATH,'config_web','serviciosCustom')).then(snap=>{if(active)setCatalog(snap.data()?.paquetes||[]);}).catch(()=>{if(active)setError('No se pudo cargar el catálogo. Puedes agregar un servicio manual.');});return()=>{active=false;};},[]);
  async function searchClients(){
   if(!clientSearch.trim())return;
@@ -38,7 +41,7 @@ export default function ReservationEditor({original,onClose,onSaved}) {
     if(original){if(!current.exists())throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
     else {if(current.exists())return;tx.set(ref,{...patch,id:saveId.current,createdAt:now,updatedAt:now,_rev:1,estado:'Pendiente',abono:0,deletedLocally:false,costosSeparados:true});}
    });
-   await setDoc(doc(db,...DATA_PATH,'config_web','syncBus'),{entityType:'evento',entityId:saveId.current,action:'update',deviceId:'diverty-native',changedAt:now,nonce:saveId.current+'-'+now}).catch(()=>{});
+   setDoc(doc(db,...DATA_PATH,'config_web','syncBus'),{entityType:'evento',entityId:saveId.current,action:'update',deviceId:'diverty-native',changedAt:now,nonce:saveId.current+'-'+now}).catch(()=>{});
    onSaved();
   }catch(e){setError(e.message==='EDIT_CONFLICT'?'La reserva cambió en otro dispositivo. Cierra y vuelve a abrirla antes de guardar.':e.code?'No se pudo guardar. Revisa tu conexión y vuelve a intentarlo.':e.message);}finally{saving.current=false;setBusy(false);}
  }
@@ -51,7 +54,7 @@ export default function ReservationEditor({original,onClose,onSaved}) {
  <Text style={s.total}>Total: ${Number(reservationServices(form,form.serviciosSeleccionados).total||0).toFixed(2)}</Text>
  {original&&<Text>Abonos conservados: ${Number(original.abono||0).toFixed(2)}</Text>}
  {error?<Text accessibilityRole="alert" style={{color:'#b42342'}}>{error}</Text>:null}
- <Action title={busy?'Guardando…':'Guardar reserva'} onPress={save} disabled={busy}/><Action title="Cancelar" disabled={busy} onPress={()=>Alert.alert('Cerrar formulario','¿Descartar los cambios sin guardar?',[{text:'Seguir editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:onClose}])}/>
+ <Action title={busy?'Guardando…':'Guardar reserva'} onPress={save} disabled={busy}/><Action title="Cancelar" disabled={busy} onPress={cancel}/>
  </ScrollView></KeyboardAvoidingView>;
 }
 const s=StyleSheet.create({page:{padding:22,paddingBottom:40,gap:14},heading:{fontSize:24,fontWeight:'800',color:'#202034'},card:{backgroundColor:'#fff',borderRadius:18,padding:16,gap:12},label:{fontSize:14,fontWeight:'700',color:'#555365',marginBottom:6},input:{borderWidth:1,borderColor:'#dbd9e7',borderRadius:12,padding:12,fontSize:16,color:'#202034'},action:{backgroundColor:'#7042d9',borderRadius:12,padding:14,marginTop:6},actionText:{color:'#fff',textAlign:'center',fontWeight:'700'},line:{borderTopWidth:1,borderColor:'#e5e2ef',paddingTop:16,gap:8},modes:{flexDirection:'row',justifyContent:'space-between',padding:12},selected:{color:'#7042d9',fontWeight:'900'},total:{fontSize:20,fontWeight:'800',color:'#7042d9'}});

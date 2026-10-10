@@ -5,6 +5,7 @@ import {collection,doc,onSnapshot,runTransaction,setDoc} from 'firebase/firestor
 import {auth,db,DATA_PATH} from './firebase';
 import {panamaToday} from './domain/date-availability.mjs';
 import {EXPENSE_CATEGORIES,expenseOperation,expenseSummary,recordExpense} from './expenses.mjs';
+import useScreenBack from './useScreenBack';
 const money=value=>`$${Number(value||0).toFixed(2)}`;
 function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.button,disabled&&{opacity:.5}]}><Text style={s.buttonText}>{title}</Text></Pressable>;}
 const message=e=>({INVALID_EXPENSE:'Revisa el monto (hasta dos decimales), la categoría y la fecha AAAA-MM-DD.',INVALID_COSTS:'Los costos guardados necesitan revisión en la app actual.',EXPENSE_CONFLICT:'Este registro necesita revisión antes de continuar.',EVENT_NOT_FOUND:'La reserva ya no existe.'}[e.message]||'No se pudo confirmar el gasto. Revisa tu conexión y reintenta; se conserva el mismo registro para evitar duplicarlo.');
@@ -12,6 +13,7 @@ export default function ExpenseScreen({event,onClose}){
  const [current,setCurrent]=useState(event),[loading,setLoading]=useState(true),[amount,setAmount]=useState(''),[category,setCategory]=useState('personal'),[detail,setDetail]=useState(''),[date,setDate]=useState(panamaToday()),[error,setError]=useState(''),[pending,setPending]=useState(null),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
  const [showAll,setShowAll]=useState(false),[savedMessage,setSavedMessage]=useState('');
  const scroll=useRef(null),lock=useRef(false),key=`diverty-expense:${auth.currentUser.uid}:${event.id}`;
+ useScreenBack(onClose,busy);
  useEffect(()=>{let active=true;AsyncStorage.getItem(key).then(value=>{if(!active)return;if(value){const operation=expenseOperation(JSON.parse(value));setPending(operation);setAmount(String(operation.monto));setCategory(operation.categoria);setDetail(operation.detalle);setDate(operation.fecha);}setReady(true);}).catch(()=>{if(active)setError('No pudimos preparar el gasto pendiente. Cierra y vuelve a abrir.');});return()=>{active=false;};},[key]);
  useEffect(()=>{setLoading(true);return onSnapshot(doc(db,...DATA_PATH,'eventos',event.id),snap=>{if(snap.exists())setCurrent({...snap.data(),id:event.id});else setError('La reserva ya no existe.');setLoading(false);},()=>{setError('No pudimos actualizar los costos. Revisa tu conexión.');setLoading(false);});},[event.id,retry]);
  let totals;try{totals=expenseSummary(current);}catch{totals=null;}
@@ -45,7 +47,7 @@ export default function ExpenseScreen({event,onClose}){
  <Action title={busy?'Registrando…':pending?'Reintentar gasto':'Guardar gasto'} onPress={submit} disabled={busy||loading||!ready||!totals}/></View>
  {error?<View><Text accessibilityRole="alert" style={s.error}>{error}</Text><Action title="Actualizar costos" onPress={()=>{setError('');setRetry(n=>n+1);}} disabled={busy}/></View>:null}
  <Text>Los gastos antiguos pueden no tener registros individuales. Los proveedores se muestran por separado y se administran desde la app actual.</Text>
- <Action title="Volver a la agenda" disabled={busy} onPress={onClose}/>
+ <Action title="Volver a la reserva" disabled={busy} onPress={onClose}/>
  </ScrollView></KeyboardAvoidingView>;
 }
 const s=StyleSheet.create({page:{padding:22,paddingBottom:40,gap:16},heading:{fontSize:26,fontWeight:'800',color:'#202034'},title:{fontSize:18,fontWeight:'700',color:'#202034'},card:{padding:18,borderRadius:18,backgroundColor:'#fff',gap:12},input:{borderWidth:1,borderColor:'#dbd9e7',borderRadius:12,padding:14,fontSize:16},button:{backgroundColor:'#7042d9',padding:15,borderRadius:12},buttonText:{color:'#fff',textAlign:'center',fontWeight:'700'},categories:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{padding:10,borderRadius:10,backgroundColor:'#f2eff8'},selected:{backgroundColor:'#7042d9'},chosen:{color:'#fff',fontWeight:'700'},label:{color:'#686878'},error:{color:'#b42342'}});

@@ -1,4 +1,4 @@
-# Diverty nativa — primera etapa
+# Diverty nativa — administración de reservas
 
 React Native y Expo para Android e iPhone. Las pantallas utilizan controles nativos: no cargan la web en una WebView.
 
@@ -6,16 +6,20 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 
 - Inicio de sesión con la cuenta administradora existente.
 - Persistencia de sesión en el dispositivo.
-- Agenda de próximas reservas en tiempo real, con estados de carga, error y reintento.
+- Navegación inferior: Agenda, Calendario, Clientes y Finanzas.
+- Agenda en tiempo real, con próximas reservas o historial completo, búsqueda por nombre/teléfono/servicio/fecha y filtros de estado.
 - Mismo Firebase `diverty-eventos` y ruta `artifacts/diverty-oficial/public/data/eventos`.
 - Nueva reserva y edición con datos del cliente, servicios por unidad/hora/paquete y transporte.
-- Busca clientes por el teléfono exacto guardado en reservas anteriores.
+- Lista de clientes con búsqueda, historial y contacto por WhatsApp. Nueva reserva con nombre, teléfono y correo precargados. Conserva la agrupación por nombre y los clientes ocultos de la app actual.
+- Calendario mensual con reservas por día y cierre/reapertura de fechas en la web; conserva las reservas existentes.
+- Detalle de cada reserva con contacto, ubicación guardada en Maps, servicios, duración, abonos y gastos.
+- Finanzas por mes del evento, con total contratado, recibido, saldo, costos y ganancia estimada. Excluye cotizaciones, cancelaciones, rechazos y solicitudes web pendientes.
 - Guardar escribe en Firebase oficial, con revisión de edición simultánea y respeto de fechas cerradas. Las pruebas automatizadas no escriben en producción.
 - Conserva abonos, gastos y proveedores existentes; cambiar horarios de reservas especiales sigue en la app actual para mantener los cupos.
 - Consulta y registro de abonos con saldo actualizado.
 - Consulta y registro de gastos internos por categoría, con historial, proveedores y ganancia estimada.
 
-La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, gestión de proveedores, PDF, calendario y notificaciones nativas requieren las siguientes etapas; esta versión inicial todavía no sustituye la app oficial.
+La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, gestión de proveedores, aceptación de solicitudes web con asignación de recursos, PDF, administración del catálogo web y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial.
 
 ## Windows: probar en Android o iPhone
 
@@ -43,9 +47,9 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 
 ## Siguientes etapas
 
-1. Validar acceso y lectura de agenda en teléfonos reales.
-2. Migrar reservas y clientes reutilizando reglas de cantidades, duración y disponibilidad.
-3. Migrar cobros, documentos y administración web.
+1. Validar juntos agenda, calendario, clientes y finanzas en teléfonos reales.
+2. Migrar proveedores y aceptación de solicitudes web conservando recursos y cupos.
+3. Migrar documentos, ajustes de cobros/gastos y administración del catálogo web.
 4. Registrar dispositivos y configurar notificaciones push nativas; las notificaciones del navegador no se trasladan automáticamente.
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
 
@@ -61,13 +65,13 @@ npm.cmd ci
 npx.cmd expo start --lan --clear
 ```
 
-Vuelve a escanear el QR. Cada tarjeta tiene Editar reserva, Abonos y saldo y Gastos del evento; Nueva reserva aparece encima de la agenda. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas y abonos; la nueva pantalla de gastos todavía necesita esa comprobación. Los cambios sí afectan los datos oficiales al pulsar Guardar.
+Vuelve a escanear el QR. Las cuatro secciones aparecen abajo. Cada tarjeta tiene Ver reserva y acciones; allí encuentras Editar reserva, Abonos y saldo y Gastos del evento. Nueva reserva aparece en la agenda y en cada cliente, y el calendario permite seleccionar la fecha antes de abrir el formulario. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas, abonos y la aparición de gastos en el historial. Los cambios sí afectan los datos oficiales al pulsar Guardar.
 
-La lógica de líneas y duración en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
+La lógica de líneas, duración, fechas cerradas y GPS en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
 
 ## Abonos y saldo
 
-Cada reserva muestra total contratado, recibido y saldo pendiente. Abonos y saldo permite consultar `pagosItems` y registrar un pago por transferencia, Yappy, efectivo u otro método. No modifica el precio contratado ni confirma automáticamente la reserva.
+Cada reserva muestra total contratado, recibido y saldo pendiente. Abre Ver reserva y acciones → Abonos y saldo para consultar `pagosItems` y registrar un pago por transferencia, Yappy, efectivo u otro método. No modifica el precio contratado ni confirma automáticamente la reserva.
 
 El registro usa una transacción sobre el saldo actual, conserva el historial existente e incrementa `_rev`. Guarda temporalmente el identificador del pago en el teléfono antes de enviar; si la conexión falla, reintenta con el mismo identificador y evita duplicarlo. Un error de escritura de esta memoria local impide iniciar el cobro, para no perder esa protección.
 
@@ -85,4 +89,12 @@ La transacción conserva `gastosItems`, `detalleGastos`, abonos y proveedores, y
 
 Primero compara los costos con la app actual. Registra únicamente un gasto real que todavía no esté guardado; los ajustes y eliminación de gastos siguen en la app actual.
 
-Validación: 18 pruebas locales sin datos reales y exportación de los bundles Android/iOS. El registro de gastos en un teléfono real todavía necesita verificación del usuario.
+## Calendario y comprobación conjunta
+
+Cerrar una fecha escribe en `config_web/fechas_cerradas` y aumenta la versión en `config_web/web_sync`, usando la misma transacción que la app oficial. Reabrir elimina únicamente el cierre de esa fecha; los cupos siguen controlados por la web. El calendario no presenta el número de reservas como disponibilidad garantizada. Los días pasados se pueden consultar, pero no cerrar ni reabrir.
+
+La agenda consulta próximas reservas al abrir. El historial completo se carga al seleccionar Todas / historial o Clientes; Calendario y Finanzas consultan solo el mes seleccionado. La navegación a detalles conserva la búsqueda y la posición de la lista original. Los datos obtenidos de caché se identifican para evitar presentarlos como una actualización confirmada.
+
+Validación: 28 pruebas locales sin datos reales, compatibilidad de dependencias Expo y exportación de los bundles Android/iOS. Una prueba de componentes React recorre clientes → reserva precargada, cierre/reapertura del calendario, contacto, abonos, gastos, regreso a la agenda y finanzas; utiliza controles nativos simulados y Firebase/almacenamiento ficticios. No sustituye la prueba visual y de permisos en Android/iPhone reales.
+
+Después de actualizar una sola vez, revisa las cuatro secciones y compara una reserva existente con la app actual. No vuelvas a registrar abonos o gastos ya guardados para comprobar la nueva navegación.
