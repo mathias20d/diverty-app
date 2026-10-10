@@ -79,6 +79,8 @@ El usuario confirmó que los abonos funcionan en su prueba.
 
 Cada reserva permite registrar personal/animadores, transporte, adicionales/materiales u otros gastos. Muestra los gastos internos, costos de proveedores y ganancia estimada sobre el total contratado. Un gasto puede superar el precio del evento; en ese caso la ganancia estimada será negativa.
 
+La tarjeta de la agenda muestra estos costos y el último gasto. Dentro de Gastos del evento, los tres registros más recientes aparecen encima del formulario, con opción de ver todo el historial. Al guardar, se cierra el teclado y la pantalla vuelve al resumen con un mensaje persistente de confirmación.
+
 La transacción conserva `gastosItems`, `detalleGastos`, abonos y proveedores, y aumenta `_rev`. En reservas antiguas donde `gastos` ya incluye proveedores, separa los costos una sola vez antes de añadir el nuevo gasto. No recalcula gastos antiguos desde un historial incompleto. La operación queda guardada temporalmente en el teléfono y reutiliza su identificador al reintentar para evitar duplicados.
 
 Primero compara los costos con la app actual. Registra únicamente un gasto real que todavía no esté guardado; los ajustes y eliminación de gastos siguen en la app actual.
