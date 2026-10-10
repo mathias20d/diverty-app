@@ -234,4 +234,4 @@ const runTransaction = (database, callback) => rawRunTransaction(database, async
   return result;
 });
 
-export {runTransaction,inferResourceRequirements,getResourceAvailability};
+export {runTransaction,inferResourceRequirements,getResourceAvailability,projectEvent,publicSlot,availabilityRef};
