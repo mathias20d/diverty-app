@@ -287,3 +287,11 @@ npx eas-cli build --platform android --profile preview
 ```
 
 En la primera ejecución Expo puede pedir crear/vincular el proyecto y generar la firma Android. Utiliza la cuenta propietaria de Diverty y conserva esa cuenta y firma para futuras actualizaciones. Instala el APK desde el enlace que devuelve EAS Build y verifica sesión, reservas y compartir factura/contrato antes de utilizarlo como administrador principal. No compres un plan para este paso sin revisar primero las condiciones mostradas por Expo. EAS Update aún no está configurado: las siguientes versiones requieren generar e instalar otro APK compatible con la misma firma.
+
+### Primer APK Android completado — 0.14.0
+
+Build EAS cfb145ba-0e05-4d67-aece-13c455a3c7d2, distribución interna, paquete com.divertypanama.reservas, versionCode 1. Proyecto vinculado al propietario de Expo y firma generada en EAS para conservar compatibilidad en futuras versiones.
+
+Instalación: https://expo.dev/accounts/johanosorii0456/projects/diverty-oficial-native/builds/cfb145ba-0e05-4d67-aece-13c455a3c7d2
+
+La compilación nativa terminó; la prueba física de inicio de sesión, reservas y compartir factura/contrato está pendiente. No se publicó en Google Play ni se ejecutaron operaciones sobre datos Firebase reales.
