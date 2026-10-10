@@ -274,3 +274,16 @@ Clientes → Historial → Ocultar cliente conserva todos sus eventos y combina 
 Verificación con datos ficticios: 85 pruebas nativas y 61 web. Cubre vigencia y aprobación, datos fiscales, catálogo transaccional, ocultación sin borrar eventos, exportación CSV con filtros/costos, caché para compartir y navegación integrada. Exportaciones Android/iOS. Sin escrituras sobre datos reales, cambios de Firebase ni dependencias nuevas.
 
 Pendientes: comprobar formularios, aprobación/PDF, catálogo, ocultación, operación y CSV en Expo Go. No se afirma equivalencia visual exacta completa. Horarios de reservas especiales, notificaciones nativas y zona de peligro aún no migrados. La exportación disponible es mensual; anual e histórico web siguen pendientes. Se pausó la continuación automática a petición de concentrar el trabajo y conservar créditos.
+
+## Android: APK privado instalable
+
+El perfil preview de mobile/eas.json genera un APK de distribución interna, con el bundle incluido. No publica en Google Play ni necesita el servidor Expo Go para abrir la app; Firebase sí necesita conexión para sincronizar. La exportación JavaScript anterior no es un APK.
+
+Desde mobile, con Node.js LTS instalado:
+
+```powershell
+npx eas-cli login
+npx eas-cli build --platform android --profile preview
+```
+
+En la primera ejecución Expo puede pedir crear/vincular el proyecto y generar la firma Android. Utiliza la cuenta propietaria de Diverty y conserva esa cuenta y firma para futuras actualizaciones. Instala el APK desde el enlace que devuelve EAS Build y verifica sesión, reservas y compartir factura/contrato antes de utilizarlo como administrador principal. No compres un plan para este paso sin revisar primero las condiciones mostradas por Expo. EAS Update aún no está configurado: las siguientes versiones requieren generar e instalar otro APK compatible con la misma firma.
