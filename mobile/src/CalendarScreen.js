@@ -42,7 +42,7 @@ export default function CalendarScreen({data,month,onMove,selected,setSelected,o
   </View>
   {message?<Text accessibilityRole="alert" style={ui.success}>{message}</Text>:null}
   {error?<View><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Action title="Reintentar disponibilidad" secondary disabled={busy} onPress={()=>setRetry(value=>value+1)}/></View>:null}
-  {!data.loading&&!data.error?<><Text style={ui.title}>Reservas del día ({dayEvents.length})</Text>{dayEvents.length===0?<Text style={ui.muted}>No hay reservas para esta fecha.</Text>:dayEvents.map(event=><ReservationCard key={event.id} event={event} onOpen={value=>{if(!busy)onOpen(value);}}/>)}</>:null}
+  {!data.loading&&!data.error?<><Text style={ui.title}>Reservas del día ({dayEvents.length})</Text>{dayEvents.length===0?<Text style={ui.muted}>No hay reservas para esta fecha.</Text>:dayEvents.map(event=><ReservationCard key={event.id} event={event} onOpen={(value,documentType)=>{if(!busy)onOpen(value,documentType);}}/>)}</>:null}
  </ScrollView>;
 }
 const s=StyleSheet.create({grid:{flexDirection:'row',flexWrap:'wrap',backgroundColor:'#fff',borderRadius:18,padding:8},cell:{width:'14.2857%',padding:2},week:{textAlign:'center',fontSize:12,fontWeight:'700',color:'#686878',paddingVertical:8},day:{minHeight:54,justifyContent:'center',alignItems:'center',borderRadius:10,backgroundColor:'#f5f4fa'},closed:{backgroundColor:'#ffe9ee'},selected:{backgroundColor:'#7042d9'},number:{fontSize:16,fontWeight:'700',color:'#202034'},past:{color:'#898590'},count:{fontSize:8,color:'#686878',marginTop:3},white:{color:'#fff'}});

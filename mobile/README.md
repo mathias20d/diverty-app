@@ -118,3 +118,6 @@ Los datos de empresa de la app web están en su navegador (`diverty_settings`), 
 El catálogo (`serviciosCustom`), clientes ocultos (`clientesOcultos`) y señales internas (`syncBus`) usan `configuracion`, conforme a la app oficial. Solo los cierres y la versión pública de la web usan `config_web`.
 
 Las pruebas usan Firebase, archivos PDF y menú de compartir simulados; no envían mensajes ni modifican producción. Verifican altas de proveedores, asignaciones, estado de pago, numeración repetida, conservación de costos antiguos, cantidades/duración, datos de clientes ocultos y lectura del catálogo en su ruta oficial. Los bundles JavaScript Android/iOS no sustituyen comprobar el PDF y la hoja de compartir en teléfonos físicos.
+
+
+Desde la versión 0.2.1, cada tarjeta de reserva en Agenda, Calendario e historial de clientes tiene botones Factura y Cotización. Abren directamente el documento escogido. La versión aparece debajo de Diverty para comprobar que Expo Go está mostrando la actualización. También se conserva Facturas y cotizaciones dentro del detalle.

@@ -30,9 +30,10 @@ const messages = {
 };
 export default function DocumentsScreen({
   event,
+  initialType = 'factura',
   onClose
 }) {
-  const [type, setType] = useState('factura'),
+  const [type, setType] = useState(initialType),
     [company, setCompany] = useState(DEFAULT_COMPANY),
     [settings, setSettings] = useState(false),
     [ready, setReady] = useState(false),

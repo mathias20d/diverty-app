@@ -73,7 +73,8 @@ test('native navigation connects clients, calendar availability, payments, expen
  };
  let view;
  const text=node=>typeof node==='string'||typeof node==='number'?String(node):Array.isArray(node)?node.map(text).join(''):node?.props?text(node.props.children):'';
- const buttons=(label,role='button')=>view.root.findAllByType('Pressable').filter(node=>node.props.accessibilityRole===role&&text(node.props.children)===label);
+ const visible=node=>{for(let current=node;current;current=current.parent){if(current.props?.accessibilityElementsHidden)return false;}return true;};
+ const buttons=(label,role='button')=>view.root.findAllByType('Pressable').filter(node=>visible(node)&&node.props.accessibilityRole===role&&text(node.props.children)===label);
  const press=async(label,role='button')=>{const button=buttons(label,role)[0];assert.ok(button,`Missing ${label}`);assert.ok(!button.props.disabled,`Disabled ${label}`);await Renderer.act(async()=>{await button.props.onPress();});};
  const input=label=>view.root.findAllByType('TextInput').find(node=>node.props.accessibilityLabel===label);
  const hasText=label=>view.root.findAllByType('Text').some(node=>text(node.props.children).includes(label));
@@ -91,6 +92,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   await Renderer.act(async()=>input('Buscar servicio').props.onChangeText('catálogo'));assert.ok(buttons('Servicio de catálogo · $40').length);
   await press('Cancelar');await Renderer.act(async()=>alerts.at(-1).buttons.find(b=>b.text==='Descartar').onPress());
   await press('Calendario','tab');assert.ok(hasText('Web habilitada según cupos'));
+  await press('Cotización');assert.ok(hasText('COTIZACIÓN'));await press('Volver a la reserva');
   await press('Cerrar esta fecha en la web');await Renderer.act(async()=>{await alerts.at(-1).buttons.find(b=>b.text==='Cerrar fecha').onPress();});
   assert.equal(records.get(base+'config_web/fechas_cerradas').fechas[today],true);
   assert.equal(records.get(base+'config_web/web_sync').versions.config_web,1);
@@ -137,6 +139,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   await press('Vista previa / imprimir');assert.equal(previews.length,1);assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);
   await press('Cotización');await press('Compartir PDF');assert.equal(records.get(base+'eventos/current').numeroCotizacion,'COT-00004');
   await press('Volver a la reserva');await press('Volver');await press('Finanzas','tab');assert.ok(hasText('$60.00'));
+  await press('Agenda','tab');await Renderer.act(async()=>input('Buscar reservas').props.onChangeText('60702108'));await Renderer.act(async()=>buttons('Factura').at(-1).props.onPress());assert.ok(hasText('FACTURA COMERCIAL'));assert.ok(hasText('FAC-00008'));await press('Volver a la reserva');
   assert.ok(records.has(base+'configuracion/syncBus'));assert.ok(!records.has(base+'config_web/syncBus'));
   assert.equal(records.get(base+'eventos/current').total,100);
   assert.equal(month,today.slice(0,7));

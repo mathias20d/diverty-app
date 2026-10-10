@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import appConfig from '../app.json';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase';
@@ -36,10 +37,9 @@ export default function Workspace() {
   useScreenBack(() => setTab('agenda'), calendarBusy, !route && (calendarBusy || tab !== 'agenda'));
   const push = route => setRoutes(value => [...value, route]),
     back = () => setRoutes(value => value.slice(0, -1));
-  const open = event => push({
-      type: 'detail',
-      event
-    }),
+  const open = (event, documentType) => push(['factura','cotizacion'].includes(documentType)
+    ? {type:'documents',event,initialType:documentType}
+    : {type:'detail',event}),
     create = initialValues => push({
       type: 'editor',
       original: null,
@@ -53,7 +53,7 @@ export default function Workspace() {
   const routeView = route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
     back();
     Alert.alert('Reserva guardada', 'Los datos se guardaron en Diverty.');
-  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen event={route.event} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail event={route.event} onClose={back} onEdit={original => push({
+  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail event={route.event} onClose={back} onEdit={original => push({
     type: 'editor',
     original
   })} onPayment={event => push({
@@ -76,7 +76,7 @@ export default function Workspace() {
       flex: 1,
       display: route ? 'none' : 'flex'
     }} accessibilityElementsHidden={!!route} importantForAccessibility={route ? 'no-hide-descendants' : 'auto'}>
-  <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración de eventos</Text></View><Pressable accessibilityRole="button" disabled={calendarBusy} onPress={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.'))}><Text style={s.link}>Salir</Text></Pressable></View>
+  <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración · Versión {appConfig.expo.version}</Text></View><Pressable accessibilityRole="button" disabled={calendarBusy} onPress={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.'))}><Text style={s.link}>Salir</Text></Pressable></View>
   {tab === 'agenda' ? <AgendaScreen data={data} scope={scope} setScope={setScope} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onEdit={original => push({
         type: 'provider-editor',
         original
