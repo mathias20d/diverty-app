@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 .app-navigation-heading { display: none; }
+.app-workspace { min-height: 0; }
+#main-content { min-height: 0; overflow-y: auto; }
+.home-work-grid, .home-followup { display: grid; gap: 20px; min-width: 0; }
+.home-followup { grid-template-columns: minmax(0, 1fr); }
+.home-followup > div { min-width: 0; }
 .app-skip-link {
   position: fixed;
   top: 8px;
@@ -22,7 +27,7 @@
 }
 
 /* La navegación cambia con el espacio disponible, incluso en PC táctiles. */
-@media (min-width: 1024px) {
+@media (min-width: 900px) {
   .app-workspace { margin-left: 216px; }
   .app-navigation {
     top: 0;
@@ -75,9 +80,36 @@
     padding-bottom: 32px;
   }
   .home-new-reservation { width: auto; min-width: 260px; padding-right: 56px; }
+  #main-content > .home-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 1fr);
+    gap: 18px;
+    align-content: start;
+    padding: 24px;
+    min-height: 0;
+  }
+  .home-dashboard > * + * { margin-top: 0 !important; }
+  .home-hero { grid-column: 1; grid-row: 1; padding: 24px; border-radius: 22px; }
+  .home-hero h1 { font-size: 32px; }
+  .home-hero .hidden.sm\:flex { display: none; }
+  .home-dashboard .home-metrics { grid-column: 2; grid-row: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .home-metrics > button > div { min-height: 0; padding: 12px 16px; border-radius: 18px; }
+  .home-metrics > button > div > p:last-child { font-size: 28px; }
+  .home-metrics > button > div > p:not(:last-child) { font-size: 10px; letter-spacing: .05em; margin-top: 8px; }
+  .home-metrics > button > div > div:nth-child(2) > div:first-child { width: 30px; height: 30px; border-radius: 10px; }
+  .home-actions { grid-column: 1; grid-row: 2; align-self: start; border-radius: 18px; }
+  .home-actions > button { padding: 10px; }
+  .home-christmas { grid-column: 2; grid-row: 2; padding: 12px; border-radius: 18px; }
+  .home-periods { grid-column: 1 / -1; }
+  .home-work-grid { grid-column: 1 / -1; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.45fr); align-items: start; }
+  .home-followup > div { margin-top: 0; padding-top: 0; border-top: 0; }
+  .home-followup .lg\:grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .home-operations { border-radius: 20px; }
   .agenda-toolbar { flex-wrap: wrap; }
   .agenda-toolbar > div:first-child { min-width: 240px; }
   .agenda-filters { flex-wrap: wrap; overflow: visible; max-width: 100%; }
+  .finance-toolbar, .finance-controls { flex-wrap: wrap; }
+  .finance-controls { max-width: 100%; }
   .reservation-dialog .reservation-sheet { max-width: 840px; }
   .reservation-dialog .reservation-scroll form { max-width: none; }
   .diverty-app-shell * { scrollbar-width: thin; scrollbar-color: #B8B2CC transparent; }
@@ -95,7 +127,19 @@
   .agenda-day-events > * + * { margin-top: 0; }
 }
 
+@media (min-width: 900px) and (max-width: 1023px) {
+  .app-workspace { margin-left: 168px; }
+  .app-navigation { width: 168px; padding-inline: 10px; }
+  .app-navigation > button { padding-inline: 10px; gap: 10px; }
+  .app-navigation > button > span:last-child { font-size: 13px; }
+  .app-navigation-heading { font-size: 10px; padding-inline: 10px; }
+}
+
 @media (hover: hover) and (pointer: fine) {
+  #main-content { overflow-y: scroll; scrollbar-width: auto; scrollbar-gutter: stable; scrollbar-color: #8B83A3 #ECEAF2; }
+  .diverty-app-shell ::-webkit-scrollbar { display: block !important; width: 14px; height: 14px; }
+  .diverty-app-shell ::-webkit-scrollbar-track { background: #ECEAF2; }
+  .diverty-app-shell ::-webkit-scrollbar-thumb { background: #8B83A3; border: 3px solid #ECEAF2; border-radius: 12px; }
   .diverty-app-shell button:not(:disabled), .diverty-app-shell a { cursor: pointer; }
   .app-navigation > button:not([aria-current]):hover { background: #F1EEFF; color: #7657FF; }
 }

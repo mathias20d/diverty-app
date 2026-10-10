@@ -71,9 +71,9 @@ export default function FinancesView({
 
       return (
           <div className="animate-fadeIn p-4 md:p-7 lg:p-8 max-w-5xl mx-auto space-y-5 pb-32 relative z-10">
-             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+             <div className="finance-toolbar flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                <div><h2 className={UI.title}>Finanzas</h2><p className="text-slate-500 text-sm mt-2 font-medium">Facturación, cobros pendientes, costos internos, proveedores y ganancia.</p></div>
-               <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center bg-white/95 backdrop-blur-md p-2 rounded-[24px] border border-slate-200/80 shadow-md w-full sm:w-auto">
+               <div className="finance-controls flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center bg-white/95 backdrop-blur-md p-2 rounded-[24px] border border-slate-200/80 shadow-md w-full sm:w-auto">
                  <div className="flex gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/50">
                    <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('mes');}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'mes' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Este Mes</button>
                    <button type="button" onClick={() => {utils.triggerHaptic('light'); setFinancePeriod('anio'); setSelectedFinanceYear(todayObj.getFullYear());}} className={`px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all duration-300 ease-out active:scale-[0.98] ${financePeriod === 'anio' ? 'bg-gradient-to-r from-[#7657FF] to-[#8B5CF6] text-white shadow-md' : 'text-slate-500 hover:text-slate-900'}`}>Año</button>

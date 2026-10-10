@@ -5,7 +5,7 @@ const path=require('node:path');
 const assert=require('node:assert/strict');
 const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
 (async()=>{
- const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || chromium.executablePath(),args:['--no-sandbox','--disable-dev-shm-usage']});
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || chromium.executablePath(),ignoreDefaultArgs:['--hide-scrollbars'],args:['--no-sandbox','--disable-dev-shm-usage']});
  try {
  const context=await browser.newContext({viewport:{width:392,height:852},timezoneId:'America/Panama'});
  await context.addInitScript(()=>{
@@ -34,12 +34,12 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  await page.clock.setFixedTime(new Date('2026-10-07T15:00:00Z'));await page.goto(origin);
  await page.getByRole('button',{name:'Nueva Reserva',exact:true}).waitFor({timeout:30000});
  const nav=page.getByRole('navigation',{name:'Menú principal'});
- for(const width of [390,768,1024,1440,1920]) {
+ for(const width of (process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : [390,768,900,1024,1440,1920])) {
    await page.setViewportSize({width,height:900});
    await page.waitForTimeout(100);
    const box=await nav.boundingBox(),main=await page.locator('#main-content').boundingBox();
    assert.ok(main.width>0);assert.equal(await nav.getByRole('button').count(),7);
-   if(width>=1024){assert.ok(box.width<250&&box.height>850);assert.ok(main.x>=box.x+box.width-1);}
+   if(width>=900){assert.ok(box.width<250&&box.height>850);assert.ok(main.x>=box.x+box.width-1);}
    else{assert.ok(box.y>800&&box.width>=width-1);assert.ok(main.x<1);}
    for(const name of ['Inicio','Agenda','Clientes','Proveedores','Finanzas','Web','Ajustes']) {
      await nav.getByRole('button',{name,exact:true}).click();
@@ -47,9 +47,25 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
      if(errors.length)throw Error(JSON.stringify(errors));
      assert.equal(await nav.getByRole('button',{name,exact:true}).getAttribute('aria-current'),'page');
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'page overflow at '+width+' '+name);
-     assert.ok(await page.locator('#main-content').evaluate(el=>el.scrollWidth<=el.clientWidth+1),'content overflow at '+width+' '+name);
+     const overflow=await page.locator('#main-content').evaluate(el=>{const edge=el.getBoundingClientRect().left+el.clientWidth;return {bad:el.scrollWidth>el.clientWidth+1,items:[...el.querySelectorAll('*')].filter(x=>x.getBoundingClientRect().right>edge+1).slice(0,12).map(x=>({tag:x.tagName,cls:x.className,text:x.textContent.slice(0,50),right:x.getBoundingClientRect().right,parent:{cls:x.parentElement.className,right:x.parentElement.getBoundingClientRect().right,overflow:getComputedStyle(x.parentElement).overflow},scroll:{width:el.scrollWidth,client:el.clientWidth}}))};});assert.ok(!overflow.bad,'content overflow at '+width+' '+name+' '+JSON.stringify(overflow.items));
    }
    await nav.getByRole('button',{name:'Inicio',exact:true}).click();
+   if(width>=900){
+     const mainEl=page.locator('#main-content');await mainEl.evaluate(el=>el.scrollTop=0);
+     const bounds=await mainEl.boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+150);
+     await page.mouse.wheel(0,500);await page.waitForTimeout(500);
+     const scroll=await mainEl.evaluate(el=>({top:el.scrollTop,height:el.clientHeight,total:el.scrollHeight}));
+     assert.ok(scroll.top>100,'mouse wheel must scroll Home');
+     await page.mouse.wheel(0,10000);await page.waitForTimeout(600);
+     assert.ok(await mainEl.evaluate(el=>el.scrollTop+el.clientHeight>=el.scrollHeight-2),'wheel reaches bottom');
+     const hero=await page.locator('.home-hero').boundingBox(),metrics=await page.locator('.home-metrics').boundingBox();
+     assert.ok(metrics.x>=hero.x+hero.width,'desktop metrics beside greeting');
+     const operations=await page.locator('.home-operations').boundingBox(),followup=await page.locator('.home-followup').boundingBox();
+     assert.ok(followup.x>=operations.x+operations.width,'desktop follow-up beside operations');
+     assert.notEqual(await mainEl.evaluate(el=>getComputedStyle(el).scrollbarWidth),'none');
+     assert.ok(await mainEl.evaluate(el=>el.offsetWidth-el.clientWidth>=10),'visible scrollbar space');
+     await mainEl.evaluate(el=>el.scrollTop=0);
+   }
    if(process.env.SCREENSHOT_DIR){await page.waitForTimeout(700);fs.mkdirSync(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,'home-'+width+'.png')});}
  }
  await page.setViewportSize({width:1440,height:900});
@@ -65,6 +81,6 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  assert.ok(await modal.locator('.reservation-scroll').evaluate(el=>el.scrollHeight>el.clientHeight));
  await modal.locator('.reservation-scroll').evaluate(el=>el.scrollTop=el.scrollHeight);
  await page.getByRole('button',{name:/Guardar Reserva/}).waitFor();
- assert.deepEqual(errors,[]);console.log('PASS: seven sections at phone, tablet and desktop widths, no horizontal overflow, keyboard navigation and calendar, scrollable desktop reservation.');
+ assert.deepEqual(errors,[]);console.log('PASS: wheel reaches Home bottom, desktop dashboard columns, visible scrollbar, seven sections at phone, tablet and desktop widths, no horizontal overflow, keyboard navigation and calendar, scrollable desktop reservation.');
  } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
