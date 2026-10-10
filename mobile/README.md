@@ -6,7 +6,7 @@ React Native y Expo para Android e iPhone. Las pantallas de administración util
 
 - Inicio de sesión con la cuenta administradora existente.
 - Persistencia de sesión en el dispositivo.
-- Navegación inferior: Agenda, Calendario, Clientes, Finanzas y Proveedores.
+- Navegación inferior original: Inicio, Agenda, Clientes, Proveedores, Finanzas, Web y Ajustes. Calendario se abre desde Agenda.
 - Agenda en tiempo real, con próximas reservas o historial completo, búsqueda por nombre/teléfono/servicio/fecha y filtros de estado.
 - Mismo Firebase `diverty-eventos` y ruta `artifacts/diverty-oficial/public/data/eventos`.
 - Nueva reserva y edición con datos del cliente, servicios por unidad/hora/paquete y transporte.
@@ -20,10 +20,11 @@ React Native y Expo para Android e iPhone. Las pantallas de administración util
 - Consulta y registro de gastos internos por categoría, con historial, proveedores y ganancia estimada.
 - Directorio de proveedores, edición de datos y servicios, activación/desactivación y contacto.
 - Asignación de servicios de proveedores a reservas y registro del estado de pago.
-- Facturas y cotizaciones PDF con numeración oficial, vista previa/impresión y menú nativo para compartir.
+- Facturas, cotizaciones, contratos de cliente, acuerdos marco de proveedores y subcontratos del evento con numeración oficial, impresión y menú nativo para compartir.
+- Operación Navidad: visitas del 24 y 25 de diciembre de 2026, rutas por Santa, reasignación, entregas realizadas, reapertura y eliminación confirmada.
 - Administrar página web: Catálogos, Servicios y personajes, Campañas, Temas, Galería, Cupones y Banner y ajustes, con las colecciones oficiales y sincronización de la web.
 
-La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial. El menú principal ya sigue el orden del administrador web. La equivalencia visual exacta y la migración completa de todas las pantallas siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
+La app y la web actuales permanecen disponibles. Las correcciones auditadas de cobros/gastos, contratos y revisión de solicitudes web ya están migradas. La confirmación Santa anterior a la validación central, edición de horarios especiales, herramientas avanzadas y notificaciones nativas siguen pendientes; esta versión todavía no sustituye todas las funciones de la app oficial. El menú principal ya sigue el orden del administrador web. La equivalencia visual exacta y la migración completa de todas las pantallas siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
 
 ## Windows: probar en Android o iPhone
 
@@ -52,8 +53,8 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 ## Siguientes etapas
 
 1. Validar navegación, proveedores y PDF en Android/iPhone reales.
-2. Migrar aceptación de solicitudes web conservando recursos y cupos.
-3. Migrar contratos, ajustes de cobros/gastos y completar la equivalencia del menú y las pantallas con la web.
+2. Completar la confirmación de solicitudes Santa anteriores a la validación central y la edición de horarios especiales.
+3. Completar herramientas avanzadas y comparar la equivalencia visual de todas las pantallas con la web.
 4. Registrar dispositivos y configurar notificaciones push nativas; las notificaciones del navegador no se trasladan automáticamente.
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
 
@@ -69,7 +70,7 @@ npm.cmd ci
 npx.cmd expo start --lan --clear
 ```
 
-Vuelve a escanear el QR. Las cinco secciones aparecen abajo. Cada tarjeta tiene Ver reserva y acciones; allí encuentras Editar reserva, Abonos y saldo, Gastos del evento, Proveedores del evento y Facturas y cotizaciones. Nueva reserva aparece en la agenda y en cada cliente, y el calendario permite seleccionar la fecha antes de abrir el formulario. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas, abonos y la aparición de gastos en el historial. Los cambios sí afectan los datos oficiales al pulsar Guardar.
+Vuelve a escanear el QR. Las siete secciones originales aparecen abajo. Cada tarjeta tiene Ver reserva y acciones; allí encuentras Editar reserva, Abonos y saldo, Gastos del evento, Proveedores del evento y Facturas y cotizaciones. Nueva reserva aparece en la agenda y en cada cliente, y el calendario permite seleccionar la fecha antes de abrir el formulario. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas, abonos y la aparición de gastos en el historial. Los cambios sí afectan los datos oficiales al pulsar Guardar.
 
 La lógica de líneas, duración, fechas cerradas y GPS en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
 
@@ -112,7 +113,7 @@ Desde una reserva, Proveedores del evento asigna un servicio y su costo acordado
 
 Facturas y cotizaciones genera PDF mediante Expo Print y comparte mediante Expo Sharing. Conserva los números de documentos existentes y asigna los nuevos con la misma transacción de la app oficial: `configuracion/contador_factura` o `configuracion/contador_cotizacion`, más `numeroFactura`/`numeroCotizacion` en la reserva. Si el contador no está preparado, solicita usar Ajustes → Preparar actualización en la app actual; no inventa un número ni inicia migraciones desde la app nativa. Generar asigna un número oficial aunque después cierres el menú para compartir.
 
-El PDF usa los servicios de esa reserva, precios guardados, cantidades y duración total del paquete, incluida Diverty Amigo de 2 horas. El catálogo solo completa descripciones/duración. La factura conserva el total contratado y abono; la cotización calcula el total desde los servicios seleccionados y transporte, igual que la plantilla web. Todo texto se escapa al generar HTML y el PDF no necesita cargar imágenes o fuentes remotas. Los contratos legales y subcontratos siguen en la app actual.
+El PDF usa los servicios de esa reserva, precios guardados, cantidades y duración total del paquete, incluida Diverty Amigo de 2 horas. El catálogo solo completa descripciones/duración. La factura conserva el total contratado y abono; la cotización calcula el total desde los servicios seleccionados y transporte, igual que la plantilla web. Todo texto se escapa al generar HTML y el PDF no necesita cargar imágenes o fuentes remotas. Los contratos de cliente y proveedor están disponibles desde las versiones 0.7.0 y 0.8.0.
 
 Los datos de empresa de la app web están en su navegador (`diverty_settings`), no en Firebase. Antes del primer PDF, revisa Datos de la empresa para PDF y pulsa Guardar datos para documentos. Se guardan por cuenta administradora en ese teléfono; puedes editarlos antes de generar y debes configurarlos también en otro teléfono. Los datos bancarios no se rellenan con valores antiguos ni se cambia la configuración de la web.
 
@@ -206,3 +207,11 @@ Proveedores → Contrato marco y Reserva → Proveedores del evento → Subcontr
 El error Not allowed to read file under given URL aparece al pasar a Expo Sharing la ruta de impresión del host, fuera de los directorios autorizados de la experiencia de Expo Go. La app solicita los bytes base64 a Expo Print y los escribe con File de expo-file-system en Paths.cache antes de compartir. No lee ni copia la ruta rechazada. El mismo flujo cubre factura, cotización, contrato de cliente, acuerdo marco y subcontrato de evento. La numeración oficial se conserva al reintentar.
 
 Facturas y contratos muestran la etapa (numeración, creación, guardado, compartir) y un aviso visible con el detalle del error. 66 pruebas nativas: bytes PDF exactos en caché, ruta de impresión inaccesible, fallos de creación/compartir sin renumerar y navegación completa. Dependencias compatibles con SDK 57. La comprobación final en el teléfono requiere reiniciar Metro y cerrar Expo Go.
+
+## Operación Navidad — 0.9.0
+
+Inicio y Agenda abren Operación Navidad para las entregas del 24 y 25 de diciembre de 2026, igual que la temporada del administrador web. Muestra pendientes, realizadas, solicitudes por revisar y grupos por Santa. Conserva las asignaciones a Santas que ya no estén habilitados, identifica la siguiente parada y avisa de horarios incompatibles. El motor de servicio (30 min) y traslados por GPS se copia literalmente de la web, con prueba de paridad. Las rutas de Maps incluyen únicamente visitas pendientes del primer día pendiente.
+
+Permite reasignar Santa, marcar entrega realizada, devolver a pendiente y eliminar una reserva tras confirmación. Las transacciones leen datos actuales, comprueban revisión y capacidad, conservan abonos/proveedores y utilizan el wrapper migrado que actualiza disponibilidad_web, reservas_cliente, portal_busqueda y booking_control. Reasignar un horario conflictivo requiere confirmación explícita. Cerrar una temporada oculta el módulo solo en este teléfono; Herramientas del sistema permite volver a mostrarlo sin borrar datos.
+
+71 pruebas nativas y 61 web. La prueba de navegación recorre reasignación, rutas, entrega/reapertura, eliminación con proyecciones y visibilidad. No se escribieron datos de producción. Continúan pendientes la confirmación de solicitudes Santa anteriores a la validación central, edición de horarios especiales, herramientas avanzadas y notificaciones nativas. No se afirma equivalencia visual exacta; requiere comparación en teléfonos físicos.

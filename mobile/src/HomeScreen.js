@@ -7,13 +7,13 @@ import {Action,LoadState,ui} from './native-ui';
 import {homeSummary} from './admin-settings.mjs';
 import {clientsFromEvents,money} from './workspace-data.mjs';
 import ReservationCard from './ReservationCard';
-export default function HomeScreen({data,today,settings,onNew,onOpen,onAgenda,onRequests}){
+export default function HomeScreen({data,today,settings,onNew,onOpen,onAgenda,onRequests,onChristmas}){
  const [hidden,setHidden]=useState(null);
  useEffect(()=>onSnapshot(doc(db,...DATA_PATH,'configuracion','clientesOcultos'),snapshot=>setHidden(Array.isArray(snapshot.data()?.clients)?snapshot.data().clients:[]),()=>setHidden(null)),[]);
  const summary=homeSummary(data.events,today,settings.preferences.metaMensual);
  return <ScrollView style={ui.page} contentContainerStyle={ui.scroll}>
   <LinearGradient colors={['#07162F','#0A1A3A','#25104B']} style={{padding:24,borderRadius:30,gap:12,marginTop:16}}><Text style={{color:'#fff',fontSize:28,fontWeight:'800'}}>Hola Diverty 👋</Text><Text style={{color:'#ddd',lineHeight:22}}>Gestiona tus reservas, contratos y finanzas al instante.</Text><Action title="Nueva Reserva" onPress={()=>onNew({})}/></LinearGradient>
-  <LoadState {...data}/>
+  {settings.preferences.christmasModuleVisible?<Action title="Operación Navidad" secondary onPress={onChristmas}/>:null}<LoadState {...data}/>
   {!data.loading&&!data.error?<>
    <View style={ui.chips}>{[['Eventos Hoy',summary.today.length],['Ingresos Mes',money(summary.finance.received)],['Clientes Activos',hidden?clientsFromEvents(data.events,hidden).length:'—'],['Por cobrar este mes',money(summary.finance.balance)]].map(([title,value])=><View key={title} style={[ui.card,{flexGrow:1}]}><Text style={ui.muted}>{title}</Text><Text style={ui.title}>{value}</Text></View>)}</View>
    <View style={ui.row}><View style={{flex:1}}><Action title="Cotizar" secondary onPress={()=>onNew({estado:'Cotización'})}/></View><View style={{flex:1}}><Action title="Operativo" secondary onPress={onAgenda}/></View></View>
