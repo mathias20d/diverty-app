@@ -13,7 +13,7 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 - Guardar escribe en Firebase oficial, con revisión de edición simultánea y respeto de fechas cerradas. Las pruebas automatizadas no escriben en producción.
 - Conserva abonos, gastos y proveedores existentes; cambiar horarios de reservas especiales sigue en la app actual para mantener los cupos.
 
-La app y la web actuales permanecen disponibles. Gestión de abonos, gastos, PDF, calendario y notificaciones nativas requieren las siguientes etapas; esta versión inicial todavía no sustituye la app oficial.
+La app y la web actuales permanecen disponibles. Gestión de gastos, PDF, calendario y notificaciones nativas requieren las siguientes etapas; esta versión inicial todavía no sustituye la app oficial.
 
 ## Windows: probar en Android o iPhone
 
@@ -61,3 +61,13 @@ npx.cmd expo start --lan --clear
 Vuelve a escanear el QR. Cada tarjeta tiene Editar reserva; Nueva reserva aparece encima de la agenda. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. No se ha verificado el guardado con tu cuenta en un teléfono real. Los cambios sí afectan los datos oficiales al pulsar Guardar.
 
 La lógica de líneas y duración en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
+
+## Abonos y saldo
+
+Cada reserva muestra total contratado, recibido y saldo pendiente. Abonos y saldo permite consultar `pagosItems` y registrar un pago por transferencia, Yappy, efectivo u otro método. No modifica el precio contratado ni confirma automáticamente la reserva.
+
+El registro usa una transacción sobre el saldo actual, conserva el historial existente e incrementa `_rev`. Guarda temporalmente el identificador del pago en el teléfono antes de enviar; si la conexión falla, reintenta con el mismo identificador y evita duplicarlo. Un error de escritura de esta memoria local impide iniciar el cobro, para no perder esa protección.
+
+Las cifras recibidas en reservas antiguas pueden incluir abonos sin detalle individual o correcciones; el saldo se calcula desde `total` y `abono`, no desde la suma del historial. Los ajustes/correcciones de pagos siguen disponibles en la app actual. No registres un abono ya recibido solo para probar esta pantalla.
+
+Validación de esta etapa: 11 pruebas locales sin datos reales y exportación de los bundles Android/iOS. El registro en un teléfono real todavía necesita verificación del usuario.
