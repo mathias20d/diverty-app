@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {portalIndex} from '../src/lib/customer-portal.mjs';
 
-const source=readFileSync(new URL('../src/lib/portal-sync.mjs',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export function prepareCustomerPortal','function prepareCustomerPortal');
+const source=readFileSync(new URL('../src/lib/portal-sync.mjs',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export function prepareCustomerPortal','function prepareCustomerPortal');
 const base='artifacts/diverty-oficial/public/data/';
 function fixture({fail=false}={}) {
   const rows=new Map(Array.from({length:51},(_,i)=>[base+'eventos/e'+String(i).padStart(3,'0'),{cliente:'María Pérez',telefono:'+507 6000-0000'}]));

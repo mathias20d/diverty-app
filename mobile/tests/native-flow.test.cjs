@@ -21,11 +21,12 @@ test('native navigation connects clients, calendar availability, payments, expen
  records.set(base+'configuracion/contador_factura',{ultimo:7});
  records.set(base+'configuracion/contador_cotizacion',{ultimo:3});
  records.set(base+'proveedores/provider1',{nombre:'Proveedor de prueba',telefono:'60000000',activo:true,servicios:[{id:'s1',nombre:'Pintacaritas',costo:30,activo:true}]});
- const files=[],shares=[],previews=[];
+ records.set(base+'categorias_web/comida',{nombre:'Comida',orden:1,activo:true,visible:true,custom:'preserved'});
+ const files=[],shares=[],previews=[],clipboard=[];
  const listeners=new Set(),storage=new Map(),alerts=[],backListeners=[],links=[];
  let nextID=0,dismissed=0,scrolled=0,lostAcknowledgement=false;
  const native={};
- for(const type of ['View','Text','TextInput','Pressable','ScrollView','KeyboardAvoidingView','ActivityIndicator'])native[type]=type;
+ for(const type of ['View','Text','TextInput','Pressable','ScrollView','KeyboardAvoidingView','ActivityIndicator','Image','Switch'])native[type]=type;
  native.FlatList=({data,renderItem,ListHeaderComponent,ListEmptyComponent})=>React.createElement(React.Fragment,null,ListHeaderComponent,data.length?data.map((item,index)=>React.createElement(React.Fragment,{key:item.id||item.key||index},renderItem({item,index}))):ListEmptyComponent);
  native.StyleSheet={create:value=>value};native.Platform={OS:'android'};
  native.Alert={alert:(title,message,buttons)=>alerts.push({title,message,buttons})};
@@ -40,6 +41,12 @@ test('native navigation connects clients, calendar availability, payments, expen
  }
  const notify=()=>listeners.forEach(({ref,callback})=>callback(snapshot(ref)));
  const firestore={
+  increment:value=>({__increment:value}),
+  writeBatch:()=>{
+   const writes=[];
+   const merge=(previous,patch)=>Object.fromEntries(Object.entries({...previous,...patch}).map(([key,value])=>[key,value?.__increment?Number(previous?.[key]||0)+value.__increment:value&&typeof value==='object'&&!Array.isArray(value)?merge(previous?.[key]||{},value):value]));
+   return {set:(ref,patch,options)=>writes.push({ref,patch,options}),delete:ref=>writes.push({ref,remove:true}),commit:async()=>{writes.forEach(({ref,patch,options,remove})=>remove?records.delete(ref.path):records.set(ref.path,merge(options?.merge?records.get(ref.path)||{}:{},patch)));notify();}};
+  },
   collection:(_, ...segments)=>({kind:'collection',path:segments.join('/')}),
   doc:(first,...segments)=>segments.length?{kind:'doc',path:segments.join('/'),id:segments.at(-1)}:{kind:'doc',path:first.path+'/new-'+(++nextID),id:'new-'+nextID},
   where:(field,operator,value)=>({field,operator,value}),
@@ -58,6 +65,10 @@ test('native navigation connects clients, calendar availability, payments, expen
  const oldLoad=Module._load,oldJS=Module._extensions['.js'];
  Module._load=function(request,parent,isMain){
   if(request==='react-native')return native;
+  if(request==='expo-linear-gradient')return {LinearGradient:'View'};
+  if(request==='expo-image-picker')return {launchImageLibraryAsync:async()=>({canceled:true})};
+  if(request==='expo-clipboard')return {setStringAsync:async value=>clipboard.push(value)};
+  if(request==='react-native-webview')return {WebView:'WebView'};
   if(request==='expo-print')return {printToFileAsync:async value=>{files.push(value);return {uri:'file:///fake-document.pdf'};},printAsync:async value=>previews.push(value)};
   if(request==='expo-sharing')return {isAvailableAsync:async()=>true,shareAsync:async(uri,options)=>shares.push({uri,options})};
   if(request==='firebase/firestore')return firestore;
@@ -74,7 +85,7 @@ test('native navigation connects clients, calendar availability, payments, expen
  let view;
  const text=node=>typeof node==='string'||typeof node==='number'?String(node):Array.isArray(node)?node.map(text).join(''):node?.props?text(node.props.children):'';
  const visible=node=>{for(let current=node;current;current=current.parent){if(current.props?.accessibilityElementsHidden)return false;}return true;};
- const buttons=(label,role='button')=>view.root.findAllByType('Pressable').filter(node=>visible(node)&&node.props.accessibilityRole===role&&text(node.props.children)===label);
+ const buttons=(label,role='button')=>view.root.findAllByType('Pressable').filter(node=>visible(node)&&node.props.accessibilityRole===role&&(text(node.props.children)===label||node.props.accessibilityLabel===label));
  const press=async(label,role='button')=>{const button=buttons(label,role)[0];assert.ok(button,`Missing ${label}`);assert.ok(!button.props.disabled,`Disabled ${label}`);await Renderer.act(async()=>{await button.props.onPress();});};
  const input=label=>view.root.findAllByType('TextInput').find(node=>node.props.accessibilityLabel===label);
  const hasText=label=>view.root.findAllByType('Text').some(node=>text(node.props.children).includes(label));
@@ -143,6 +154,22 @@ test('native navigation connects clients, calendar availability, payments, expen
   assert.ok(records.has(base+'configuracion/syncBus'));assert.ok(!records.has(base+'config_web/syncBus'));
   assert.equal(records.get(base+'eventos/current').total,100);
   assert.equal(month,today.slice(0,7));
+  const unchangedEvent=JSON.stringify(records.get(base+'eventos/current'));
+  await press('Administrar página web');assert.ok(hasText('Página Web'));
+  await press('Catálogos');await press('Editar');await Renderer.act(async()=>input('Nombre del catálogo').props.onChangeText('Comida y bebidas'));await press('Guardar catálogo');
+  assert.equal(records.get(base+'categorias_web/comida').nombre,'Comida y bebidas');assert.equal(records.get(base+'categorias_web/comida').custom,'preserved');
+  assert.equal(records.get(base+'config_web/web_sync').versions.categorias_web,1);assert.equal(records.get(base+'config_web/web_sync').versions.config_web,2);
+  await press('Copiar enlace directo');assert.equal(new URL(clipboard.at(-1)).searchParams.get('categoria'),'comida');
+  await press('Volver a Administrar página web');await press('Servicios y personajes');await press('Nuevo servicio');await press('Personaje');
+  await Renderer.act(async()=>{input('Nombre del servicio').props.onChangeText('Personaje test');input('Precio').props.onChangeText('40');input('Imagen principal').props.onChangeText('https://example.test/photo.jpg');});
+  await press('Guardar y agregar otro personaje');assert.equal(input('Nombre del servicio').props.value,'');assert.equal(records.get(base+'categorias_web/personajes').nombre,'Personajes');
+  const catalogRows=[...records].filter(([key])=>key.startsWith(base+'catalogo_web/'));assert.equal(catalogRows.length,1);assert.equal(catalogRows[0][1].tipoServicio,'personaje');assert.equal(catalogRows[0][1].tipoCobro,'paquete');
+  await press('Cerrar edición');await press('Volver a Administrar página web');await press('Banner y ajustes');
+  await Renderer.act(async()=>input('Texto del banner').props.onChangeText('Promoción test'));await press('Guardar ajustes');assert.equal(records.get(base+'config_web/global').bannerText,'Promoción test');
+  await press('Cupones');await press('Nuevo cupón');await Renderer.act(async()=>{input('Código').props.onChangeText('fiesta');input('Descuento').props.onChangeText('10');});await press('Guardar cupón');assert.equal(records.get(base+'cupones_web/FIESTA').discount,10);
+  await press('Eliminar');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Eliminar').onPress());assert.ok(!records.has(base+'cupones_web/FIESTA'));
+  await press('Volver a Administrar página web');await press('Temas');await press('Nuevo tema');await Renderer.act(async()=>input('Nombre del tema').props.onChangeText('Nuevo tema'));await press('Cerrar edición');assert.ok(input('Nombre del tema'));await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Descartar').onPress());
+  await press('Volver a Administrar página web');await press('Volver al administrador');assert.ok(hasText('Agenda de reservas'));assert.equal(JSON.stringify(records.get(base+'eventos/current')),unchangedEvent);
  }finally{
   if(view)await Renderer.act(async()=>view.unmount());
   Module._load=oldLoad;Module._extensions['.js']=oldJS;

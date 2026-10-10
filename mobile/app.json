@@ -2,7 +2,7 @@
   "expo": {
     "name": "Diverty",
     "slug": "diverty-oficial-native",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
@@ -13,7 +13,8 @@
       "package": "com.divertypanama.reservas"
     },
     "plugins": [
-      "expo-sharing"
+      "expo-sharing",
+      ["expo-image-picker", {"photosPermission": "Diverty usa las fotos que selecciones para el catálogo y la galería de tu página web.", "cameraPermission": false, "microphonePermission": false}]
     ]
   }
 }

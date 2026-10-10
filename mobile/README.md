@@ -1,6 +1,6 @@
 # Diverty nativa — administración de reservas
 
-React Native y Expo para Android e iPhone. Las pantallas utilizan controles nativos: no cargan la web en una WebView.
+React Native y Expo para Android e iPhone. Las pantallas de administración utilizan controles nativos. Solo la vista previa del tema carga la página de prueba existente en una WebView; no sustituye los formularios ni permite reservas.
 
 ## Alcance actual
 
@@ -21,8 +21,9 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 - Directorio de proveedores, edición de datos y servicios, activación/desactivación y contacto.
 - Asignación de servicios de proveedores a reservas y registro del estado de pago.
 - Facturas y cotizaciones PDF con numeración oficial, vista previa/impresión y menú nativo para compartir.
+- Administrar página web: Catálogos, Servicios y personajes, Campañas, Temas, Galería, Cupones y Banner y ajustes, con las colecciones oficiales y sincronización de la web.
 
-La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos, administración del catálogo web y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial.
+La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial. La navegación principal y la equivalencia visual de todas las pantallas con el administrador web siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
 
 ## Windows: probar en Android o iPhone
 
@@ -52,7 +53,7 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 
 1. Validar navegación, proveedores y PDF en Android/iPhone reales.
 2. Migrar aceptación de solicitudes web conservando recursos y cupos.
-3. Migrar contratos, ajustes de cobros/gastos y administración del catálogo web.
+3. Migrar contratos, ajustes de cobros/gastos y completar la equivalencia del menú y las pantallas con la web.
 4. Registrar dispositivos y configurar notificaciones push nativas; las notificaciones del navegador no se trasladan automáticamente.
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
 
@@ -60,7 +61,7 @@ No se ha configurado EAS ni creado una cuenta o proyecto Firebase nuevo. Las ide
 
 ## Actualizar la prueba en Windows
 
-Detén Metro con Ctrl+C. Desde `diverty-nativa/mobile`:
+Detén Metro con Ctrl+C. Desde `diverty-app/mobile`:
 
 ```powershell
 git pull --ff-only
@@ -121,3 +122,23 @@ Las pruebas usan Firebase, archivos PDF y menú de compartir simulados; no enví
 
 
 Desde la versión 0.2.1, cada tarjeta de reserva en Agenda, Calendario e historial de clientes tiene botones Factura y Cotización. Abren directamente el documento escogido. La versión aparece debajo de Diverty para comprobar que Expo Go está mostrando la actualización. También se conserva Facturas y cotizaciones dentro del detalle.
+
+## Administrar página web — 0.3.0
+
+Desde la cabecera, abre **Administrar página web**. Conserva las siete secciones del módulo web, sus nombres, datos y reglas. Las referencias son `src/modules/web/WebAdmin.jsx`, `useWebAdminData.jsx` y el repositorio `Diverty-`. El centro de control conserva la paleta violeta, el encabezado oscuro con degradado y las tarjetas blancas del módulo original, adaptados a controles nativos. La igualdad visual exacta todavía necesita comparación en Android/iPhone; no se ha verificado en dispositivos físicos.
+
+- Catálogos: crear, editar, eliminar, ordenar, visibilidad y fechas de temporada; la eliminación conserva sus servicios.
+- Servicios y personajes: categoría, tipo de cobro, cantidades, unidad, temática, precios, ofertas, destacados, orden, descripción, servicios incluidos y dos imágenes. Crea Personajes cuando corresponde y permite guardar y agregar otro personaje.
+- Campañas: títulos, descripción, fechas, precios, incluidos, botón, acción, activación, destacados, duplicación y prioridad.
+- Temas: colores, degradado, decoración, animaciones, fechas, modo automático/manual y tema predeterminado. La vista previa usa el mismo `theme-preview.html`, recibe borradores sin escribir en Firebase y limita la comunicación a la web oficial. Requiere conexión y que ese recurso esté publicado.
+- Galería: imágenes por selección del teléfono o URL y eliminación del registro público.
+- Cupones: porcentaje/monto fijo, edición, activación y eliminación; conserva compatibilidad con el campo antiguo `active`.
+- Banner y ajustes: texto y activación del banner público.
+
+Las fotos se suben al mismo Cloudinary/preset que la web. Seleccionar una foto prepara la URL; **Guardar** publica el registro. Catálogos y servicios copian los mismos enlaces `categoria`/`plan`, con `pv` para renovar la vista previa social. La disponibilidad se mantiene en Calendario, con cierre/reapertura de fechas ya migrados.
+
+Se reutiliza el controlador de datos de la web en `src/useWebAdminData.js`. Cada operación agrupa el registro y los incrementos de `config_web/web_sync` en un batch. No modifica reservas, contadores de facturas, Firebase ni las rutas oficiales. Los campos no editados se conservan mediante merge. Una edición de catálogo desde dos administradores mantiene el comportamiento de la web: prevalece la última escritura de los campos editados; no hay resolución de conflictos por campo. Un error conserva el formulario y ofrece reintento; una nueva ficha mantiene su identificador durante los reintentos de ese editor. Las URLs subidas sin guardar no se eliminan automáticamente de Cloudinary, igual que en la web.
+
+Pruebas sin producción: validación de temporadas, cantidades, ofertas, campañas, cupones y temas; paridad de módulos compartidos; navegación por el administrador web nativo, edición conservando campos adicionales, alta de personajes, banner, eliminación de cupones, enlaces y descarte de borradores. Se conserva el recorrido de reservas, abonos, gastos, proveedores y PDF. No se han probado permisos de fotos, portapapeles, WebView ni Firebase en teléfonos reales. Los bundles no generan APK/IPA.
+
+Para probar este bloque en Windows, desde `diverty-app/mobile`, ejecuta `npm.cmd ci` y `npx.cmd expo start --lan --clear`, y vuelve a escanear el QR. Comprueba **Versión 0.3.0** en la cabecera. Usa únicamente cambios reales al guardar: los formularios escriben en los datos oficiales.
