@@ -9,7 +9,7 @@ import useScreenBack from './useScreenBack';
 const money=value=>`$${Number(value||0).toFixed(2)}`;
 function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.button,disabled&&{opacity:.5}]}><Text style={s.buttonText}>{title}</Text></Pressable>;}
 const message=e=>({INVALID_EXPENSE:'Revisa el monto (hasta dos decimales), la categoría y la fecha AAAA-MM-DD.',INVALID_COSTS:'Los costos guardados necesitan revisión en la app actual.',EXPENSE_CONFLICT:'Este registro necesita revisión antes de continuar.',EVENT_NOT_FOUND:'La reserva ya no existe.'}[e.message]||'No se pudo confirmar el gasto. Revisa tu conexión y reintenta; se conserva el mismo registro para evitar duplicarlo.');
-export default function ExpenseScreen({event,onClose}){
+export default function ExpenseScreen({event,onClose,onCorrection}){
  const [current,setCurrent]=useState(event),[loading,setLoading]=useState(true),[amount,setAmount]=useState(''),[category,setCategory]=useState('personal'),[detail,setDetail]=useState(''),[date,setDate]=useState(panamaToday()),[error,setError]=useState(''),[pending,setPending]=useState(null),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0);
  const [showAll,setShowAll]=useState(false),[savedMessage,setSavedMessage]=useState('');
  const scroll=useRef(null),lock=useRef(false),key=`diverty-expense:${auth.currentUser.uid}:${event.id}`;
@@ -37,7 +37,7 @@ export default function ExpenseScreen({event,onClose}){
  <Text style={s.heading}>Gastos del evento</Text><Text style={s.title}>{current.cliente}</Text><Text>{current.fecha} · {current.servicio}</Text>
  {savedMessage?<View style={s.card}><Text accessibilityRole="alert" style={{color:'#14805e',fontWeight:'700'}}>{savedMessage}</Text></View>:null}
  <View style={s.card}>{totals?<><Text>Gastos internos: {money(totals.internal)}</Text><Text>Proveedores: {money(totals.providers)}</Text><Text style={s.title}>Costo total: {money(totals.total)}</Text><Text style={s.title}>Ganancia estimada: {money(totals.profit)}</Text></>:<Text>Costos por revisar en la app actual.</Text>}{loading&&<ActivityIndicator color="#7042d9"/>}</View>
- <Text style={s.title}>Gastos registrados ({history.length})</Text>
+ <Action title="Corregir gastos internos" disabled={busy||loading||!!pending||!ready||!totals} onPress={()=>onCorrection(current)}/>{(Array.isArray(current.ajustesFinancieros)?current.ajustesFinancieros:[]).filter(item=>item.tipo==='internal').map((item,index)=><View key={item.id||index} style={s.card}><Text>Gastos corregidos: {money(item.gastosAnteriores)} → {money(item.gastosNuevos)}</Text><Text>{item.createdAt}</Text></View>)}<Text style={s.title}>Gastos registrados ({history.length})</Text>
  {history.length===0?<Text>Todavía no hay gastos individuales registrados para esta reserva.</Text>:null}
  {(showAll?history:history.slice(0,3)).map((item,index)=><View key={item.id||index} style={s.card}><Text style={s.title}>{money(item.monto)}</Text><Text>{EXPENSE_CATEGORIES.find(c=>c.id===item.categoria)?.label||'Otro gasto'} · {item.fecha||'Fecha no registrada'}</Text>{item.detalle?<Text>{item.detalle}</Text>:null}</View>)}
  {history.length>3?<Action title={showAll?'Mostrar solo los últimos 3':`Ver todos los gastos (${history.length})`} onPress={()=>setShowAll(value=>!value)}/>:null}

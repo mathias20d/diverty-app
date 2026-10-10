@@ -27,6 +27,7 @@ import HomeScreen from './HomeScreen';
 import SettingsScreen from './SettingsScreen';
 import RequestsScreen from './RequestsScreen';
 import RequestReviewScreen from './RequestReviewScreen';
+import FinancialCorrectionScreen from './FinancialCorrectionScreen';
 export default function Workspace() {
   const today = panamaToday();
   const settings = useAdminSettings();
@@ -61,10 +62,10 @@ export default function Workspace() {
     setMonth(next);
     setSelected(next === today.slice(0, 7) ? today : `${next}-01`);
   }
-  const routeView = route?.type === 'requests' ? <RequestsScreen onClose={back} onOpen={event => push({type:'request-review',event})}/> : route?.type === 'request-review' ? <RequestReviewScreen event={route.event} onClose={back}/> : route?.type === 'web' ? <WebAdminScreen onClose={back}/> : route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
+  const routeView = route?.type === 'correction' ? <FinancialCorrectionScreen event={route.event} kind={route.kind} onClose={back}/> : route?.type === 'requests' ? <RequestsScreen onClose={back} onOpen={event => push({type:'request-review',event})}/> : route?.type === 'request-review' ? <RequestReviewScreen event={route.event} onClose={back}/> : route?.type === 'web' ? <WebAdminScreen onClose={back}/> : route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
     back();
     Alert.alert('Reserva guardada', 'Los datos se guardaron en Diverty.');
-  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen onCompanySaved={settings.acceptCompany} event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail onReview={event => push({type:'request-review',event})} event={route.event} onClose={back} onEdit={original => push({
+  }} /> : route?.type === 'payment' ? <PaymentScreen onCorrection={event => push({type:'correction',kind:'received',event})} event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen onCorrection={event => push({type:'correction',kind:'internal',event})} event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen onCompanySaved={settings.acceptCompany} event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail onReview={event => push({type:'request-review',event})} event={route.event} onClose={back} onEdit={original => push({
     type: 'editor',
     original
   })} onPayment={event => push({

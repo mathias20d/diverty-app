@@ -160,3 +160,12 @@ Inicio → Solicitudes web abre Alertas Web con los filtros Todas, Por revisar, 
 Las reservas centralBookingVersion=1 con centralBookingValidation activo utilizan la función oficial confirmWebBooking en us-central1, sin recurrir a la confirmación local si falla. Las normales anteriores reutilizan la lógica de personal y transacción del administrador web, incluidas las proyecciones disponibilidad_web, reservas_cliente, portal_busqueda, bloqueos de horario y booking_control. Esta ruta anterior conserva la comprobación de personal del administrador web; no incorpora un servidor nuevo de asignación. Las solicitudes Santa anteriores deben aceptarse desde la web hasta migrar las reglas de traslado y ruta. Rechazar libera la proyección y el bloqueo de horario mediante las mismas reglas web.
 
 52 pruebas nativas y 61 web, con Firebase simulado y sin escrituras de producción; exportaciones Android/iOS verificadas. La equivalencia visual exacta del administrador y contratos, correcciones de pagos/gastos y herramientas avanzadas siguen pendientes. Reinicia Expo y comprueba Versión 0.5.0.
+
+
+## Correcciones financieras — 0.6.0
+
+Abonos y saldo → Corregir recibido ajusta el total recibido sin cambiar el precio contratado ni borrar pagosItems. Gastos del evento → Corregir gastos internos ajusta el costo interno, separando los proveedores de los totales antiguos una sola vez, y conserva gastosItems y subcontratos. El total corregido puede diferir del desglose histórico; este permanece visible. Las correcciones quedan registradas en ajustesFinancieros con importes anteriores y nuevos.
+
+Se admite cero, se exige un máximo de dos decimales y se impide que el recibido supere el total. Las transacciones detectan cambios de revisión, conservan las proyecciones de disponibilidad y cliente y no recrean reservas eliminadas. Las operaciones pendientes se guardan por usuario y reserva en el teléfono; reintentar tras perder la confirmación de red conserva el mismo ID y no duplica el ajuste.
+
+Validación: 56 pruebas nativas y 61 web, incluida la repetición después de una confirmación de red perdida, y exportaciones Android/iOS. Sin escrituras de producción durante pruebas. Contratos, Santa con rutas anteriores, equivalencia visual exacta y herramientas avanzadas aún pendientes. Comprueba Versión 0.6.0 al reiniciar Expo.
