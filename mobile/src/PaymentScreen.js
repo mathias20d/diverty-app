@@ -26,7 +26,7 @@ export default function PaymentScreen({event,onClose}){
    const saved=await recordPayment({runTransaction,db,ref,operation});setCurrent({...saved,id:event.id});
    // A failed local cleanup must not turn a confirmed payment into an error.
    await AsyncStorage.removeItem(key).catch(()=>{});setPending(null);setAmount('');
-   setDoc(doc(db,...DATA_PATH,'config_web','syncBus'),{entityType:'evento',entityId:event.id,action:'update',deviceId:'diverty-native',changedAt:new Date().toISOString(),nonce:operation.id}).catch(()=>{});
+   setDoc(doc(db,...DATA_PATH,'configuracion','syncBus'),{entityType:'evento',entityId:event.id,action:'update',deviceId:'diverty-native',changedAt:new Date().toISOString(),nonce:operation.id}).catch(()=>{});
    Alert.alert('Abono registrado',`${money(operation.monto)} recibidos. Saldo pendiente: ${money(paymentSummary(saved).balance)}.`);
   }catch(e){
    if(['INVALID_PAYMENT','PAYMENT_EXCEEDS_BALANCE','EVENT_NOT_FOUND','INVALID_FINANCES'].includes(e.message)){

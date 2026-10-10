@@ -12,6 +12,8 @@
     "android": {
       "package": "com.divertypanama.reservas"
     },
-    "plugins": []
+    "plugins": [
+      "expo-sharing"
+    ]
   }
 }

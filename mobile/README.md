@@ -6,7 +6,7 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 
 - Inicio de sesión con la cuenta administradora existente.
 - Persistencia de sesión en el dispositivo.
-- Navegación inferior: Agenda, Calendario, Clientes y Finanzas.
+- Navegación inferior: Agenda, Calendario, Clientes, Finanzas y Proveedores.
 - Agenda en tiempo real, con próximas reservas o historial completo, búsqueda por nombre/teléfono/servicio/fecha y filtros de estado.
 - Mismo Firebase `diverty-eventos` y ruta `artifacts/diverty-oficial/public/data/eventos`.
 - Nueva reserva y edición con datos del cliente, servicios por unidad/hora/paquete y transporte.
@@ -18,8 +18,11 @@ React Native y Expo para Android e iPhone. Las pantallas utilizan controles nati
 - Conserva abonos, gastos y proveedores existentes; cambiar horarios de reservas especiales sigue en la app actual para mantener los cupos.
 - Consulta y registro de abonos con saldo actualizado.
 - Consulta y registro de gastos internos por categoría, con historial, proveedores y ganancia estimada.
+- Directorio de proveedores, edición de datos y servicios, activación/desactivación y contacto.
+- Asignación de servicios de proveedores a reservas y registro del estado de pago.
+- Facturas y cotizaciones PDF con numeración oficial, vista previa/impresión y menú nativo para compartir.
 
-La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, gestión de proveedores, aceptación de solicitudes web con asignación de recursos, PDF, administración del catálogo web y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial.
+La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos, administración del catálogo web y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial.
 
 ## Windows: probar en Android o iPhone
 
@@ -47,9 +50,9 @@ Exportar verifica los bundles JavaScript; no genera APK, AAB ni IPA ni prueba di
 
 ## Siguientes etapas
 
-1. Validar juntos agenda, calendario, clientes y finanzas en teléfonos reales.
-2. Migrar proveedores y aceptación de solicitudes web conservando recursos y cupos.
-3. Migrar documentos, ajustes de cobros/gastos y administración del catálogo web.
+1. Validar navegación, proveedores y PDF en Android/iPhone reales.
+2. Migrar aceptación de solicitudes web conservando recursos y cupos.
+3. Migrar contratos, ajustes de cobros/gastos y administración del catálogo web.
 4. Registrar dispositivos y configurar notificaciones push nativas; las notificaciones del navegador no se trasladan automáticamente.
 5. Probar ambos sistemas y preparar versiones firmadas para distribución.
 
@@ -65,7 +68,7 @@ npm.cmd ci
 npx.cmd expo start --lan --clear
 ```
 
-Vuelve a escanear el QR. Las cuatro secciones aparecen abajo. Cada tarjeta tiene Ver reserva y acciones; allí encuentras Editar reserva, Abonos y saldo y Gastos del evento. Nueva reserva aparece en la agenda y en cada cliente, y el calendario permite seleccionar la fecha antes de abrir el formulario. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas, abonos y la aparición de gastos en el historial. Los cambios sí afectan los datos oficiales al pulsar Guardar.
+Vuelve a escanear el QR. Las cinco secciones aparecen abajo. Cada tarjeta tiene Ver reserva y acciones; allí encuentras Editar reserva, Abonos y saldo, Gastos del evento, Proveedores del evento y Facturas y cotizaciones. Nueva reserva aparece en la agenda y en cada cliente, y el calendario permite seleccionar la fecha antes de abrir el formulario. Las fechas y horas se escriben como AAAA-MM-DD y HH:MM en esta etapa. Al guardar, verás confirmación solo después de que Firebase responda. El usuario confirmó el guardado de reservas, abonos y la aparición de gastos en el historial. Los cambios sí afectan los datos oficiales al pulsar Guardar.
 
 La lógica de líneas, duración, fechas cerradas y GPS en `src/domain` es una copia de los módulos puros de la app oficial para evitar que Metro cargue el React de la web. Al modificar esos módulos, conserva su paridad y ejecuta las pruebas de ambas versiones.
 
@@ -95,6 +98,23 @@ Cerrar una fecha escribe en `config_web/fechas_cerradas` y aumenta la versión e
 
 La agenda consulta próximas reservas al abrir. El historial completo se carga al seleccionar Todas / historial o Clientes; Calendario y Finanzas consultan solo el mes seleccionado. La navegación a detalles conserva la búsqueda y la posición de la lista original. Los datos obtenidos de caché se identifican para evitar presentarlos como una actualización confirmada.
 
-Validación: 28 pruebas locales sin datos reales, compatibilidad de dependencias Expo y exportación de los bundles Android/iOS. Una prueba de componentes React recorre clientes → reserva precargada, cierre/reapertura del calendario, contacto, abonos, gastos, regreso a la agenda y finanzas; utiliza controles nativos simulados y Firebase/almacenamiento ficticios. No sustituye la prueba visual y de permisos en Android/iPhone reales.
+Validación: 39 pruebas locales sin datos reales, compatibilidad de dependencias Expo y exportación de los bundles Android/iOS. Una prueba de componentes React recorre clientes → reserva precargada, cierre/reapertura del calendario, contacto, abonos, gastos, regreso a la agenda y finanzas; utiliza controles nativos simulados y Firebase/almacenamiento ficticios. No sustituye la prueba visual y de permisos en Android/iPhone reales.
 
-Después de actualizar una sola vez, revisa las cuatro secciones y compara una reserva existente con la app actual. No vuelvas a registrar abonos o gastos ya guardados para comprobar la nueva navegación.
+Después de actualizar una sola vez, revisa las cinco secciones y compara una reserva existente con la app actual. No vuelvas a registrar abonos o gastos ya guardados para comprobar la nueva navegación.
+
+
+## Proveedores y documentos
+
+Proveedores usa la colección oficial `proveedores`. Permite crear/editar datos y costos de servicios, desactivar servicios sin borrar las asignaciones anteriores y abrir WhatsApp. Editar comprueba tanto `updatedAt` como `_rev` para detectar cambios de la app web, y conserva campos oficiales adicionales.
+
+Desde una reserva, Proveedores del evento asigna un servicio y su costo acordado a `subcontratos`, con identificador persistido en el dispositivo para reintentos sin duplicados. Separa una sola vez los costos antiguos que incluían proveedores. Marcar pagado registra únicamente el estado: no envía dinero, no suma otro gasto ni cambia los abonos del cliente. No ofrece eliminar asignaciones en esta etapa.
+
+Facturas y cotizaciones genera PDF mediante Expo Print y comparte mediante Expo Sharing. Conserva los números de documentos existentes y asigna los nuevos con la misma transacción de la app oficial: `configuracion/contador_factura` o `configuracion/contador_cotizacion`, más `numeroFactura`/`numeroCotizacion` en la reserva. Si el contador no está preparado, solicita usar Ajustes → Preparar actualización en la app actual; no inventa un número ni inicia migraciones desde la app nativa. Generar asigna un número oficial aunque después cierres el menú para compartir.
+
+El PDF usa los servicios de esa reserva, precios guardados, cantidades y duración total del paquete, incluida Diverty Amigo de 2 horas. El catálogo solo completa descripciones/duración. La factura conserva el total contratado y abono; la cotización calcula el total desde los servicios seleccionados y transporte, igual que la plantilla web. Todo texto se escapa al generar HTML y el PDF no necesita cargar imágenes o fuentes remotas. Los contratos legales y subcontratos siguen en la app actual.
+
+Los datos de empresa de la app web están en su navegador (`diverty_settings`), no en Firebase. Antes del primer PDF, revisa Datos de la empresa para PDF y pulsa Guardar datos para documentos. Se guardan por cuenta administradora en ese teléfono; puedes editarlos antes de generar y debes configurarlos también en otro teléfono. Los datos bancarios no se rellenan con valores antiguos ni se cambia la configuración de la web.
+
+El catálogo (`serviciosCustom`), clientes ocultos (`clientesOcultos`) y señales internas (`syncBus`) usan `configuracion`, conforme a la app oficial. Solo los cierres y la versión pública de la web usan `config_web`.
+
+Las pruebas usan Firebase, archivos PDF y menú de compartir simulados; no envían mensajes ni modifican producción. Verifican altas de proveedores, asignaciones, estado de pago, numeración repetida, conservación de costos antiguos, cantidades/duración, datos de clientes ocultos y lectura del catálogo en su ruta oficial. Los bundles JavaScript Android/iOS no sustituyen comprobar el PDF y la hoja de compartir en teléfonos físicos.

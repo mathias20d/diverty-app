@@ -15,8 +15,15 @@ test('native navigation connects clients, calendar availability, payments, expen
  const base='artifacts/diverty-oficial/public/data/';
  const current={cliente:'Ana',telefono:'60702108',email:'ana@example.test',fecha:today,hora:'14:00',ubicacion:'PH de prueba',estado:'Confirmado',total:100,abono:20,gastos:0,costosSeparados:true,_rev:1,servicio:'Diverty Amigo',serviciosSeleccionados:[{nombre:'Diverty Amigo',cantidad:1,precio:100,tipoCobro:'paquete',incluye:['Duración 2 horas']}]};
  const records=new Map([[base+'eventos/current',current],[base+'eventos/past',{...current,fecha:past,total:50,abono:50,estado:'Completado'}]]);
+ records.set(base+'configuracion/clientesOcultos',{clients:['Cliente oculto']});
+ records.set(base+'eventos/hidden',{...current,cliente:'Cliente oculto',fecha:'2024-01-01',telefono:'60000000',total:0,abono:0});
+ records.set(base+'configuracion/serviciosCustom',{paquetes:[{id:'catalog-native',nombre:'Servicio de catálogo',precio:40,tipoCobro:'paquete'}]});
+ records.set(base+'configuracion/contador_factura',{ultimo:7});
+ records.set(base+'configuracion/contador_cotizacion',{ultimo:3});
+ records.set(base+'proveedores/provider1',{nombre:'Proveedor de prueba',telefono:'60000000',activo:true,servicios:[{id:'s1',nombre:'Pintacaritas',costo:30,activo:true}]});
+ const files=[],shares=[],previews=[];
  const listeners=new Set(),storage=new Map(),alerts=[],backListeners=[],links=[];
- let nextID=0,dismissed=0,scrolled=0;
+ let nextID=0,dismissed=0,scrolled=0,lostAcknowledgement=false;
  const native={};
  for(const type of ['View','Text','TextInput','Pressable','ScrollView','KeyboardAvoidingView','ActivityIndicator'])native[type]=type;
  native.FlatList=({data,renderItem,ListHeaderComponent,ListEmptyComponent})=>React.createElement(React.Fragment,null,ListHeaderComponent,data.length?data.map((item,index)=>React.createElement(React.Fragment,{key:item.id||item.key||index},renderItem({item,index}))):ListEmptyComponent);
@@ -34,7 +41,7 @@ test('native navigation connects clients, calendar availability, payments, expen
  const notify=()=>listeners.forEach(({ref,callback})=>callback(snapshot(ref)));
  const firestore={
   collection:(_, ...segments)=>({kind:'collection',path:segments.join('/')}),
-  doc:(first,...segments)=>segments.length?{kind:'doc',path:segments.join('/')}:{kind:'doc',path:first.path+'/new-'+(++nextID),id:'new-'+nextID},
+  doc:(first,...segments)=>segments.length?{kind:'doc',path:segments.join('/'),id:segments.at(-1)}:{kind:'doc',path:first.path+'/new-'+(++nextID),id:'new-'+nextID},
   where:(field,operator,value)=>({field,operator,value}),
   query:(ref,...constraints)=>({...ref,constraints}),
   onSnapshot:(ref,options,callback)=>{if(typeof options==='function')callback=options;const listener={ref,callback};listeners.add(listener);callback(snapshot(ref));return()=>listeners.delete(listener);},
@@ -43,7 +50,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   runTransaction:async(_,callback)=>{
    const writes=[];
    const result=await callback({get:async ref=>document(ref),set:(ref,patch,options)=>writes.push({ref,patch,options})});
-   writes.forEach(({ref,patch,options})=>records.set(ref.path,options?.merge?{...records.get(ref.path),...patch}:patch));notify();return result;
+   writes.forEach(({ref,patch,options})=>records.set(ref.path,options?.merge?{...records.get(ref.path),...patch}:patch));notify();if(lostAcknowledgement){lostAcknowledgement=false;throw new Error('NETWORK_ACK_LOST');}return result;
   }
  };
  const asyncStorage={getItem:async key=>storage.get(key)||null,setItem:async(key,value)=>storage.set(key,value),removeItem:async key=>storage.delete(key)};
@@ -51,6 +58,8 @@ test('native navigation connects clients, calendar availability, payments, expen
  const oldLoad=Module._load,oldJS=Module._extensions['.js'];
  Module._load=function(request,parent,isMain){
   if(request==='react-native')return native;
+  if(request==='expo-print')return {printToFileAsync:async value=>{files.push(value);return {uri:'file:///fake-document.pdf'};},printAsync:async value=>previews.push(value)};
+  if(request==='expo-sharing')return {isAvailableAsync:async()=>true,shareAsync:async(uri,options)=>shares.push({uri,options})};
   if(request==='firebase/firestore')return firestore;
   if(request==='firebase/auth')return {signOut:async()=>{}};
   if(request==='@react-native-async-storage/async-storage')return asyncStorage;
@@ -73,12 +82,13 @@ test('native navigation connects clients, calendar availability, payments, expen
   await Renderer.act(async()=>{view=Renderer.create(React.createElement(Workspace),{createNodeMock:element=>element.type==='ScrollView'?{scrollTo:()=>scrolled++}:null});});
   assert.ok(hasText('Agenda de reservas'));
   await press('Todas / historial');assert.ok(hasText('10 de enero'));
-  await press('Clientes','tab');assert.ok(hasText('2 reservas'));
+  await press('Clientes','tab');assert.ok(hasText('2 reservas'));assert.ok(!hasText('Cliente oculto'));
   await press('Nueva reserva con este cliente');
   assert.equal(input('Nombre del cliente').props.value,'Ana');
   assert.equal(input('Teléfono').props.value,'60702108');
   assert.equal(input('Correo').props.value,'ana@example.test');
   assert.equal(input('Fecha (AAAA-MM-DD)').props.value,today);
+  await Renderer.act(async()=>input('Buscar servicio').props.onChangeText('catálogo'));assert.ok(buttons('Servicio de catálogo · $40').length);
   await press('Cancelar');await Renderer.act(async()=>alerts.at(-1).buttons.find(b=>b.text==='Descartar').onPress());
   await press('Calendario','tab');assert.ok(hasText('Web habilitada según cupos'));
   await press('Cerrar esta fecha en la web');await Renderer.act(async()=>{await alerts.at(-1).buttons.find(b=>b.text==='Cerrar fecha').onPress();});
@@ -107,6 +117,27 @@ test('native navigation connects clients, calendar availability, payments, expen
   await Renderer.act(async()=>{assert.equal(backListeners.at(-1)(),true);});
   assert.equal(input('Buscar reservas').props.value,'6070-2108');
   await press('Finanzas','tab');assert.ok(hasText('Ganancia estimada'));assert.ok(hasText('$90.00'));
+  await press('Proveedores','tab');await press('Nuevo proveedor');
+  await Renderer.act(async()=>input('Nombre del proveedor').props.onChangeText('Nuevo proveedor test'));
+  await press('Añadir servicio del proveedor');
+  await Renderer.act(async()=>{input('Nombre del servicio 1').props.onChangeText('Globos');input('Costo del servicio 1').props.onChangeText('20');});
+  lostAcknowledgement=true;await press('Guardar proveedor');assert.equal(input('Nombre del proveedor').props.editable,false);
+  await press('Reintentar proveedor');assert.ok(hasText('Nuevo proveedor test'));
+  assert.equal([...records].filter(([path])=>path.startsWith(base+'proveedores/')).length,2);
+  await press('Agenda','tab');await Renderer.act(async()=>buttons('Ver reserva y acciones').at(-1).props.onPress());
+  await press('Proveedores del evento');await press('Proveedor de prueba');await press('Pintacaritas · $30.00');
+  await press('Guardar asignación');assert.ok(records.get(base+'eventos/current').subcontratos,view.root.findAllByType('Text').map(node=>text(node.props.children)).join(' | '));assert.equal(records.get(base+'eventos/current').subcontratos[0].costo,30);assert.equal(records.get(base+'eventos/current').gastos,10);
+  await press('Marcar proveedor pagado');await Renderer.act(async()=>{await alerts.at(-1).buttons.find(button=>button.text==='Sí, ya pagué').onPress();});
+  assert.equal(records.get(base+'eventos/current').subcontratos[0].pagado,true);assert.equal(records.get(base+'eventos/current').abono,45);
+  await press('Volver a la reserva');await press('Facturas y cotizaciones');
+  assert.ok(buttons('Compartir PDF')[0].props.disabled);
+  await press('Guardar datos para documentos');await press('Compartir PDF');
+  assert.equal(shares.at(-1).uri,'file:///fake-document.pdf');assert.equal(shares.at(-1).options.mimeType,'application/pdf');assert.ok(files.at(-1).html.includes('2 h'));
+  assert.equal(records.get(base+'eventos/current').numeroFactura,'FAC-00008');
+  await press('Vista previa / imprimir');assert.equal(previews.length,1);assert.equal(records.get(base+'configuracion/contador_factura').ultimo,8);
+  await press('Cotización');await press('Compartir PDF');assert.equal(records.get(base+'eventos/current').numeroCotizacion,'COT-00004');
+  await press('Volver a la reserva');await press('Volver');await press('Finanzas','tab');assert.ok(hasText('$60.00'));
+  assert.ok(records.has(base+'configuracion/syncBus'));assert.ok(!records.has(base+'config_web/syncBus'));
   assert.equal(records.get(base+'eventos/current').total,100);
   assert.equal(month,today.slice(0,7));
  }finally{

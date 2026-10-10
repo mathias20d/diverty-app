@@ -29,7 +29,7 @@ export default function ExpenseScreen({event,onClose}){
    await AsyncStorage.removeItem(key).catch(()=>{});setPending(null);setAmount('');setDetail('');
    setSavedMessage(`Gasto registrado: ${money(operation.monto)}. Puedes verlo en el historial y en la agenda.`);
    setShowAll(false);Keyboard.dismiss();scroll.current?.scrollTo({y:0,animated:true});
-   setDoc(doc(db,...DATA_PATH,'config_web','syncBus'),{entityType:'evento',entityId:event.id,action:'update',deviceId:'diverty-native',changedAt:new Date().toISOString(),nonce:operation.id}).catch(()=>{});
+   setDoc(doc(db,...DATA_PATH,'configuracion','syncBus'),{entityType:'evento',entityId:event.id,action:'update',deviceId:'diverty-native',changedAt:new Date().toISOString(),nonce:operation.id}).catch(()=>{});
    Alert.alert('Gasto registrado',`${money(operation.monto)} guardados. Gastos internos: ${money(expenseSummary(saved).internal)}.`);
   }catch(e){if(['INVALID_EXPENSE','INVALID_COSTS','EVENT_NOT_FOUND'].includes(e.message)){try{await AsyncStorage.removeItem(key);setPending(null);}catch{}}setError(message(e));}finally{lock.current=false;setBusy(false);}
  }
@@ -46,7 +46,7 @@ export default function ExpenseScreen({event,onClose}){
  {[['Monto ($)',amount,setAmount,'decimal-pad'],['Fecha (AAAA-MM-DD)',date,setDate,'default'],['Detalle del gasto',detail,setDetail,'default']].map(([label,value,change,keyboard])=><View key={label}><Text>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={change} editable={!busy&&!pending} keyboardType={keyboard} style={s.input}/></View>)}
  <Action title={busy?'Registrando…':pending?'Reintentar gasto':'Guardar gasto'} onPress={submit} disabled={busy||loading||!ready||!totals}/></View>
  {error?<View><Text accessibilityRole="alert" style={s.error}>{error}</Text><Action title="Actualizar costos" onPress={()=>{setError('');setRetry(n=>n+1);}} disabled={busy}/></View>:null}
- <Text>Los gastos antiguos pueden no tener registros individuales. Los proveedores se muestran por separado y se administran desde la app actual.</Text>
+ <Text>Los gastos antiguos pueden no tener registros individuales. Los proveedores se administran desde Proveedores del evento, en el detalle de la reserva.</Text>
  <Action title="Volver a la reserva" disabled={busy} onPress={onClose}/>
  </ScrollView></KeyboardAvoidingView>;
 }

@@ -11,7 +11,7 @@ export default function ClientsScreen({data,onOpen,onNew}){
  const [search,setSearch]=useState(''),[selected,setSelected]=useState(''),[hidden,setHidden]=useState([]),[ready,setReady]=useState(false),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  const deferred=useDeferredValue(search);
  useScreenBack(()=>setSelected(''),false,!!selected);
- useEffect(()=>{setReady(false);setError('');return onSnapshot(doc(db,...DATA_PATH,'config_web','clientesOcultos'),snapshot=>{setHidden(Array.isArray(snapshot.data()?.clients)?snapshot.data().clients:[]);setReady(true);},()=>{setError('No pudimos consultar la lista de clientes. Reintenta.');});},[retry]);
+ useEffect(()=>{setReady(false);setError('');return onSnapshot(doc(db,...DATA_PATH,'configuracion','clientesOcultos'),snapshot=>{setHidden(Array.isArray(snapshot.data()?.clients)?snapshot.data().clients:[]);setReady(true);},()=>{setError('No pudimos consultar la lista de clientes. Reintenta.');});},[retry]);
  const clients=useMemo(()=>clientsFromEvents(data.events,hidden),[data.events,hidden]);
  const rows=useMemo(()=>clients.filter(client=>normalize([client.nombre,client.telefono,client.email].join(' ')).includes(normalize(deferred))||(deferred.replace(/\D/g,'').length>=3&&client.telefono.replace(/\D/g,'').includes(deferred.replace(/\D/g,'')))),[clients,deferred]);
  const current=clients.find(client=>client.key===selected);

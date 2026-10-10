@@ -1,0 +1,158 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { doc, onSnapshot, runTransaction, setDoc } from 'firebase/firestore';
+import { auth, db, DATA_PATH } from './firebase';
+import { Action, ui } from './native-ui';
+import { money } from './workspace-data.mjs';
+import { companyDetails, DEFAULT_COMPANY, documentData, documentHTML, ensureDocumentNumber } from './documents.mjs';
+import useScreenBack from './useScreenBack';
+const labels = {
+  nombre: 'Nombre de la empresa',
+  telefono: 'Teléfono de la empresa',
+  email: 'Correo de la empresa',
+  web: 'Web de la empresa',
+  ruc: 'RUC de la empresa',
+  nombreTitular: 'Titular de la cuenta',
+  banco: 'Banco',
+  tipoCuenta: 'Tipo de cuenta',
+  numeroCuenta: 'Número de cuenta'
+};
+const messages = {
+  COUNTER_NOT_READY: 'Abre Ajustes → Preparar actualización en la app actual para preparar la numeración. No se generó ningún número.',
+  INVALID_DOCUMENT_COUNTER: 'El contador de documentos necesita revisión en la app actual.',
+  EVENT_NOT_FOUND: 'La reserva ya no existe.',
+  INVALID_DOCUMENT_AMOUNT: 'Revisa los montos guardados en la reserva.',
+  INVALID_DOCUMENT_QUANTITY: 'Revisa las cantidades guardadas en la reserva.',
+  COMPANY_NAME_REQUIRED: 'Escribe el nombre de la empresa.'
+};
+export default function DocumentsScreen({
+  event,
+  onClose
+}) {
+  const [type, setType] = useState('factura'),
+    [company, setCompany] = useState(DEFAULT_COMPANY),
+    [settings, setSettings] = useState(false),
+    [ready, setReady] = useState(false),
+    [editing, setEditing] = useState(false),
+    [catalog, setCatalog] = useState([]),
+    [catalogReady, setCatalogReady] = useState(false),
+    [catalogError, setCatalogError] = useState(''),
+    [retry, setRetry] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [current, setCurrent] = useState(event);
+  const key = `diverty-document-company:${auth.currentUser.uid}`,
+    lock = useRef(false);
+  useScreenBack(onClose, busy);
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(key).then(value => {
+      if (!active) return;
+      if (value) {
+        setCompany(companyDetails(JSON.parse(value)));
+        setSettings(true);
+      } else setEditing(true);
+      setReady(true);
+    }).catch(() => {
+      if (active) setError('No pudimos leer los datos de la empresa. Cierra y vuelve a abrir.');
+    });
+    return () => {
+      active = false;
+    };
+  }, [key]);
+  useEffect(() => {
+    setCatalogReady(false);
+    setCatalogError('');
+    return onSnapshot(doc(db, ...DATA_PATH, 'configuracion', 'serviciosCustom'), snap => {
+      setCatalog(Array.isArray(snap.data()?.paquetes) ? snap.data().paquetes : []);
+      setCatalogReady(true);
+    }, () => {
+      setCatalogError('No pudimos consultar las duraciones y descripciones del catálogo.');
+    });
+  }, [retry]);
+  let summary;
+  try {
+    summary = documentData(current, type, catalog);
+  } catch {
+    summary = null;
+  }
+  async function saveSettings() {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const saved = companyDetails(company);
+      await AsyncStorage.setItem(key, JSON.stringify(saved));
+      setCompany(saved);
+      setSettings(true);
+      setEditing(false);
+    } catch (e) {
+      setError(messages[e.message] || 'No se pudieron guardar los datos de la empresa.');
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function generate(share) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      if (share && !(await Sharing.isAvailableAsync())) throw new Error('SHARING_UNAVAILABLE');
+      const saved = await ensureDocumentNumber({
+        runTransaction,
+        db,
+        ref: doc(db, ...DATA_PATH, 'eventos', event.id),
+        counterRef: doc(db, ...DATA_PATH, 'configuracion', `contador_${type}`),
+        type,
+        now: new Date().toISOString()
+      });
+      setCurrent({
+        ...saved,
+        id: event.id
+      });
+      const html = documentHTML(saved, type, company, catalog);
+      setDoc(doc(db, ...DATA_PATH, 'configuracion', 'syncBus'), {
+        entityType: 'evento',
+        entityId: event.id,
+        action: 'update',
+        deviceId: 'diverty-native',
+        changedAt: new Date().toISOString(),
+        nonce: `doc-${type}-${Date.now()}`
+      }).catch(() => {});
+      if (share) {
+        const file = await Print.printToFileAsync({
+          html,
+          width: 595,
+          height: 842
+        });
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+          dialogTitle: summary.title
+        });
+      } else await Print.printAsync({
+        html
+      });
+    } catch (e) {
+      setError(messages[e.message] || (e.message === 'SHARING_UNAVAILABLE' ? 'Este dispositivo no permite compartir archivos. Usa Vista previa / imprimir.' : 'No se pudo abrir el documento. Reintenta: se conserva el número ya asignado.'));
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  const disabled = busy || !ready || !settings || editing || !catalogReady || !!catalogError || !summary;
+  return <KeyboardAvoidingView style={{
+    flex: 1
+  }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView style={ui.page} contentContainerStyle={ui.scroll} keyboardShouldPersistTaps="handled"><Text style={ui.heading}>Documentos de la reserva</Text><Text style={ui.body}>{current.cliente} · {current.fecha}</Text><View style={ui.row}>{['factura', 'cotizacion'].map(value => <View key={value} style={{
+          flex: 1
+        }}><Action title={value === 'factura' ? 'Factura' : 'Cotización'} secondary={type !== value} disabled={busy} onPress={() => setType(value)} /></View>)}</View>{summary ? <View style={ui.card}><Text style={ui.title}>{summary.title}</Text><Text style={ui.muted}>{summary.number}</Text>{summary.lines.map((line, index) => <Text key={index} style={ui.body}>{line.name} · {line.quantity}{line.hours ? ` · ${line.hours} h` : ''} · {money(line.price)}</Text>)}<Text style={ui.title}>Total: {money(summary.total)}</Text>{type === 'factura' ? <Text style={ui.body}>Abono: {money(summary.received)} · Saldo: {money(summary.balance)}</Text> : <Text style={ui.muted}>Vigencia: {summary.validity} días</Text>}</View> : <Text style={ui.error}>Los montos o cantidades de la reserva requieren revisión.</Text>}{catalogError ? <View><Text style={ui.error}>{catalogError}</Text><Action title="Actualizar catálogo" disabled={busy} onPress={() => setRetry(value => value + 1)} /></View> : null}<Text style={ui.muted}>Se usan solo los servicios reservados. Generar conserva el número oficial; repetir no crea otra factura. El PDF usa los datos actualizados al generar.</Text>{editing ? <View style={ui.card}><Text style={ui.title}>Datos de la empresa para PDF</Text><Text style={ui.muted}>Revisa estos datos antes de generar. Los ajustes de la app web se guardan en el navegador y no se copian automáticamente. Estos datos se guardan en este teléfono.</Text>{Object.entries(labels).map(([field, label]) => <View key={field}><Text style={ui.body}>{label}</Text><TextInput accessibilityLabel={label} value={company[field]} onChangeText={value => setCompany(current => ({
+            ...current,
+            [field]: value
+          }))} editable={!busy} style={ui.input} autoCapitalize={['email', 'web'].includes(field) ? 'none' : 'sentences'} keyboardType={field === 'telefono' ? 'phone-pad' : field === 'email' ? 'email-address' : 'default'} /></View>)}<Action title="Guardar datos para documentos" onPress={saveSettings} disabled={busy || !ready} /></View> : <><Text style={ui.muted}>{company.nombre} · {company.telefono || 'Teléfono no indicado'}</Text><Action title="Editar datos de la empresa" secondary onPress={() => setEditing(true)} disabled={busy} /></>}<Action title={busy ? 'Preparando documento…' : 'Compartir PDF'} onPress={() => generate(true)} disabled={disabled} /><Action title="Vista previa / imprimir" secondary onPress={() => generate(false)} disabled={disabled} /><Text style={ui.muted}>Compartir abre el menú de tu teléfono para elegir WhatsApp u otra aplicación. Los contratos siguen disponibles en la app actual.</Text>{error ? <Text accessibilityRole="alert" style={ui.error}>{error}</Text> : null}<Action title="Volver a la reserva" secondary disabled={busy} onPress={onClose} /></ScrollView></KeyboardAvoidingView>;
+}

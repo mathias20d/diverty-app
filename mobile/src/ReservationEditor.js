@@ -13,7 +13,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
  const saving=useRef(false),saveId=useRef(original?.id||doc(collection(db,...DATA_PATH,'eventos')).id);
  const cancel=()=>Alert.alert('Cerrar formulario','¿Descartar los cambios sin guardar?',[{text:'Seguir editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:onClose}]);
  useScreenBack(cancel,busy);
- useEffect(()=>{let active=true;getDoc(doc(db,...DATA_PATH,'config_web','serviciosCustom')).then(snap=>{if(active)setCatalog(snap.data()?.paquetes||[]);}).catch(()=>{if(active)setError('No se pudo cargar el catálogo. Puedes agregar un servicio manual.');});return()=>{active=false;};},[]);
+ useEffect(()=>{let active=true;getDoc(doc(db,...DATA_PATH,'configuracion','serviciosCustom')).then(snap=>{if(active)setCatalog(snap.data()?.paquetes||[]);}).catch(()=>{if(active)setError('No se pudo cargar el catálogo. Puedes agregar un servicio manual.');});return()=>{active=false;};},[]);
  async function searchClients(){
   if(!clientSearch.trim())return;
   try{const result=await getDocs(query(collection(db,...DATA_PATH,'eventos'),where('telefono','==',clientSearch.trim())));setClients(result.docs.map(d=>d.data()).filter((r,i,all)=>all.findIndex(x=>x.cliente===r.cliente)===i));if(result.empty)setError('No encontramos ese teléfono. Puedes escribir los datos.');}catch{setError('No se pudo buscar el cliente. Puedes escribir sus datos.');}
@@ -41,7 +41,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
     if(original){if(!current.exists())throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
     else {if(current.exists())return;tx.set(ref,{...patch,id:saveId.current,createdAt:now,updatedAt:now,_rev:1,estado:'Pendiente',abono:0,deletedLocally:false,costosSeparados:true});}
    });
-   setDoc(doc(db,...DATA_PATH,'config_web','syncBus'),{entityType:'evento',entityId:saveId.current,action:'update',deviceId:'diverty-native',changedAt:now,nonce:saveId.current+'-'+now}).catch(()=>{});
+   setDoc(doc(db,...DATA_PATH,'configuracion','syncBus'),{entityType:'evento',entityId:saveId.current,action:'update',deviceId:'diverty-native',changedAt:now,nonce:saveId.current+'-'+now}).catch(()=>{});
    onSaved();
   }catch(e){setError(e.message==='EDIT_CONFLICT'?'La reserva cambió en otro dispositivo. Cierra y vuelve a abrirla antes de guardar.':e.code?'No se pudo guardar. Revisa tu conexión y vuelve a intentarlo.':e.message);}finally{saving.current=false;setBusy(false);}
  }
