@@ -7,12 +7,13 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db, ADMIN_UID, DATA_PATH } from './src/firebase';
 import ReservationEditor from './src/ReservationEditor';
 import PaymentScreen from './src/PaymentScreen';
+import ExpenseScreen from './src/ExpenseScreen';
 
 function Button({title,onPress,disabled=false}) {
  return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[s.button,disabled&&{opacity:.5}]}><Text style={s.buttonText}>{title}</Text></Pressable>;
 }
 function Agenda({user}) {
- const [editor,setEditor]=useState(null),[paymentEvent,setPaymentEvent]=useState(null);
+ const [editor,setEditor]=useState(null),[paymentEvent,setPaymentEvent]=useState(null),[expenseEvent,setExpenseEvent]=useState(null);
  const [events,setEvents]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0);
  useEffect(()=>{
   setLoading(true);setError('');
@@ -21,12 +22,13 @@ function Agenda({user}) {
    setEvents(snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))));setLoading(false);
   },()=>{setError('No pudimos cargar la agenda. Revisa tu conexión y reintenta.');setLoading(false);});
  },[user.uid,retry]);
+ if(expenseEvent)return <ExpenseScreen event={expenseEvent} onClose={()=>setExpenseEvent(null)}/>;
  if(paymentEvent)return <PaymentScreen event={paymentEvent} onClose={()=>setPaymentEvent(null)}/>;
  if(editor)return <ReservationEditor original={editor.original} onClose={()=>setEditor(null)} onSaved={()=>{setEditor(null);Alert.alert('Reserva guardada','Los datos se guardaron en Diverty.');}}/>;
  return <View style={s.page}>
   <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={s.muted}>Tu agenda de eventos</Text></View><Pressable accessibilityRole="button" onPress={()=>signOut(auth).catch(()=>setError('No pudimos cerrar la sesión. Reintenta.'))}><Text style={s.link}>Cerrar sesión</Text></Pressable></View>
   <Text style={s.heading}>Próximas reservas</Text><Button title="Nueva reserva" onPress={()=>setEditor({original:null})}/>
-  {loading?<ActivityIndicator size="large" color="#7042d9"/>:error?<View style={s.card}><Text accessibilityRole="alert">{error}</Text><Button title="Reintentar" onPress={()=>setRetry(x=>x+1)}/></View>:<FlatList data={events} keyExtractor={e=>e.id} contentContainerStyle={{paddingBottom:24}} ListEmptyComponent={<Text style={s.muted}>No hay reservas próximas.</Text>} renderItem={({item})=><View style={s.card}><Text style={s.date}>{item.fecha}</Text><Text style={s.title}>{item.cliente||'Cliente'}</Text><Text style={s.body}>{item.servicio||'Servicio por definir'}</Text><Text style={s.muted}>{item.ubicacion||'Lugar por confirmar'}</Text><Text style={s.status}>{item.estado||'Pendiente'}</Text><Text style={s.body}>Total: ${Number(item.total||0).toFixed(2)} · Recibido: ${Number(item.abono||0).toFixed(2)}</Text><Text style={s.status}>Saldo: ${Math.max(0,Number(item.total||0)-Number(item.abono||0)).toFixed(2)}</Text><Button title="Abonos y saldo" onPress={()=>setPaymentEvent(item)}/><Button title="Editar reserva" onPress={()=>setEditor({original:item})}/></View>}/>}
+  {loading?<ActivityIndicator size="large" color="#7042d9"/>:error?<View style={s.card}><Text accessibilityRole="alert">{error}</Text><Button title="Reintentar" onPress={()=>setRetry(x=>x+1)}/></View>:<FlatList data={events} keyExtractor={e=>e.id} contentContainerStyle={{paddingBottom:24}} ListEmptyComponent={<Text style={s.muted}>No hay reservas próximas.</Text>} renderItem={({item})=><View style={s.card}><Text style={s.date}>{item.fecha}</Text><Text style={s.title}>{item.cliente||'Cliente'}</Text><Text style={s.body}>{item.servicio||'Servicio por definir'}</Text><Text style={s.muted}>{item.ubicacion||'Lugar por confirmar'}</Text><Text style={s.status}>{item.estado||'Pendiente'}</Text><Text style={s.body}>Total: ${Number(item.total||0).toFixed(2)} · Recibido: ${Number(item.abono||0).toFixed(2)}</Text><Text style={s.status}>Saldo: ${Math.max(0,Number(item.total||0)-Number(item.abono||0)).toFixed(2)}</Text><Button title="Abonos y saldo" onPress={()=>setPaymentEvent(item)}/><Button title="Gastos del evento" onPress={()=>setExpenseEvent(item)}/><Button title="Editar reserva" onPress={()=>setEditor({original:item})}/></View>}/>}
  </View>;
 }
 function Session() {
