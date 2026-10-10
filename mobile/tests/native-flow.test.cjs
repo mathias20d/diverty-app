@@ -92,7 +92,9 @@ test('native navigation connects clients, calendar availability, payments, expen
  try{
   const Workspace=require('../src/Workspace').default;
   await Renderer.act(async()=>{view=Renderer.create(React.createElement(Workspace),{createNodeMock:element=>element.type==='ScrollView'?{scrollTo:()=>scrolled++}:null});});
-  assert.ok(hasText('Agenda de reservas'));
+  assert.ok(hasText('Hola Diverty'));
+  await press('Ajustes','tab');assert.ok(hasText('Personal disponible'));await press('Meta mensual');await Renderer.act(async()=>input('Meta mensual').props.onChangeText('2000'));await press('Guardar ajustes');await press('Inicio','tab');assert.ok(hasText('$2000.00'));
+  await press('Agenda','tab');assert.ok(hasText('Agenda de reservas'));
   await press('Todas / historial');assert.ok(hasText('10 de enero'));
   await press('Clientes','tab');assert.ok(hasText('2 reservas'));assert.ok(!hasText('Cliente oculto'));
   await press('Nueva reserva con este cliente');
@@ -102,7 +104,7 @@ test('native navigation connects clients, calendar availability, payments, expen
   assert.equal(input('Fecha (AAAA-MM-DD)').props.value,today);
   await Renderer.act(async()=>input('Buscar servicio').props.onChangeText('catálogo'));assert.ok(buttons('Servicio de catálogo · $40').length);
   await press('Cancelar');await Renderer.act(async()=>alerts.at(-1).buttons.find(b=>b.text==='Descartar').onPress());
-  await press('Calendario','tab');assert.ok(hasText('Web habilitada según cupos'));
+  await press('Agenda','tab');await press('Calendario');assert.ok(hasText('Web habilitada según cupos'));
   await press('Cotización');assert.ok(hasText('COTIZACIÓN'));await press('Volver a la reserva');
   await press('Cerrar esta fecha en la web');await Renderer.act(async()=>{await alerts.at(-1).buttons.find(b=>b.text==='Cerrar fecha').onPress();});
   assert.equal(records.get(base+'config_web/fechas_cerradas').fechas[today],true);
@@ -170,6 +172,11 @@ test('native navigation connects clients, calendar availability, payments, expen
   await press('Eliminar');await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Eliminar').onPress());assert.ok(!records.has(base+'cupones_web/FIESTA'));
   await press('Volver a Administrar página web');await press('Temas');await press('Nuevo tema');await Renderer.act(async()=>input('Nombre del tema').props.onChangeText('Nuevo tema'));await press('Cerrar edición');assert.ok(input('Nombre del tema'));await Renderer.act(async()=>alerts.at(-1).buttons.find(button=>button.text==='Descartar').onPress());
   await press('Volver a Administrar página web');await press('Volver al administrador');assert.ok(hasText('Agenda de reservas'));assert.equal(JSON.stringify(records.get(base+'eventos/current')),unchangedEvent);
+  await press('Inicio','tab');await press('Cotizar');assert.ok(hasText('Nueva cotización'));
+  await Renderer.act(async()=>{input('Nombre del cliente').props.onChangeText('Cotización nativa');input('Teléfono').props.onChangeText('60001111');input('Hora (HH:MM)').props.onChangeText('09:00');input('Dirección / PH / barriada').props.onChangeText('Panamá');});
+  await press('Agregar servicio manual');await Renderer.act(async()=>input('Precio unitario ($) servicio 1').props.onChangeText('40'));await press('Guardar reserva');
+  assert.ok([...records.values()].some(value=>value.cliente==='Cotización nativa'&&value.estado==='Cotización'));
+  await press('Ajustes','tab');await press('Personal disponible');await Renderer.act(async()=>input('animadores').props.onChangeText('0'));await press('Guardar ajustes');assert.equal(records.get(base+'config_web/global').recursosDisponibles.animadores,0);assert.equal(records.get(base+'config_web/global').bannerText,'Promoción test');
  }finally{
   if(view)await Renderer.act(async()=>view.unmount());
   Module._load=oldLoad;Module._extensions['.js']=oldJS;

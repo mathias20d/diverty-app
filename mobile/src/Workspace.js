@@ -21,21 +21,29 @@ import ProviderAssignments from './ProviderAssignments';
 import DocumentsScreen from './DocumentsScreen';
 import useScreenBack from './useScreenBack';
 import WebAdminScreen from './WebAdminScreen';
-const tabs = [['agenda', 'Agenda'], ['calendario', 'Calendario'], ['clientes', 'Clientes'], ['finanzas', 'Finanzas'], ['proveedores', 'Proveedores']];
+import {ADMIN_MENU as tabs} from './admin-settings.mjs';
+import useAdminSettings from './useAdminSettings';
+import HomeScreen from './HomeScreen';
+import SettingsScreen from './SettingsScreen';
 export default function Workspace() {
   const today = panamaToday();
-  const [tab, setTab] = useState('agenda'),
+  const settings = useAdminSettings();
+  const [settingsBusy,setSettingsBusy] = useState(false);
+  const [settingsDirty,setSettingsDirty] = useState(false);
+  const navigate = action => {if(settingsDirty)Alert.alert('Cambios sin guardar','¿Descartar los cambios de ajustes?',[{text:'Continuar editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:()=>{setSettingsDirty(false);action();}}]);else action();};
+  const [tab, setTab] = useState('inicio'),
     [scope, setScope] = useState('proximas'),
     [month, setMonth] = useState(today.slice(0, 7)),
     [selected, setSelected] = useState(today),
     [routes, setRoutes] = useState([]),
     [calendarBusy, setCalendarBusy] = useState(false);
+  const blocked = settingsBusy || calendarBusy;
   const range = tab === 'calendario' || tab === 'finanzas' ? monthRange(month) : tab === 'agenda' && scope === 'proximas' ? {
     start: today
   } : {};
   const data = useReservations(range);
   const route = routes[routes.length - 1];
-  useScreenBack(() => setTab('agenda'), calendarBusy, !route && (calendarBusy || tab !== 'agenda'));
+  useScreenBack(() => navigate(() => setTab('inicio')), blocked, !route && (blocked || tab !== 'inicio'));
   const push = route => setRoutes(value => [...value, route]),
     back = () => setRoutes(value => value.slice(0, -1));
   const open = (event, documentType) => push(['factura','cotizacion'].includes(documentType)
@@ -54,7 +62,7 @@ export default function Workspace() {
   const routeView = route?.type === 'web' ? <WebAdminScreen onClose={back}/> : route?.type === 'editor' ? <ReservationEditor original={route.original} initialValues={route.initialValues} onClose={back} onSaved={() => {
     back();
     Alert.alert('Reserva guardada', 'Los datos se guardaron en Diverty.');
-  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail event={route.event} onClose={back} onEdit={original => push({
+  }} /> : route?.type === 'payment' ? <PaymentScreen event={route.event} onClose={back} /> : route?.type === 'expense' ? <ExpenseScreen event={route.event} onClose={back} /> : route?.type === 'provider-editor' ? <ProviderEditor original={route.original} onClose={back} /> : route?.type === 'providers' ? <ProviderAssignments event={route.event} onClose={back} /> : route?.type === 'documents' ? <DocumentsScreen onCompanySaved={settings.acceptCompany} event={route.event} initialType={route.initialType} onClose={back} /> : route?.type === 'detail' ? <ReservationDetail event={route.event} onClose={back} onEdit={original => push({
     type: 'editor',
     original
   })} onPayment={event => push({
@@ -77,15 +85,15 @@ export default function Workspace() {
       flex: 1,
       display: route ? 'none' : 'flex'
     }} accessibilityElementsHidden={!!route} importantForAccessibility={route ? 'no-hide-descendants' : 'auto'}>
-  <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración · Versión {appConfig.expo.version}</Text></View><View><Pressable accessibilityRole="button" disabled={calendarBusy} onPress={() => push({type:'web'})}><Text style={s.link}>Administrar página web</Text></Pressable><Pressable accessibilityRole="button" disabled={calendarBusy} onPress={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.'))}><Text style={s.link}>Salir</Text></Pressable></View></View>
-  {tab === 'agenda' ? <AgendaScreen data={data} scope={scope} setScope={setScope} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onEdit={original => push({
+  <View style={s.header}><View><Text style={s.brand}>Diverty</Text><Text style={ui.muted}>Administración · Versión {appConfig.expo.version}</Text></View><View><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => push({type:'web'}))}><Text style={s.link}>Administrar página web</Text></Pressable><Pressable accessibilityRole="button" disabled={blocked} onPress={() => navigate(() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión', 'Revisa tu conexión y reintenta.')))}><Text style={s.link}>Salir</Text></Pressable></View></View>
+  {tab === 'inicio' ? <HomeScreen data={data} today={today} settings={settings} onNew={create} onOpen={open} onAgenda={() => setTab('agenda')}/> : tab === 'ajustes' ? <SettingsScreen settings={settings} onDirtyChange={setSettingsDirty} onBusyChange={setSettingsBusy} onSignOut={() => signOut(auth).catch(() => Alert.alert('No se pudo cerrar la sesión'))}/> : tab === 'agenda' ? <AgendaScreen data={data} scope={scope} setScope={setScope} onCalendar={() => setTab('calendario')} onOpen={open} onNew={create} /> : tab === 'calendario' ? <CalendarScreen data={data} month={month} onMove={move} selected={selected} setSelected={setSelected} onOpen={open} onNew={create} onBusyChange={setCalendarBusy} /> : tab === 'clientes' ? <ClientsScreen data={data} onOpen={open} onNew={create} /> : tab === 'proveedores' ? <ProvidersScreen onEdit={original => push({
         type: 'provider-editor',
         original
       })} /> : <FinanceScreen data={data} month={month} onMove={move} />}
   <View style={s.tabs}>{tabs.map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{
-          selected: tab === value,
-          disabled: calendarBusy
-        }} disabled={calendarBusy} style={[s.tab, tab === value && s.active]} onPress={() => setTab(value)}><Text style={[s.tabText, tab === value && s.activeText]}>{label}</Text></Pressable>)}</View>
+          selected: tab === value || value === 'agenda' && tab === 'calendario',
+          disabled: blocked
+        }} disabled={blocked} style={[s.tab, tab === value && s.active]} onPress={() => navigate(() => value === 'web' ? push({type:'web'}) : setTab(value))}><Text style={[s.tabText, tab === value && s.activeText]}>{label}</Text></Pressable>)}</View>
   </View>
   {routeView}
  </View>;
@@ -131,7 +139,7 @@ const s = StyleSheet.create({
   },
   tabText: {
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: 9,
     color: '#686878'
   },
   activeText: {

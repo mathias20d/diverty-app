@@ -31,7 +31,7 @@ const messages = {
 export default function DocumentsScreen({
   event,
   initialType = 'factura',
-  onClose
+  onClose, onCompanySaved
 }) {
   const [type, setType] = useState(initialType),
     [company, setCompany] = useState(DEFAULT_COMPANY),
@@ -89,6 +89,7 @@ export default function DocumentsScreen({
       const saved = companyDetails(company);
       await AsyncStorage.setItem(key, JSON.stringify(saved));
       setCompany(saved);
+      onCompanySaved?.(saved);
       setSettings(true);
       setEditing(false);
     } catch (e) {

@@ -23,7 +23,7 @@ React Native y Expo para Android e iPhone. Las pantallas de administración util
 - Facturas y cotizaciones PDF con numeración oficial, vista previa/impresión y menú nativo para compartir.
 - Administrar página web: Catálogos, Servicios y personajes, Campañas, Temas, Galería, Cupones y Banner y ajustes, con las colecciones oficiales y sincronización de la web.
 
-La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial. La navegación principal y la equivalencia visual de todas las pantallas con el administrador web siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
+La app y la web actuales permanecen disponibles. Ajustes de pagos/gastos, contratos, aceptación de solicitudes web con asignación de recursos y notificaciones nativas requieren las siguientes etapas; esta versión todavía no sustituye todas las funciones de la app oficial. El menú principal ya sigue el orden del administrador web. La equivalencia visual exacta y la migración completa de todas las pantallas siguen pendientes; este bloque amplía la versión nativa existente sin sustituir sus pantallas ya migradas.
 
 ## Windows: probar en Android o iPhone
 
@@ -142,3 +142,12 @@ Se reutiliza el controlador de datos de la web en `src/useWebAdminData.js`. Cada
 Pruebas sin producción: validación de temporadas, cantidades, ofertas, campañas, cupones y temas; paridad de módulos compartidos; navegación por el administrador web nativo, edición conservando campos adicionales, alta de personajes, banner, eliminación de cupones, enlaces y descarte de borradores. Se conserva el recorrido de reservas, abonos, gastos, proveedores y PDF. No se han probado permisos de fotos, portapapeles, WebView ni Firebase en teléfonos reales. Los bundles no generan APK/IPA.
 
 Para probar este bloque en Windows, desde `diverty-app/mobile`, ejecuta `npm.cmd ci` y `npx.cmd expo start --lan --clear`, y vuelve a escanear el QR. Comprueba **Versión 0.3.0** en la cabecera. Usa únicamente cambios reales al guardar: los formularios escriben en los datos oficiales.
+
+
+## Inicio y Ajustes — 0.4.0
+
+Menú: Inicio, Agenda, Clientes, Proveedores, Finanzas, Web, Ajustes. El calendario se abre desde Agenda. Inicio incluye indicadores de eventos, cobros del mes, clientes visibles, saldos, cotizaciones, solicitudes web, meta y próximos eventos. Cotizar reutiliza el editor existente.
+
+Ajustes conserva las nueve categorías web. Mi negocio, Facturación y banco y Documentos comparten los datos locales del teléfono con el editor de PDF; Meta mensual también se guarda por usuario en el teléfono. Personal disponible guarda animadores, payasos y capacidades en config_web/global mediante una transacción que conserva otros campos y detecta cambios concurrentes. Notificaciones, herramientas avanzadas y zona de peligro están identificadas como pendientes y no ejecutan migraciones ni borrados. No se afirma equivalencia gráfica exacta todavía.
+
+Validación: 49 pruebas nativas y 61 web; exportaciones Android/iOS. No se escribieron datos de producción durante las pruebas. Para probar, reinicia Expo con `npx.cmd expo start --lan --clear` desde esta carpeta y comprueba Versión 0.4.0.
