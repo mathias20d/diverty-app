@@ -237,3 +237,9 @@ Cancelar reserva requiere confirmación, guarda cancelledAt y libera la disponib
 Crear y editar reservas reutiliza las transacciones del administrador web (`src/App.jsx`): sincroniza disponibilidad, búsqueda del portal, seguimiento del cliente y cupos por horario. Cambiar la fecha libera el cupo anterior. Una reserva eliminada lógicamente no puede restaurarse desde un formulario antiguo. Las cotizaciones no ocupan disponibilidad.
 
 Verificación con datos ficticios: 75 pruebas nativas y 61 web; creación, cambio de fecha, liberación de cupo, cotización y edición tras eliminación. Exportaciones Android/iOS. Pendiente en teléfono: comprobar sincronización con la web y compartir factura y contrato en Expo Go. No se modificaron datos de producción. Siguen pendientes la equivalencia visual completa y las funciones indicadas en el alcance.
+
+## Versión 0.11.2 — edición de cotizaciones
+
+El formulario identifica también las cotizaciones existentes (Cotización y Cot. Aprobada). Cambiar su horario no dispara la confirmación de colisión ni la restricción de fecha cerrada de una reserva, y conserva su estado sin ocupar disponibilidad. Sigue el criterio de cotización del guardado web en src/App.jsx. Las reservas normales conservan sus comprobaciones.
+
+Verificación: 75 pruebas nativas y 61 web con datos ficticios, incluyendo editar una cotización a la misma hora que una reserva y comprobar estado, revisión y ausencia de disponibilidad. Exportaciones Android/iOS. Pendiente revisar edición y presentación visual en Expo Go; continúan los pendientes anteriores. Sin escrituras en producción.

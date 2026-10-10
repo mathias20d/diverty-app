@@ -11,7 +11,8 @@ const initial={cliente:'',telefono:'',email:'',hora:'',ubicacion:'',transporte:'
 function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.action,disabled&&{opacity:.5}]}><Text style={s.actionText}>{title}</Text></Pressable>;}
 export default function ReservationEditor({original,initialValues={},onClose,onSaved}) {
  const [form,setForm]=useState(()=>({...initial,fecha:panamaToday(),...initialValues,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const creatingQuote=!original&&initialValues.estado==='Cotización';
+ const quoteMode=/^cot/i.test(String(original?.estado||initialValues.estado||''));
+ const creatingQuote=!original&&quoteMode;
  const saving=useRef(false),saveId=useRef(original?.id||doc(collection(db,...DATA_PATH,'eventos')).id);
  const cancel=()=>Alert.alert('Cerrar formulario','¿Descartar los cambios sin guardar?',[{text:'Seguir editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:onClose}]);
  useScreenBack(cancel,busy);
@@ -29,7 +30,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
   saving.current=true;setBusy(true);setError('');
   try{
    const ref=doc(db,...DATA_PATH,'eventos',saveId.current),now=new Date().toISOString();
-   if(!creatingQuote&&(!original || original.fecha!==patch.fecha || original.hora!==patch.hora)) {
+   if(!quoteMode&&(!original || original.fecha!==patch.fecha || original.hora!==patch.hora)) {
     const day=await getDocs(query(collection(db,...DATA_PATH,'eventos'),where('fecha','==',patch.fecha)));
     const minute=time=>{const [h,m]=String(time).split(':').map(Number);return h*60+m;};
     const nearby=day.docs.some(d=>d.id!==saveId.current&&!d.data().deletedLocally&&!/cot|cancel/i.test(d.data().estado||'')&&d.data().hora&&Math.abs(minute(d.data().hora)-minute(patch.hora))<180);
@@ -39,7 +40,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
    await runTransaction(db,async tx=>{
     const current=await tx.get(ref);
     const closures=await tx.get(doc(db,...DATA_PATH,'config_web','fechas_cerradas'));
-    if(!creatingQuote&&(!original||original.fecha!==patch.fecha)&&closures.data()?.fechas?.[patch.fecha]===true)throw new Error('La fecha está cerrada. Elige otro día.');
+    if(!quoteMode&&(!original||original.fecha!==patch.fecha)&&closures.data()?.fechas?.[patch.fecha]===true)throw new Error('La fecha está cerrada. Elige otro día.');
     if(original){if(!current.exists()||current.data().deletedLocally)throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
     else {if(current.exists())return;tx.set(ref,{...patch,id:saveId.current,createdAt:now,updatedAt:now,_rev:1,estado:creatingQuote?'Cotización':'Pendiente',abono:0,deletedLocally:false,costosSeparados:true});}
    });
