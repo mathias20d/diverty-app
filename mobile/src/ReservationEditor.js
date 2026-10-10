@@ -7,11 +7,12 @@ import {addReservationLine,editReservationLine,reservationServices,unitPrice} fr
 import {panamaToday} from './domain/date-availability.mjs';
 import {mergeReservation,reservationPatch} from './reservation-data.mjs';
 import useScreenBack from './useScreenBack';
+import {canConvertQuote} from './reservation-management.mjs';
 const initial={cliente:'',telefono:'',email:'',hora:'',ubicacion:'',transporte:'0',serviciosSeleccionados:[]};
 function Action({title,onPress,disabled}){return <Pressable accessibilityRole="button" onPress={onPress} disabled={disabled} style={[s.action,disabled&&{opacity:.5}]}><Text style={s.actionText}>{title}</Text></Pressable>;}
-export default function ReservationEditor({original,initialValues={},onClose,onSaved}) {
- const [form,setForm]=useState(()=>({...initial,fecha:panamaToday(),...initialValues,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const quoteMode=/^cot/i.test(String(original?.estado||initialValues.estado||''));
+export default function ReservationEditor({original,initialValues={},converting=false,onClose,onSaved}) {
+ const [form,setForm]=useState(()=>({...initial,fecha:panamaToday(),...initialValues,...original,serviciosSeleccionados:(original?.serviciosSeleccionados||initialValues.serviciosSeleccionados||[]).map(line=>({...line,cantidad:line.cantidad??1,precioOriginal:unitPrice(line)}))})),[catalog,setCatalog]=useState([]),[clients,setClients]=useState([]),[search,setSearch]=useState(''),[clientSearch,setClientSearch]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const quoteMode=!converting&&/^cot/i.test(String(original?.estado||initialValues.estado||''));
  const creatingQuote=!original&&quoteMode;
  const saving=useRef(false),saveId=useRef(original?.id||doc(collection(db,...DATA_PATH,'eventos')).id);
  const cancel=()=>Alert.alert('Cerrar formulario','¿Descartar los cambios sin guardar?',[{text:'Seguir editando',style:'cancel'},{text:'Descartar',style:'destructive',onPress:onClose}]);
@@ -30,7 +31,7 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
   saving.current=true;setBusy(true);setError('');
   try{
    const ref=doc(db,...DATA_PATH,'eventos',saveId.current),now=new Date().toISOString();
-   if(!quoteMode&&(!original || original.fecha!==patch.fecha || original.hora!==patch.hora)) {
+   if(!quoteMode&&(converting || !original || original.fecha!==patch.fecha || original.hora!==patch.hora)) {
     const day=await getDocs(query(collection(db,...DATA_PATH,'eventos'),where('fecha','==',patch.fecha)));
     const minute=time=>{const [h,m]=String(time).split(':').map(Number);return h*60+m;};
     const nearby=day.docs.some(d=>d.id!==saveId.current&&!d.data().deletedLocally&&!/cot|cancel/i.test(d.data().estado||'')&&d.data().hora&&Math.abs(minute(d.data().hora)-minute(patch.hora))<180);
@@ -40,7 +41,8 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
    await runTransaction(db,async tx=>{
     const current=await tx.get(ref);
     const closures=await tx.get(doc(db,...DATA_PATH,'config_web','fechas_cerradas'));
-    if(!quoteMode&&(!original||original.fecha!==patch.fecha)&&closures.data()?.fechas?.[patch.fecha]===true)throw new Error('La fecha está cerrada. Elige otro día.');
+    if(!quoteMode&&(converting||!original||original.fecha!==patch.fecha)&&closures.data()?.fechas?.[patch.fecha]===true)throw new Error('La fecha está cerrada. Elige otro día.');
+    if(converting){if(!current.exists()||!canConvertQuote(current.data()))throw new Error('La cotización cambió o ya fue convertida. Vuelve a abrirla.');patch.estado='Pendiente';}
     if(original){if(!current.exists()||current.data().deletedLocally)throw new Error('La reserva ya no existe.');const next=mergeReservation(current.data(),patch,original._rev,now);tx.set(ref,next,{merge:true});}
     else {if(current.exists())return;tx.set(ref,{...patch,id:saveId.current,createdAt:now,updatedAt:now,_rev:1,estado:creatingQuote?'Cotización':'Pendiente',abono:0,deletedLocally:false,costosSeparados:true});}
    });
@@ -49,11 +51,12 @@ export default function ReservationEditor({original,initialValues={},onClose,onS
   }catch(e){setError(e.message==='EDIT_CONFLICT'?'La reserva cambió en otro dispositivo. Cierra y vuelve a abrirla antes de guardar.':e.code?'No se pudo guardar. Revisa tu conexión y vuelve a intentarlo.':e.message);}finally{saving.current=false;setBusy(false);}
  }
  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':'height'}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.page}>
- <Text style={s.heading}>{original?'Editar reserva':creatingQuote?'Nueva cotización':'Nueva reserva'}</Text>
+ <Text style={s.heading}>{converting?'Convertir cotización a reserva':original?'Editar reserva':creatingQuote?'Nueva cotización':'Nueva reserva'}</Text>
  {!original&&<View style={s.card}><Text style={s.label}>Usar un cliente guardado</Text><TextInput accessibilityLabel="Teléfono para buscar cliente" placeholder="Teléfono del cliente" value={clientSearch} onChangeText={setClientSearch} keyboardType="phone-pad" style={s.input}/><Action title="Buscar cliente" onPress={searchClients}/>{clients.map((c,i)=><Action key={i} title={c.cliente} onPress={()=>{setForm(f=>({...f,cliente:c.cliente||'',telefono:c.telefono||'',email:c.email||''}));setClients([]);}}/>)}</View>}
  <View style={s.card}>{[['cliente','Nombre del cliente'],['telefono','Teléfono'],['email','Correo'],['fecha','Fecha (AAAA-MM-DD)'],['hora','Hora (HH:MM)'],['ubicacion','Dirección / PH / barriada'],['transporte','Transporte ($)']].map(([key,label])=><View key={key}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={label} value={String(form[key]??'')} onChangeText={v=>change(key,v)} autoCapitalize={key==='email'?'none':'sentences'} keyboardType={key==='telefono'?'phone-pad':key==='transporte'?'decimal-pad':key==='email'?'email-address':'default'} style={s.input}/></View>)}</View>
  <View style={s.card}><Text style={s.heading}>Productos y servicios</Text><TextInput accessibilityLabel="Buscar servicio" placeholder="Buscar en el catálogo" value={search} onChangeText={setSearch} style={s.input}/>{search.trim()&&catalog.filter(c=>String(c.nombre||'').toLowerCase().includes(search.toLowerCase())).slice(0,15).map((c,i)=><Action key={c.id||i} title={`${c.nombre} · $${c.precio}`} onPress={()=>add(c)}/>)}<Action title="Agregar servicio manual" onPress={()=>add({id:Date.now().toString(),nombre:'Nuevo servicio',precio:0,tipoCobro:'paquete'})}/>
  {form.serviciosSeleccionados.map((line,index)=><View key={index} style={s.line}><Text style={s.label}>Nombre</Text><TextInput accessibilityLabel={`Nombre servicio ${index+1}`} style={s.input} value={line.nombre} onChangeText={v=>lines(form.serviciosSeleccionados.map((x,i)=>i===index?{...x,nombre:v}:x))}/><View style={s.modes}>{[['paquete','Paquete'],['unidad','Unidades'],['hora','Horas']].map(([mode,label])=><Pressable key={mode} accessibilityRole="button" onPress={()=>lines(form.serviciosSeleccionados.map((x,i)=>i===index?editReservationLine(x,{tipoCobro:mode}):x))}><Text style={line.tipoCobro===mode?s.selected:s.label}>{label}</Text></Pressable>)}</View>{[['cantidad','Cantidad / horas',line.cantidad],['precioOriginal','Precio unitario ($)',unitPrice(line)]].map(([key,label,value])=><View key={key}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={`${label} servicio ${index+1}`} keyboardType="decimal-pad" style={s.input} value={String(value??'')} onChangeText={v=>lines(form.serviciosSeleccionados.map((x,i)=>i===index?editReservationLine(x,{[key]:v.replace(',','.')||''}):x))}/></View>)}<Text style={s.total}>Subtotal: ${Number(line.precio||0).toFixed(2)}</Text><Action title="Quitar servicio" onPress={()=>lines(form.serviciosSeleccionados.filter((_,i)=>i!==index))}/></View>)}</View>
+ <Text style={s.label}>Comentarios</Text><TextInput accessibilityLabel="Comentarios del evento" multiline style={s.input} value={String(form.comentarios||'')} onChangeText={value=>change('comentarios',value)}/>
  <Text style={s.total}>Total: ${Number(reservationServices(form,form.serviciosSeleccionados).total||0).toFixed(2)}</Text>
  {original&&<Text>Abonos conservados: ${Number(original.abono||0).toFixed(2)}</Text>}
  {error?<Text accessibilityRole="alert" style={{color:'#b42342'}}>{error}</Text>:null}

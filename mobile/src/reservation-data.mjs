@@ -18,7 +18,7 @@ export function reservationPatch(form, original = {}) {
  if(total<Number(original.abono||0))throw new Error('El total no puede ser menor que los abonos recibidos.');
  const changesSchedule=original.fecha!==form.fecha||original.hora!==form.hora;
  if(original.id && changesSchedule && (original.esNavidad || original.centralBookingVersion || original.resourceRequirements))throw new Error('Cambia el horario de esta reserva especial desde la app actual para conservar sus cupos.');
- return {cliente:form.cliente.trim(),telefono:form.telefono.trim(),email:(form.email||'').trim(),fecha:form.fecha,hora:form.hora,ubicacion:form.ubicacion.trim(),transporte:transport,serviciosSeleccionados:lines,servicio:summary.servicio,total,descripcionEvento:lines.map(s=>[s.nombre,s.descripcion,Array.isArray(s.incluye)?s.incluye.join('\n'):s.incluye].filter(Boolean).join('\n')).join('\n\n'),...(changesSchedule?{colisionAprobada:false}:{})};
+ return {comentarios:String(form.comentarios||'').trim(),cliente:form.cliente.trim(),telefono:form.telefono.trim(),email:(form.email||'').trim(),fecha:form.fecha,hora:form.hora,ubicacion:form.ubicacion.trim(),transporte:transport,serviciosSeleccionados:lines,servicio:summary.servicio,total,descripcionEvento:lines.map(s=>[s.nombre,s.descripcion,Array.isArray(s.incluye)?s.incluye.join('\n'):s.incluye].filter(Boolean).join('\n')).join('\n\n'),...(changesSchedule?{colisionAprobada:false}:{})};
 }
 export function mergeReservation(remote, patch, openedRevision, now) {
  if((Number(remote._rev)||0)!==(Number(openedRevision)||0)) throw new Error('EDIT_CONFLICT');

@@ -30,7 +30,7 @@ export function calendarCells(month){
 }
 export function searchEvents(events,search,status='todos'){
  const term=normalize(search),digits=String(search||'').replace(/\D/g,'');
- return sortEvents(events).filter(e=>(status==='todos'||(status==='pendientes'?normalize(e.estado)==='pendiente':status==='confirmadas'?/confirmad|preparando|en camino|en el evento/.test(normalize(e.estado)):status==='completadas'?/^(completado|cobrado|pagado)$/.test(normalize(e.estado)):status==='canceladas'?archived(e):false))&&(!term||normalize([e.cliente,e.telefono,e.email,e.servicio,e.ubicacion,e.fecha].join(' ')).includes(term)||(digits.length>=3&&String(e.telefono||'').replace(/\D/g,'').includes(digits))));
+ return sortEvents(events).filter(e=>(status==='todos'||(status==='pendientes'?normalize(e.estado)==='pendiente':status==='confirmadas'?/confirmad|preparando|en camino|en el evento/.test(normalize(e.estado)):status==='cotizaciones'?quote(e):status==='completadas'?/^(completado|cobrado|pagado)$/.test(normalize(e.estado)):status==='canceladas'?archived(e):false))&&(!term||normalize([e.cliente,e.telefono,e.email,e.servicio,e.ubicacion,e.fecha].join(' ')).includes(term)||(digits.length>=3&&String(e.telefono||'').replace(/\D/g,'').includes(digits))));
 }
 
 // Match the official CRM: name first, phone only when a name is missing.

@@ -243,3 +243,16 @@ Verificación con datos ficticios: 75 pruebas nativas y 61 web; creación, cambi
 El formulario identifica también las cotizaciones existentes (Cotización y Cot. Aprobada). Cambiar su horario no dispara la confirmación de colisión ni la restricción de fecha cerrada de una reserva, y conserva su estado sin ocupar disponibilidad. Sigue el criterio de cotización del guardado web en src/App.jsx. Las reservas normales conservan sus comprobaciones.
 
 Verificación: 75 pruebas nativas y 61 web con datos ficticios, incluyendo editar una cotización a la misma hora que una reserva y comprobar estado, revisión y ausencia de disponibilidad. Exportaciones Android/iOS. Pendiente revisar edición y presentación visual en Expo Go; continúan los pendientes anteriores. Sin escrituras en producción.
+
+## Versión 0.12.0 — gestión de reservas y cotizaciones
+
+Bloque conjunto comparado con handleDuplicateEvento, handleConvertirReserva y handleDeleteEvento de src/App.jsx:
+
+- Duplicar evento abre un formulario revisable para reservas normales y cotizaciones, con cliente, contacto, fecha/hora, dirección, transporte, comentarios y selección de servicios. Crea un ID nuevo al guardar, sin propietario, números de documentos, abonos ni historiales financieros anteriores. Corregida la precarga de servicios en formularios nuevos.
+- Convertir a reserva abre la cotización existente para revisar. Guardar conserva su ID, número de cotización y datos existentes, cambia a Pendiente y sincroniza disponibilidad/cupos. Comprueba fecha cerrada, choque de horario y revisión simultánea. Descartar no convierte el registro.
+- Eliminar registro requiere confirmación; la transacción verifica la revisión actual y elimina evento, proyecciones y cupos. Reintentar una eliminación ya aplicada es seguro. Navidad y solicitudes pendientes conservan sus flujos específicos.
+- Agenda incorpora filtro Cotizaciones (incluye Cot. Aprobada). El formulario permite editar comentarios y el detalle los muestra.
+
+Limitación: duplicar y convertir reservas con horarios/cupos especiales sigue pendiente. La copia comercial no copia campos adicionales que el formulario nativo aún no edita. Continúan pendientes equivalencia visual completa, horarios especiales, herramientas avanzadas y notificaciones.
+
+Verificación: 79 pruebas nativas y 61 web con datos ficticios. La navegación integrada duplica una cotización sin alterar el original, rechaza conversión a fecha cerrada, guarda comentarios, convierte con el mismo ID y elimina con liberación de cupo y proyecciones. Pruebas de revisión simultánea, reintentos, filtro y exclusión de reservas especiales. Exportaciones Android/iOS. Pendiente en Expo Go: duplicar/descartar, convertir, filtrar y eliminar únicamente registros de prueba autorizados; compartir factura/contrato continúa pendiente. No se modificaron datos reales.
