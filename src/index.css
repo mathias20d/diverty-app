@@ -2,6 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+.app-navigation-heading { display: none; }
+.app-skip-link {
+  position: fixed;
+  top: 8px;
+  left: 16px;
+  z-index: 100001;
+  transform: translateY(-160%);
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: white;
+  color: #7657FF;
+  font-weight: 700;
+}
+.app-skip-link:focus { transform: translateY(0); }
+.diverty-app-shell :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid #7657FF;
+  outline-offset: 3px;
+}
+
+/* La navegación cambia con el espacio disponible, incluso en PC táctiles. */
+@media (min-width: 1024px) {
+  .app-workspace { margin-left: 216px; }
+  .app-navigation {
+    top: 0;
+    bottom: 0;
+    right: auto;
+    width: 216px;
+    height: 100dvh;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: 26px 14px;
+    gap: 8px;
+    border-top: 0;
+    border-right: 1px solid #E2E8F0;
+    overflow-y: auto;
+    box-shadow: 4px 0 24px rgba(15,23,42,.04);
+  }
+  .app-navigation-heading {
+    display: block;
+    padding: 12px 12px 24px;
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .app-navigation > button {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 16px;
+    height: 50px;
+    transform: none;
+  }
+  .app-navigation > button > span:last-child {
+    font-size: 14px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .app-navigation > button > span:first-child:not(:last-child) {
+    top: 13px;
+    left: 0;
+    width: 3px;
+    height: 24px;
+  }
+  #main-content { padding-bottom: 0; }
+  #main-content > div {
+    max-width: 1440px;
+    padding-bottom: 32px;
+  }
+  .home-new-reservation { width: auto; min-width: 260px; padding-right: 56px; }
+  .agenda-toolbar { flex-wrap: wrap; }
+  .agenda-toolbar > div:first-child { min-width: 240px; }
+  .agenda-filters { flex-wrap: wrap; overflow: visible; max-width: 100%; }
+  .reservation-dialog .reservation-sheet { max-width: 840px; }
+  .reservation-dialog .reservation-scroll form { max-width: none; }
+  .diverty-app-shell * { scrollbar-width: thin; scrollbar-color: #B8B2CC transparent; }
+  .diverty-app-shell ::-webkit-scrollbar { display: block !important; width: 10px; height: 10px; }
+  .diverty-app-shell ::-webkit-scrollbar-thumb {
+    background: #B8B2CC;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: 12px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .agenda-day-events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .agenda-day-events > * + * { margin-top: 0; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .diverty-app-shell button:not(:disabled), .diverty-app-shell a { cursor: pointer; }
+  .app-navigation > button:not([aria-current]):hover { background: #F1EEFF; color: #7657FF; }
+}
+
 .reservation-dialog {
   top: var(--reservation-viewport-top, 0px);
   bottom: auto;

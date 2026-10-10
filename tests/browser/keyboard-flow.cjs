@@ -80,7 +80,7 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  // The same form still fits a desktop window without the compact keyboard header.
  await page.setViewportSize({width:1280,height:900});await page.evaluate(()=>window.__viewport(900));
  await page.getByRole('button',{name:'Nueva Reserva',exact:true}).click();await modal.waitFor();
- const sheet=await modal.locator('.reservation-sheet').boundingBox();assert.ok(sheet.width<=675);assert.ok(sheet.y>=0&&sheet.y+sheet.height<=900);
+ const sheet=await modal.locator('.reservation-sheet').boundingBox();assert.ok(sheet.width>=800&&sheet.width<1280-100);assert.ok(sheet.y>=0&&sheet.y+sheet.height<=900);
  assert.equal(await modal.getByRole('button',{name:'Ocultar teclado',exact:true}).isVisible(),false);
  await modal.getByRole('heading',{name:'Nueva Reserva',exact:true}).locator('..').locator('button').last().click();
  // Fallback for browsers without VisualViewport: use dynamic viewport height.

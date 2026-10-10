@@ -2,6 +2,10 @@
 
 Aplicación de administración de Diverty, construida con React, Vite y Firebase.
 
+La misma web se adapta a computadora, tableta y teléfono, también cuando se instala desde el navegador. Desde 1024 px el menú se convierte en una barra lateral y deja libre el área inferior; en ventanas menores conserva el menú táctil inferior. En PC hay barras de desplazamiento visibles, foco de teclado, calendario operable con Enter/Espacio y formularios de reservas más amplios. Agenda muestra dos columnas de reservas por día desde 1280 px. La instalación permite orientación vertical u horizontal.
+
+`node tests/browser/responsive-flow.cjs` comprueba las siete secciones a 390, 768, 1024, 1440 y 1920 px, ausencia de desbordamiento horizontal, navegación con teclado, calendario y desplazamiento del formulario de escritorio. Usa las mismas variables `PLAYWRIGHT_MODULE`, `CHROMIUM_PATH` y `ORIGIN` que las demás pruebas; `SCREENSHOT_DIR` permite guardar capturas. Firebase está simulado. La prueba del teclado móvil sigue siendo `keyboard-flow.cjs`; queda pendiente comprobar la instalación y los teclados reales en Android/iOS.
+
 ```sh
 npm ci
 npm test
