@@ -7,7 +7,7 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
 (async()=>{
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || chromium.executablePath(),ignoreDefaultArgs:['--hide-scrollbars'],args:['--no-sandbox','--disable-dev-shm-usage']});
  try {
- const context=await browser.newContext({viewport:{width:392,height:852},timezoneId:'America/Panama'});
+ const context=await browser.newContext({viewport:{width:392,height:852},hasTouch:!!process.env.MOBILE_CAPTURE_ONLY,isMobile:!!process.env.MOBILE_CAPTURE_ONLY,timezoneId:'America/Panama'});
  await context.addInitScript(()=>{
   window.__rows={};window.__writes=[];
   const base='artifacts/diverty-oficial/public/data/';
@@ -24,7 +24,7 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
   const url=new URL(route.request().url());
   if(url.origin!==origin)return route.abort();
   
-  if(url.pathname==='/src/lib/firebase-auth.mjs')return route.fulfill({contentType:'text/javascript',body:`export const ADMIN_UID='test-admin';export const app={};export const auth={currentUser:{uid:ADMIN_UID}};export const LOGO_URL='';export const firebaseConfig={};`});
+  if(url.pathname==='/src/lib/firebase-auth.mjs')return route.fulfill({contentType:'text/javascript',body:`export const ADMIN_UID='test-admin';export const app={};export const auth={currentUser:{uid:ADMIN_UID}};export const LOGO_URL='/icon-192.png';export const firebaseConfig={};`});
   if(url.pathname.includes('firebase_auth.js'))return route.fulfill({contentType:'text/javascript',body:`export const onAuthStateChanged=(_a,next)=>{queueMicrotask(()=>next({uid:'test-admin'}));return ()=>{};};export const signOut=async()=>{};export const signInWithEmailAndPassword=async()=>{};`});
   if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(__dirname,'reservation-fixture.mjs'),'utf8').replace('({id:path.split', '({metadata:{hasPendingWrites:false,fromCache:false},id:path.split').replace('return {docs,size:', 'return {metadata:{hasPendingWrites:false,fromCache:false},docs,size:')+'\nexport const increment=value=>({__increment:value});\nexport const getDocFromServer=getDoc;export const getDocsFromServer=getDocs;' });
   return route.continue();
@@ -33,6 +33,7 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  const page=await context.newPage();const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.clock.setFixedTime(new Date('2026-10-07T15:00:00Z'));await page.goto(origin);
  await page.getByRole('button',{name:'Nueva Reserva',exact:true}).waitFor({timeout:30000});
+ if(process.env.MOBILE_CAPTURE_ONLY){await page.waitForTimeout(1000);fs.mkdirSync(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,'mobile.png')});return;}
  const nav=page.getByRole('navigation',{name:'Menú principal'});
  for(const width of (process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : [390,768,900,1024,1440,1920])) {
    await page.setViewportSize({width,height:900});
@@ -51,6 +52,7 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
    }
    await nav.getByRole('button',{name:'Inicio',exact:true}).click();
    if(width>=900){
+     await page.setViewportSize({width,height:600});
      const mainEl=page.locator('#main-content');await mainEl.evaluate(el=>el.scrollTop=0);
      const bounds=await mainEl.boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+150);
      await page.mouse.wheel(0,500);await page.waitForTimeout(500);
@@ -59,12 +61,12 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
      await page.mouse.wheel(0,10000);await page.waitForTimeout(600);
      assert.ok(await mainEl.evaluate(el=>el.scrollTop+el.clientHeight>=el.scrollHeight-2),'wheel reaches bottom');
      const hero=await page.locator('.home-hero').boundingBox(),metrics=await page.locator('.home-metrics').boundingBox();
-     assert.ok(metrics.x>=hero.x+hero.width,'desktop metrics beside greeting');
+     assert.ok(metrics.y>=hero.y+hero.height,'desktop metrics below compact greeting');assert.ok(hero.height<160,'compact desktop greeting');
      const operations=await page.locator('.home-operations').boundingBox(),followup=await page.locator('.home-followup').boundingBox();
      assert.ok(followup.x>=operations.x+operations.width,'desktop follow-up beside operations');
      assert.notEqual(await mainEl.evaluate(el=>getComputedStyle(el).scrollbarWidth),'none');
      assert.ok(await mainEl.evaluate(el=>el.offsetWidth-el.clientWidth>=10),'visible scrollbar space');
-     await mainEl.evaluate(el=>el.scrollTop=0);
+     await mainEl.evaluate(el=>el.scrollTop=0);await page.setViewportSize({width,height:900});
    }
    if(process.env.SCREENSHOT_DIR){await page.waitForTimeout(700);fs.mkdirSync(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,'home-'+width+'.png')});}
  }

@@ -27,7 +27,7 @@
 }
 
 /* La navegación cambia con el espacio disponible, incluso en PC táctiles. */
-@media (min-width: 900px) {
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
   .app-workspace { margin-left: 216px; }
   .app-navigation {
     top: 0;
@@ -122,12 +122,12 @@
   }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1280px) and (hover: hover) and (pointer: fine) {
   .agenda-day-events { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
   .agenda-day-events > * + * { margin-top: 0; }
 }
 
-@media (min-width: 900px) and (max-width: 1023px) {
+@media (min-width: 900px) and (max-width: 1023px) and (hover: hover) and (pointer: fine) {
   .app-workspace { margin-left: 168px; }
   .app-navigation { width: 168px; padding-inline: 10px; }
   .app-navigation > button { padding-inline: 10px; gap: 10px; }
@@ -250,4 +250,104 @@
   .diverty-app-shell .transition-all {
     transition-duration: 0.01ms;
   }
+}
+
+/* Panel de PC: estas reglas no se aplican a los dispositivos táctiles. */
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+  .app-workspace { margin-left: 192px; }
+  .app-navigation { width: 192px; padding: 18px 10px; gap: 5px; }
+  .app-navigation-heading { padding: 10px 12px 18px; font-size: 11px; }
+  .app-navigation > button { height: 42px; padding: 0 12px; gap: 12px; }
+  .app-navigation > button > span:last-child { font-size: 13px; }
+  .app-navigation > button > svg { width: 19px; height: 19px; }
+  .app-navigation > button > span:first-child:not(:last-child) { top: 10px; height: 22px; }
+  .app-workspace > header { padding: 8px 20px; box-shadow: none; flex-shrink: 0; }
+  .app-workspace > header h1 { font-size: 17px; }
+  #main-content { scroll-behavior: auto; scrollbar-width: auto; overflow-y: scroll; }
+  #main-content > div { max-width: 1600px; padding: 20px; }
+  #main-content :is(h2, h3).text-3xl,
+  #main-content :is(h2, h3).text-4xl,
+  #main-content :is(h2, h3).text-5xl { font-size: 24px; line-height: 1.2; }
+  #main-content h1.text-5xl { font-size: 36px; line-height: 1.1; }
+  #main-content button[class*="py-"] { padding-top: 8px; padding-bottom: 8px; }
+  #main-content :is(button, input, select, textarea) { font-size: 13px; }
+  #main-content input:not([type=checkbox]):not([type=radio]):not([type=file]),
+  #main-content select { min-height: 38px; }
+  #main-content > .home-dashboard {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 14px;
+    padding: 20px;
+  }
+  .home-dashboard .home-hero {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 22px;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 2px 8px rgba(15,23,42,.03);
+  }
+  .home-hero > .absolute { display: none; }
+  .home-hero > .relative:not(button) { flex: 1; gap: 0; }
+  .home-dashboard .home-hero h1 { font-size: 24px; color: #0F172A; margin-bottom: 4px; }
+  .home-hero p { color: #64748B; font-size: 12px; }
+  .home-hero .home-new-reservation { margin-top: 0; min-width: 200px; padding: 11px 42px 11px 16px; border-radius: 10px; font-size: 13px; box-shadow: none; }
+  .home-dashboard .home-metrics { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .home-dashboard .home-metrics > button > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid #E2E8F0;
+    box-shadow: none;
+  }
+  .home-metrics > button > div > div:nth-child(2) { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+  .home-metrics > button > div > div:nth-child(2) > svg { display: none; }
+  .home-dashboard .home-metrics > button > div > p:not(:last-child) { grid-column: 1; grid-row: 1; margin: 0; font-size: 11px; letter-spacing: .03em; }
+  .home-dashboard .home-metrics > button > div > p:last-child { grid-column: 1; grid-row: 2; margin: 0; font-size: 24px; }
+  .home-dashboard .home-actions { grid-column: 1 / 9; grid-row: 3; border-radius: 12px; padding: 6px; box-shadow: none; }
+  .home-actions > button { border-radius: 9px; padding: 8px 12px; }
+  .home-actions > button > div:not(.absolute) { padding: 5px; border-radius: 8px; }
+  .home-dashboard .home-christmas { grid-column: 9 / -1; grid-row: 3; padding: 10px 14px; border-radius: 12px; box-shadow: none; }
+  .home-christmas p.text-\[17px\] { font-size: 14px; }
+  .home-dashboard .home-periods { grid-row: 4; border-radius: 12px; box-shadow: none; }
+  .home-periods > button { padding-block: 9px; }
+  .home-dashboard .home-work-grid { grid-row: 5; gap: 18px; grid-template-columns: minmax(280px, .85fr) minmax(0, 1.65fr); }
+  .home-operations { border-radius: 14px; box-shadow: none; border-color: #E2E8F0; }
+  .home-operations > div { padding: 16px; }
+  .home-operations h3 { font-size: 18px; }
+  .home-operations h4 { font-size: 18px; }
+  .home-operations .grid > div { padding: 9px; border-radius: 9px; }
+  .home-followup { gap: 16px; }
+  .home-followup [data-reservation-id] { border-radius: 14px; box-shadow: none; }
+  .home-followup [data-reservation-id] > div.relative { padding: 16px; }
+  .home-followup h3.text-xl, .home-followup h3.sm\:text-2xl { font-size: 18px; }
+  .home-followup .cursor-pointer.rounded-\[22px\] { padding: 12px 16px; border-radius: 12px; box-shadow: none; }
+  .reservation-dialog .reservation-sheet { max-width: 900px; border-radius: 18px; }
+  .reservation-dialog .reservation-header { padding: 14px 22px; }
+  .reservation-dialog .reservation-header h3 { font-size: 20px; }
+  .reservation-dialog .reservation-scroll { padding: 20px; }
+}
+
+@media (min-width: 900px) and (max-width: 1099px) and (hover: hover) and (pointer: fine) {
+  .app-workspace { margin-left: 168px; }
+  .app-navigation { width: 168px; }
+  .home-dashboard .home-work-grid { grid-template-columns: minmax(260px, 1fr) minmax(0, 1.3fr); }
+  .home-metrics > button > div > div:nth-child(2) { display: none; }
+}
+
+/* Mantener en móvil el orden y espaciado del Inicio publicado. */
+@media (max-width: 899px), (hover: none), (pointer: coarse) {
+  .home-work-grid, .home-followup { display: contents; }
+  .home-operations, .home-followup > div { margin-top: 16px; }
+}
+@media (hover: none), (pointer: coarse) {
+  .diverty-app-shell * { scrollbar-width: none; }
+  .diverty-app-shell ::-webkit-scrollbar { display: none; }
 }
