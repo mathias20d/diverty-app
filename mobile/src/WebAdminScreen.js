@@ -115,7 +115,7 @@ export default function WebAdminScreen({onClose}){
     <Action title={editor?'Cerrar edición':view==='home'?'Volver al administrador':'Volver a Administrar página web'} secondary disabled={busy} onPress={back}/>
     <Text style={ui.heading}>{editor?`${editor.original?'Editar':'Nuevo'} ${labels[view]||'ajustes'}`:view==='home'?'Administrar página web':row?.[1]}</Text>
     {data.loading?<Text style={ui.muted}>Actualizando contenido…</Text>:null}
-    {data.loadError?<View style={ui.card}><Text accessibilityRole="alert" style={ui.error}>No se pudo actualizar parte del contenido. Tus datos y lo que estás escribiendo se conservan.</Text><Action title="Reintentar" disabled={busy||data.loading} onPress={()=>data.refresh()}/></View>:null}
+    {data.loadError?<View style={ui.card}><Text accessibilityRole="alert" style={ui.error}>{data.loadErrorMessage||'No se pudo actualizar parte del contenido. Tus datos y lo que estás escribiendo se conservan.'}</Text><Action title="Reintentar" disabled={busy||data.loading} onPress={()=>data.refresh()}/></View>:null}
     {error?<Text accessibilityRole="alert" style={ui.error}>{error}</Text>:null}{message?<Text accessibilityRole="alert" style={ui.success}>{message}</Text>:null}
     {editor&&form?<View style={ui.card}>
       {view==='categories'?<>{field('nombre','Nombre del catálogo')}{field('icono','Icono')}{image('imagen','Imagen del catálogo')}{choice('visibilidad','Visibilidad',[['activo','Activo'],['oculto','Oculto'],['temporada','Temporada']])}{dates}</>:null}

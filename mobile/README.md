@@ -178,3 +178,10 @@ Detalle de reserva → Facturas y cotizaciones → Contrato genera y comparte el
 Usa numeroContrato y configuracion/contador_contrato con el prefijo CON, y conserva la numeración al repetir. Si el contador no está preparado, exige prepararlo desde la web, como los otros documentos. Las condiciones no se reformularon ni se incorporaron cláusulas nuevas. La disposición de PDF nativo adapta la plantilla al motor de impresión; aún no se afirma equivalencia visual exacta con toda la web. Contratos de proveedores y Santa con rutas anteriores siguen pendientes.
 
 57 pruebas nativas y 61 web; muestra A4 renderizada y revisada visualmente, y exportaciones Android/iOS. No se escribieron datos de producción. Los avisos de Firebase/consola reportados por el usuario siguen pendientes del mensaje exacto para diagnóstico; no se ocultaron ni se consideran resueltos. Comprueba Versión 0.7.0 al reiniciar Expo.
+
+
+## Conexión Firebase — 0.7.1
+
+Firestore se inicializa con el transporte oficial experimentalForceLongPolling y autodetección desactivada para evitar problemas de respuestas streaming en redes móviles/Expo. El proyecto, autenticación y datos oficiales se conservan. Administrar página web espera un aviso de web_sync confirmado por servidor antes de cargar configuración; una instantánea de caché no inicia getDoc ni habilita guardados. Al desconectar conserva los datos y muestra el estado; al reconectar recupera la carga automáticamente. Errores de permisos y de conexión muestran instrucciones distintas.
+
+La prueba simula arranque offline, reconexión, desconexión con datos ya cargados, bloqueo de escrituras y rechazo de permisos. 59 pruebas nativas y 61 web; exportaciones Android/iOS. La conectividad del teléfono real debe comprobarse después de instalar la actualización: detén Metro, cierra Expo Go completamente, reinicia con npx.cmd expo start --lan --clear y verifica Versión 0.7.1. Si persiste un error, conserva el mensaje completo; no se modificaron reglas ni se ocultaron errores inesperados.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { collection, doc, getDoc, getDocs, increment, onSnapshot, writeBatch } from 'firebase/firestore';
+import {firestoreErrorMessage} from './firebase-errors.mjs';
 
 export const WEB_SECTIONS = ['categorias_web', 'catalogo_web', 'campanas_web', 'temas_web', 'galeria_web', 'cupones_web', 'config_web'];
 export const VIEW_SECTIONS = {
@@ -27,6 +28,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
   const [data, setData] = useState(() => sessionCaches.get(db)?.get(`${appId}\0${uid}`)?.data || emptyData());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState('');
   const controllerRef = useRef(null);
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
     setData(cache.data); setLoading(true); setLoadError(false);
     const col = name => collection(db, 'artifacts', appId, 'public', 'data', name);
     const item = (name, id) => doc(db, 'artifacts', appId, 'public', 'data', name, id);
-    const controller = { db, appId, uid, active: true, seen: null, started: false, failed: new Set(), syncFailed: false, tail: Promise.resolve() };
+    const controller = { db, appId, uid, active: true, connected:false, seen: null, started: false, failed: new Set(), syncFailed: false, tail: Promise.resolve() };
     controllerRef.current = controller;
     const reportError = () => { if (controller.active) setLoadError(controller.syncFailed || controller.failed.size > 0); };
     // Serializa escrituras y avisos de sincronización. Una respuesta antigua no
@@ -80,6 +82,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
         } catch (error) {
           if (!controller.active) return;
           console.error('WebAdmin load error', name, error);
+          setLoadErrorMessage(firestoreErrorMessage(error));
           controller.failed.add(name);
         }
       }));
@@ -91,6 +94,13 @@ export default function useWebAdminData({ db, appId, currentUser }) {
       controller.syncFailed = false;
       controller.unsubscribe = onSnapshot(item('config_web', 'web_sync'), { includeMetadataChanges: true }, snapshot => {
         if (!controller.active || snapshot.metadata.hasPendingWrites) return;
+        // A cache snapshot does not prove that absent configuration documents
+        // exist on the server. Wait for connectivity instead of loading defaults.
+        if(snapshot.metadata.fromCache){
+          controller.connected=false;controller.syncFailed=true;
+          setLoading(false);setLoadErrorMessage('Esperando conexión con Firebase. Los datos guardados se conservan; la edición se habilitará al conectar.');reportError();return;
+        }
+        controller.connected=true;controller.syncFailed=false;
         const next = snapshot.exists() ? snapshot.data() : {};
         enqueue(async () => {
           if (!controller.started) {
@@ -99,7 +109,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
             const missing = WEB_SECTIONS.filter(name => changed.includes(name) || cache.versions[name] !== sectionVersion(next, name));
             cache.sync = next;
             if (missing.length) await load(missing);
-            else setLoading(false);
+            else {setLoading(false);reportError();}
             return;
           }
           // Un aviso pudo llegar antes de terminar un guardado que ya contamos.
@@ -108,22 +118,22 @@ export default function useWebAdminData({ db, appId, currentUser }) {
           controller.seen = next; cache.sync = next;
           const retry = snapshot.metadata.fromCache ? [] : [...controller.failed];
           if (names.length || retry.length) await load([...new Set([...names, ...retry])]);
+          else reportError();
         });
       }, error => {
         if (!controller.active) return;
         console.error('WebAdmin sync error', error);
-        controller.syncFailed = true; reportError();
-        if (!controller.started) {
-          controller.started = true;
-          enqueue(() => load(WEB_SECTIONS));
-        }
+        controller.connected=false;controller.syncFailed = true;
+        setLoading(false);setLoadErrorMessage(firestoreErrorMessage(error));reportError();
       });
     };
     controller.refresh = names => enqueue(async () => {
       if (controller.syncFailed) startSync();
+      if(!controller.connected)return;
       await load(names);
     });
     controller.commit = (mutations, names) => enqueue(async () => {
+      if(!controller.connected||controller.syncFailed||controller.failed.size)throw new Error('WEB_OFFLINE');
       const dirty = [...new Set(names)];
       const batch = writeBatch(db); mutations(batch);
       const versions = Object.fromEntries(dirty.map(name => [name, increment(1)]));
@@ -154,5 +164,5 @@ export default function useWebAdminData({ db, appId, currentUser }) {
   return { categories: data.categorias_web, packages: data.catalogo_web, campaigns: data.campanas_web,
     themes: data.temas_web, gallery: data.galeria_web, coupons: data.cupones_web,
     themeConfig: data.config_web.theme, settings: data.config_web.settings,
-    setCategories, setCampaigns, loading, loadError, refresh, commitMutation };
+    setCategories, setCampaigns, loading, loadError, loadErrorMessage, refresh, commitMutation };
 }
