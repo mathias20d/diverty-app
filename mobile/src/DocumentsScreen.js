@@ -9,6 +9,8 @@ import { Action, ui } from './native-ui';
 import { money } from './workspace-data.mjs';
 import { companyDetails, DEFAULT_COMPANY, documentData, documentHTML, ensureDocumentNumber } from './documents.mjs';
 import useScreenBack from './useScreenBack';
+import {documentReadiness} from './document-readiness.mjs';
+import {firestoreErrorMessage} from './firebase-errors.mjs';
 const labels = {
   nombre: 'Nombre de la empresa',
   telefono: 'Teléfono de la empresa',
@@ -45,6 +47,7 @@ export default function DocumentsScreen({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [current, setCurrent] = useState(event);
+  const [savedServicesOnly,setSavedServicesOnly]=useState(false);
   const key = `diverty-document-company:${auth.currentUser.uid}`,
     lock = useRef(false);
   useScreenBack(onClose, busy);
@@ -76,7 +79,7 @@ export default function DocumentsScreen({
   }, [retry]);
   let summary;
   try {
-    summary = documentData(current, type, catalog);
+    summary = documentData(current, type, savedServicesOnly?[]:catalog);
   } catch {
     summary = null;
   }
@@ -118,7 +121,7 @@ export default function DocumentsScreen({
         ...saved,
         id: event.id
       });
-      const html = documentHTML(saved, type, company, catalog);
+      const html = documentHTML(saved, type, company, savedServicesOnly?[]:catalog);
       setDoc(doc(db, ...DATA_PATH, 'configuracion', 'syncBus'), {
         entityType: 'evento',
         entityId: event.id,
@@ -142,16 +145,17 @@ export default function DocumentsScreen({
         html
       });
     } catch (e) {
-      setError(messages[e.message] || (e.message === 'SHARING_UNAVAILABLE' ? 'Este dispositivo no permite compartir archivos. Usa Vista previa / imprimir.' : 'No se pudo abrir el documento. Reintenta: se conserva el número ya asignado.'));
+      setError(messages[e.message] || (['unavailable','permission-denied','unauthenticated','deadline-exceeded'].includes(e.code)?firestoreErrorMessage(e):e.message === 'SHARING_UNAVAILABLE' ? 'Este dispositivo no permite compartir archivos. Usa Vista previa / imprimir.' : 'No se pudo abrir el documento. Reintenta: se conserva el número ya asignado.'));
     } finally {
       lock.current = false;
       setBusy(false);
     }
   }
-  const disabled = busy || !ready || !settings || editing || !catalogReady || !!catalogError || !summary;
+  const readiness=documentReadiness({busy,ready,settings,editing,catalogReady,catalogError,summary,savedServicesOnly});
+  const disabled=readiness.disabled;
   return <KeyboardAvoidingView style={{
     flex: 1
-  }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView style={ui.page} contentContainerStyle={ui.scroll} keyboardShouldPersistTaps="handled"><Text style={ui.heading}>Documentos de la reserva</Text><Text style={ui.body}>{current.cliente} · {current.fecha}</Text><View style={ui.row}>{['factura', 'cotizacion', 'contrato'].map(value => <View key={value} style={{
+  }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView style={ui.page} contentContainerStyle={ui.scroll} keyboardShouldPersistTaps="handled"><Text style={ui.heading}>Documentos de la reserva</Text><Text style={ui.body}>{current.cliente} · {current.fecha}</Text><View style={ui.card}><Text style={ui.title}>Preparación del PDF</Text><Text accessibilityRole="alert" style={ui.body}>{readiness.message}</Text>{ready&&(!settings||editing)?<><Text style={ui.muted}>Empresa: {company.nombre||'Sin nombre'}. Puedes completar los datos fiscales y bancarios en el formulario de abajo.</Text><Action title="Guardar datos y habilitar PDF" disabled={busy||!company.nombre?.trim()} onPress={saveSettings}/></>:null}{!savedServicesOnly&&(!catalogReady||catalogError)?<Action title="Usar servicios guardados en la reserva" secondary disabled={busy} onPress={()=>setSavedServicesOnly(true)}/>:null}</View><View style={ui.row}>{['factura', 'cotizacion', 'contrato'].map(value => <View key={value} style={{
           flex: 1
         }}><Action title={value === 'factura' ? 'Factura' : value === 'contrato' ? 'Contrato' : 'Cotización'} secondary={type !== value} disabled={busy} onPress={() => setType(value)} /></View>)}</View>{summary ? <View style={ui.card}><Text style={ui.title}>{summary.title}</Text><Text style={ui.muted}>{summary.number}</Text>{summary.lines.map((line, index) => <Text key={index} style={ui.body}>{line.name} · {line.quantity}{line.hours ? ` · ${line.hours} h` : ''} · {money(line.price)}</Text>)}<Text style={ui.title}>Total: {money(summary.total)}</Text>{type !== 'cotizacion' ? <Text style={ui.body}>Abono: {money(summary.received)} · Saldo: {money(summary.balance)}</Text> : <Text style={ui.muted}>Vigencia: {summary.validity} días</Text>}</View> : <Text style={ui.error}>Los montos o cantidades de la reserva requieren revisión.</Text>}{catalogError ? <View><Text style={ui.error}>{catalogError}</Text><Action title="Actualizar catálogo" disabled={busy} onPress={() => setRetry(value => value + 1)} /></View> : null}<Text style={ui.muted}>Se usan solo los servicios reservados. Generar conserva el número oficial; repetir no crea otro número de documento. El PDF usa los datos actualizados al generar.</Text>{editing ? <View style={ui.card}><Text style={ui.title}>Datos de la empresa para PDF</Text><Text style={ui.muted}>Revisa estos datos antes de generar. Los ajustes de la app web se guardan en el navegador y no se copian automáticamente. Estos datos se guardan en este teléfono.</Text>{Object.entries(labels).map(([field, label]) => <View key={field}><Text style={ui.body}>{label}</Text><TextInput accessibilityLabel={label} value={company[field]} onChangeText={value => setCompany(current => ({
             ...current,

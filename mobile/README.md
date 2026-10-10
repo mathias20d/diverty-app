@@ -185,3 +185,12 @@ Usa numeroContrato y configuracion/contador_contrato con el prefijo CON, y conse
 Firestore se inicializa con el transporte oficial experimentalForceLongPolling y autodetección desactivada para evitar problemas de respuestas streaming en redes móviles/Expo. El proyecto, autenticación y datos oficiales se conservan. Administrar página web espera un aviso de web_sync confirmado por servidor antes de cargar configuración; una instantánea de caché no inicia getDoc ni habilita guardados. Al desconectar conserva los datos y muestra el estado; al reconectar recupera la carga automáticamente. Errores de permisos y de conexión muestran instrucciones distintas.
 
 La prueba simula arranque offline, reconexión, desconexión con datos ya cargados, bloqueo de escrituras y rechazo de permisos. 59 pruebas nativas y 61 web; exportaciones Android/iOS. La conectividad del teléfono real debe comprobarse después de instalar la actualización: detén Metro, cierra Expo Go completamente, reinicia con npx.cmd expo start --lan --clear y verifica Versión 0.7.1. Si persiste un error, conserva el mensaje completo; no se modificaron reglas ni se ocultaron errores inesperados.
+
+
+## PDF desactivado — 0.7.2
+
+Documentos de la reserva muestra Preparación del PDF con el motivo del bloqueo. En el primer uso, Guardar datos y habilitar PDF guarda explícitamente la empresa mostrada en el teléfono; los datos fiscales y bancarios se pueden completar en el formulario. Editar sin guardar mantiene los botones de generación bloqueados.
+
+Si el catálogo no carga, Usar servicios guardados en la reserva permite generar con el desglose de esa reserva, sin completar descripciones ni duraciones desde el catálogo. Esta elección no omite la revisión de importes, los datos de empresa ni la numeración oficial. Un error de conexión o permisos durante la numeración muestra el diagnóstico de Firebase.
+
+61 pruebas nativas y 61 web; se verificó la generación desde el primer guardado de empresa y con catálogo no disponible, manteniendo el mismo número oficial. Exportaciones Android/iOS. Reinicia Expo y verifica Versión 0.7.2 antes de probar Compartir PDF.
