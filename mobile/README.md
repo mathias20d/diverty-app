@@ -223,3 +223,11 @@ Solicitud Web → Asignar Santa → Aceptar reserva ya procesa las solicitudes n
 El destino de la escritura conserva los mismos campos de la confirmación web: Confirmado, esNavidad, recursoNavidad y santaAsignado, con incremento de revisión. Lee datos actuales en la transacción y usa las proyecciones migradas para disponibilidad, estado del cliente, portal y booking_control. La validación central sigue usando exclusivamente confirmWebBooking cuando está activa para esa reserva, sin recurrir a confirmación local si falla. La ruta anterior utiliza consulta y transacción como el administrador existente; no introduce una nueva garantía de asignación de servidor.
 
 73 pruebas nativas y 61 web. La prueba integrada verifica conflicto, Santa deshabilitado, aceptación con otro Santa, conservación del abono, proyecciones y bloqueo de repetición. Pruebas con datos ficticios; sin escrituras en producción. Pendiente comprobar aceptación en Expo Go con una solicitud real que el administrador desee aceptar y equivalencia visual.
+
+## Seguimiento de eventos normales — 0.11.0
+
+Detalle de reserva → Seguimiento del evento incorpora la secuencia del administrador web: Pendiente → Confirmado → Preparando → En camino → En el evento → Completado. Conserva sus acciones Confirmar reserva, Iniciar preparación, Salir al evento, Ya llegamos y Marcar evento realizado, y sus marcas confirmedAt, preparingAt, enCaminoAt, enEventoAt, completedAt y estadoOperativoActualizadoAt.
+
+Cancelar reserva requiere confirmación, guarda cancelledAt y libera la disponibilidad pública mediante la transacción migrada. Conserva total, abonos, pagosItems, gastos y proveedores. Las escrituras detectan revisiones de otros dispositivos; repetir una etapa ya confirmada no incrementa revisión ni marca de tiempo. Los botones se bloquean durante actualización, carga, error o datos de caché. Solicitudes web, cotizaciones, Navidad y reservas archivadas conservan sus flujos propios.
+
+75 pruebas nativas y 61 web. La prueba integrada recorre las etapas, comprueba el historial intacto, estado del portal y cancelación con eliminación de disponibilidad. No se escribieron datos reales. Queda pendiente revisar el seguimiento visual en Expo Go y comparar la disposición completa con la web.
