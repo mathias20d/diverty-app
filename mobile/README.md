@@ -194,3 +194,9 @@ Documentos de la reserva muestra Preparación del PDF con el motivo del bloqueo.
 Si el catálogo no carga, Usar servicios guardados en la reserva permite generar con el desglose de esa reserva, sin completar descripciones ni duraciones desde el catálogo. Esta elección no omite la revisión de importes, los datos de empresa ni la numeración oficial. Un error de conexión o permisos durante la numeración muestra el diagnóstico de Firebase.
 
 61 pruebas nativas y 61 web; se verificó la generación desde el primer guardado de empresa y con catálogo no disponible, manteniendo el mismo número oficial. Exportaciones Android/iOS. Reinicia Expo y verifica Versión 0.7.2 antes de probar Compartir PDF.
+
+## Contratos de proveedores — 0.8.0
+
+Proveedores → Contrato marco y Reserva → Proveedores del evento → Subcontrato del evento permiten compartir PDF o imprimir. Las doce cláusulas se copian literalmente de la web. El subcontrato agrupa únicamente los servicios asignados al proveedor y sus costos guardados. Ambos usan el contador oficial contador_subcontrato: el marco guarda numeroSubcontrato en el proveedor; el evento guarda numeroSubcontratoEvento en sus asignaciones. Repetir conserva el número; importes o contadores inválidos bloquean la generación. Los datos de empresa deben guardarse antes en Ajustes o Facturas y cotizaciones.
+
+64 pruebas nativas y 61 web, exportaciones Android/iOS y muestra A4 revisada. No se escribieron datos de producción. La disposición de impresión adapta la web; equivalencia visual exacta de toda la app y rutas anteriores de Santa siguen pendientes. La generación física en Expo Go necesita verificación en el teléfono.
