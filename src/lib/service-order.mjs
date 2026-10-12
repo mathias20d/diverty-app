@@ -23,7 +23,8 @@ export function serviceOrderData(event = {}, catalog = [], selected = event.serv
     return {
       name: text(line.nombre), quantity,
       unit: mode === 'hora' ? 'horas' : mode === 'nino' ? 'niños' : mode === 'unidad' ? text(line.unidadEtiqueta || match.unidadEtiqueta) || 'unidades' : 'servicio(s)',
-      duration: hours > 0 ? `${hours} ${hours === 1 ? 'hora' : 'horas'}` : 'Según reserva',
+      duration: hours > 0 ? `${hours} ${hours === 1 ? 'hora' : 'horas'}` : mode === 'unidad' ? 'No aplica' : '—',
+      missingDuration: hours <= 0 && mode !== 'unidad',
       description: [...new Map(details.map(value => [normalized(value), value])).values()].join('\n'),
     };
   });

@@ -13,6 +13,7 @@ export const unitPrice = line => line?.precioOriginal != null && line.precioOrig
 // Old lines are left untouched until the user edits their quantity or price.
 export function editReservationLine(line, patch) {
   const next = {...line, ...patch};
+  if ('duracionHoras' in patch) next.duracionDefinidaManualmente = true;
   if ('tipoCobro' in patch) next.isHourly = patch.tipoCobro === 'hora';
   const mode = billingMode(next);
   const quantity = Math.max(0, amount(next.cantidad));

@@ -10,6 +10,18 @@ test('the package total repairs the first-activity hour in historical invoice li
   assert.equal(serviceDurationHours({...amigo,incluye:undefined},{serviciosLista:amigo.incluye.join('\n')}),2);
   const repaired=editReservationLine(amigo,{cantidad:1});assert.equal(repaired.duracionHoras,2);assert.equal(repaired.precio,95);assert.equal(amigo.duracionHoras,1,'rendering and edits cannot mutate the old source record');
 });
+
+test('custom duration edits survive stale descriptions, pricing and quantity changes',()=>{
+  const line={nombre:'Plan a medida',cantidad:1,precio:150,descripcion:'Duración total 3 horas'};
+  const edited=editReservationLine(line,{duracionHoras:1.5});
+  assert.equal(serviceDurationHours(edited),1.5);assert.equal(edited.precio,150);
+  assert.equal(editReservationLine(edited,{cantidad:2}).duracionHoras,1.5);
+  assert.equal(editReservationLine(edited,{precioOriginal:175}).duracionHoras,1.5);
+  assert.equal(serviceDurationHours(editReservationLine(edited,{duracionHoras:''})),0);
+  assert.equal(serviceDurationHours({duracion:'45 minutos'}),.75);
+  assert.equal(serviceDurationHours({descripcion:'Actividad 1 hora, duración total: 90 minutos'}),1.5);
+  assert.equal(serviceDurationHours({duracion:'1 hora y 30 minutos'}),1.5);
+});
 test('booked totals win over a changed catalog and package quantities are not hours',()=>{
   assert.equal(serviceDurationHours({...amigo,cantidad:2},{duracionTexto:'3 horas'}),2);
   assert.equal(serviceDurationHours({duracionHoras:4,descripcion:'Animación 1 hora'}),4);

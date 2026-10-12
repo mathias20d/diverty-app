@@ -20,11 +20,20 @@ test('order data preserves fractional hours, unit quantities and package duratio
     ], subcontratos: [{ nombre: 'Animador de prueba', servicio: 'Animación', costo: 90, pagado: false }],
   };
   const before = structuredClone(event), data = serviceOrderData(event);
-  assert.deepEqual(data.services.map(line => [line.quantity, line.unit, line.duration]), [[1,'servicio(s)','2 horas'],[0.5,'horas','0.5 horas'],[200,'hot dog','Según reserva'],[25,'niños','Según reserva']]);
+  assert.deepEqual(data.services.map(line => [line.quantity, line.unit, line.duration]), [[1,'servicio(s)','2 horas'],[0.5,'horas','0.5 horas'],[200,'hot dog','No aplica'],[25,'niños','—']]);
+  assert.equal(data.services[3].missingDuration,true);
   assert.deepEqual(data.staff, [{ name: 'Animador de prueba', role: 'Animación' }]);
   assert.equal(data.services[0].description, 'Juegos\nGloboflexia');
   assert.doesNotMatch(JSON.stringify(data), /precio|costo|abono|gastos|Dato interno|pagado/);
   assert.deepEqual(event, before);
+});
+
+test('old orders resolve catalog duration; custom durations win and no duration is invented', () => {
+  const event={serviciosSeleccionados:[{id:'show',nombre:'Show infantil',cantidad:1},{nombre:'Plan a medida',cantidad:3,duracionHoras:1.5,duracionDefinidaManualmente:true,descripcion:'Duración total: 4 horas'},{nombre:'Servicio sin duración'}]};
+  const data=serviceOrderData(event,[{id:'show',nombre:'Show infantil',serviciosLista:'Duración: 45 minutos'}]);
+  assert.deepEqual(data.services.map(s=>s.duration),['0.75 horas','1.5 horas','—']);
+  assert.deepEqual(data.services.map(s=>s.missingDuration),[false,false,true]);
+  assert.doesNotMatch(JSON.stringify(data),/Según reserva/);
 });
 test('historical reservations and missing staff remain usable, while broken lines are omitted', () => {
   assert.equal(serviceOrderData({ servicio: 'Animación infantil' }).services[0].name, 'Animación infantil');
