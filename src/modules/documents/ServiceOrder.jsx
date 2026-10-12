@@ -55,7 +55,7 @@ export default function ServiceOrder({ event, services, catalog, company, logoUr
       <div className="order-reference">Referencia de la reserva<strong>{order.reference}</strong><p>Emisión: {emissionDate}</p></div>
     </div>
     <h1>ORDEN DE SERVICIO</h1>
-    <p className="order-subtitle">Entrega al animador o payaso. Completar y firmar al finalizar el evento.</p>
+    <p className="order-subtitle">Entrega al personal responsable. Completar y firmar al finalizar el evento.</p>
     <section className="service-order-block"><h2>Datos del cliente y del evento</h2><div className="order-details">
       <p className="order-full"><span className="order-label">Cliente:</span>{order.client || 'Por completar'}</p>
       <p><span className="order-label">Celular:</span>{order.phone || 'Por completar'}</p>
@@ -67,7 +67,7 @@ export default function ServiceOrder({ event, services, catalog, company, logoUr
     </div></section>
     <section className="service-order-block"><h2>Personal responsable</h2>
       {order.staff.map((person,index)=><div className="order-staff-row" key={index}><strong>{person.name}</strong><span>{person.role}</span></div>)}
-      <p style={{marginTop:8}}>Nombre del animador / payaso que realiza el servicio:</p><div className="order-writing-line"/>
+      {!order.staff.length && <><p style={{marginTop:8}}>Nombre del animador / payaso / pintacaritas / encargado:</p><div className="order-writing-line"/></>}
       <div className="order-times"><span>Hora real de inicio: ______________</span><span>Hora real de fin: ______________</span></div>
     </section>
     <section style={{marginBottom:12}}><h2>Servicios reservados</h2><table aria-label="Servicios de la orden"><thead><tr><th style={{width:'58%'}}>Servicio / actividad</th><th style={{width:'22%'}}>Cantidad</th><th style={{width:'20%'}}>Duración</th></tr></thead><tbody>
@@ -80,7 +80,7 @@ export default function ServiceOrder({ event, services, catalog, company, logoUr
     </section>
     <section className="service-order-block"><h2>Observaciones del cliente</h2><div className="order-writing-line"/><div className="order-writing-line"/></section>
     <section className="service-order-block"><h2>Constancia y firmas</h2><p>Dejo constancia de la realización del servicio indicado y de la evaluación registrada en esta orden.</p>
-      <div className="service-order-signatures"><div><div className="order-signature-line"/><strong>Firma del cliente / responsable del evento</strong><p>Nombre de quien firma:</p><div className="order-signature-name"/></div><div><div className="order-signature-line"/><strong>Firma del animador / payaso</strong><p>Fecha de firma: ____________________</p></div></div>
+      <div className="service-order-signatures"><div><div className="order-signature-line"/><strong>Firma del cliente / responsable del evento</strong><p>Nombre de quien firma:</p><div className="order-signature-name"/></div><div><div className="order-signature-line"/><strong>Firma del personal responsable</strong><p>Fecha de firma: ____________________</p></div></div>
     </section>
     <p className="order-footer">Conservar la orden firmada como constancia del servicio y de la opinión del cliente.</p>
   </div>;

@@ -19,7 +19,7 @@ export function serviceOrderData(event = {}, catalog = [], selected = event.serv
     const mode = metadata.tipoCobro === 'nino' ? 'nino' : billingMode(metadata), quantity = positive(line.cantidad);
     const hours = mode === 'hora' ? quantity : serviceDurationHours(line, match);
     const details = [line.descripcion, ...(Array.isArray(line.incluye) ? line.incluye : []), line.serviciosLista]
-      .flatMap(value => text(value).split(/\r?\n/)).map(value => value.trim()).filter(Boolean);
+      .flatMap(value => text(value).split(/\r?\n/)).map(value => value.replace(/^[•\-–—*]\s*/, '').trim()).filter(Boolean);
     return {
       name: text(line.nombre), quantity,
       unit: mode === 'hora' ? 'horas' : mode === 'nino' ? 'niños' : mode === 'unidad' ? text(line.unidadEtiqueta || match.unidadEtiqueta) || 'unidades' : 'servicio(s)',
@@ -27,9 +27,11 @@ export function serviceOrderData(event = {}, catalog = [], selected = event.serv
       description: [...new Map(details.map(value => [normalized(value), value])).values()].join('\n'),
     };
   });
-  const staff = (Array.isArray(event.subcontratos) ? event.subcontratos : []).filter(item => item && text(item.nombre)).map(item => ({
-    name: text(item.nombre), role: text(item.servicio || item.especialidad || item.rol) || 'Personal asignado',
-  }));
+  const people = [...(Array.isArray(event.personalResponsable) ? event.personalResponsable : []), ...(Array.isArray(event.subcontratos) ? event.subcontratos : [])];
+  const staff = [...new Map(people.filter(item => item && text(item.nombre)).map(item => {
+    const person = { name: text(item.nombre), role: text(item.rol || item.servicio || item.especialidad) || 'Personal asignado' };
+    return [`${normalized(person.name)}|${normalized(person.role)}`, person];
+  })).values()];
   return {
     reference: serviceOrderReference(event), client: text(event.cliente || event.nombre), phone: text(event.telefono),
     date: text(event.fecha), time: text(event.hora), place: text(event.ubicacion),

@@ -39,3 +39,12 @@ test('the sharing message describes a paper service order instead of an invoice 
   assert.match(message, /firma y la calificación/);
   assert.doesNotMatch(message, /factura|saldo|abono|100/);
 });
+
+test('named staff do not need supplier costs and repeated assignments do not print twice', () => {
+  const event = { personalResponsable:[{nombre:'Ana',rol:'Animador(a)'},{nombre:'Luis',rol:'Payaso(a)'},{nombre:'María',rol:'Pintacaritas'},{nombre:'Eva',rol:'Encargado del servicio infantil'},{nombre:''}],subcontratos:[{nombre:'Ana',servicio:'Animador(a)',costo:50}] };
+  assert.equal(serviceOrderData(event).staff.length,4);
+  assert.deepEqual(serviceOrderData(event).staff[2],{name:'María',role:'Pintacaritas'});
+  assert.doesNotMatch(JSON.stringify(serviceOrderData(event)),/costo/);
+  const data = serviceOrderData({serviciosSeleccionados:[{nombre:'Plan',descripcion:'Todo lo que incluye:\n• Juegos\n• Música',incluye:['Juegos','Música']}]});
+  assert.equal(data.services[0].description,'Todo lo que incluye:\nJuegos\nMúsica');
+});

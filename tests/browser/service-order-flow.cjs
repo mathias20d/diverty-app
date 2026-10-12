@@ -28,7 +28,7 @@ const library = process.env.PDF_LIBRARY_PATH;
           serviciosSeleccionados: [
             { nombre: 'Animación infantil', cantidad: 1, duracionHoras: 2, precio: 125, descripcion: 'Juegos, globoflexia y acompañamiento del cumpleaños.' },
             { nombre: 'Pintacaritas', cantidad: 0.5, tipoCobro: 'hora', precio: 25 },
-          ], subcontratos: [
+          ], personalResponsable: [{nombre:'Pintacaritas de ejemplo',rol:'Pintacaritas'}], subcontratos: [
             { nombre: 'Animador de ejemplo', servicio: 'Animación', costo: 60 },
             { nombre: 'Payaso de ejemplo', servicio: 'Payaso', costo: 30 },
           ], costosSeparados: true,
@@ -59,7 +59,7 @@ const library = process.env.PDF_LIBRARY_PATH;
     await page.getByRole('heading', { name: 'ORDEN DE SERVICIO', exact: true }).waitFor();
     const document = page.locator('#pdf-content');
     const text = await document.innerText();
-    for (const value of ['Cliente de ejemplo', 'Animador de ejemplo', 'Payaso de ejemplo', '0.5 horas', 'Calificación general', 'Observaciones del cliente', 'Firma del cliente', 'Firma del animador']) assert.ok(text.toLowerCase().includes(value.toLowerCase()), value);
+    for (const value of ['Cliente de ejemplo', 'Animador de ejemplo', 'Payaso de ejemplo', 'Pintacaritas de ejemplo', '0.5 horas', 'Calificación general', 'Observaciones del cliente', 'Firma del cliente', 'Firma del personal responsable']) assert.ok(text.toLowerCase().includes(value.toLowerCase()), value);
     assert.doesNotMatch(text, /NO IMPRIMIR|NO-IMPRIMIR|Saldo|Banco|Abono|B\/\./);
     assert.equal(await page.evaluate(() => window.__writes.length), before);
     assert.equal(await document.locator('.order-rating-circle').count(), 20);
@@ -78,7 +78,7 @@ const library = process.env.PDF_LIBRARY_PATH;
     const share = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Compartir', exact: true }).click();
     await share;
-    await page.getByText('Orden descargada. Puedes adjuntarla al chat del animador o payaso.', { exact: true }).waitFor();
+    await page.getByText('Orden descargada. Puedes adjuntarla al chat del personal responsable.', { exact: true }).waitFor();
     await page.evaluate(()=>{
       Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
       Object.defineProperty(navigator,'share',{configurable:true,value:async payload=>{window.__shared={name:payload.files[0].name,type:payload.files[0].type,size:payload.files[0].size,text:payload.text};}});

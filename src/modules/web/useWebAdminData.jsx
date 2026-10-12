@@ -22,7 +22,7 @@ const changedSections = (previous, next) => {
     : String(previous.version ?? 0) !== String(next.version ?? 0) ? WEB_SECTIONS : [];
 };
 
-export default function useWebAdminData({ db, appId, currentUser }) {
+export default function useWebAdminData({ db, appId, currentUser, sections = WEB_SECTIONS }) {
   const uid = currentUser?.uid;
   const [data, setData] = useState(() => sessionCaches.get(db)?.get(`${appId}\0${uid}`)?.data || emptyData());
   const [loading, setLoading] = useState(true);
@@ -96,7 +96,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
           if (!controller.started) {
             controller.started = true; controller.seen = next;
             const changed = cache.sync ? changedSections(cache.sync, next) : [];
-            const missing = WEB_SECTIONS.filter(name => changed.includes(name) || cache.versions[name] !== sectionVersion(next, name));
+            const missing = sections.filter(name => changed.includes(name) || cache.versions[name] !== sectionVersion(next, name));
             cache.sync = next;
             if (missing.length) await load(missing);
             else setLoading(false);
@@ -104,7 +104,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
           }
           // Un aviso pudo llegar antes de terminar un guardado que ya contamos.
           if (Number(next.version || 0) < Number(controller.seen?.version || 0)) return;
-          const names = controller.seen ? changedSections(controller.seen, next) : WEB_SECTIONS;
+          const names = (controller.seen ? changedSections(controller.seen, next) : sections).filter(name => sections.includes(name));
           controller.seen = next; cache.sync = next;
           const retry = snapshot.metadata.fromCache ? [] : [...controller.failed];
           if (names.length || retry.length) await load([...new Set([...names, ...retry])]);
@@ -115,7 +115,7 @@ export default function useWebAdminData({ db, appId, currentUser }) {
         controller.syncFailed = true; reportError();
         if (!controller.started) {
           controller.started = true;
-          enqueue(() => load(WEB_SECTIONS));
+          enqueue(() => load(sections));
         }
       });
     };
@@ -141,9 +141,9 @@ export default function useWebAdminData({ db, appId, currentUser }) {
     }, true);
     startSync();
     return () => { controller.active = false; controller.unsubscribe?.(); };
-  }, [db, appId, uid]);
+  }, [db, appId, uid, sections]);
 
-  const refresh = useCallback((names = WEB_SECTIONS) => controllerRef.current?.refresh(names), []);
+  const refresh = useCallback((names = sections) => controllerRef.current?.refresh(names), [sections]);
   const commitMutation = useCallback((mutations, names) => {
     const controller = controllerRef.current;
     if (!uid || !controller?.active || controller.db !== db || controller.appId !== appId || controller.uid !== uid) return Promise.reject(new Error('AUTH_REQUIRED'));
