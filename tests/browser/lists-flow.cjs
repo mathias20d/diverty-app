@@ -56,9 +56,13 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  // Calendar totals still count every event, including those beyond the visible group.
  await page.getByPlaceholder('Buscar cliente, lugar, paquete...').fill('');await page.getByRole('button',{name:'Mes',exact:true}).click();
  await page.getByText('Mostrando 30 de 1200 reservas',{exact:true}).waitFor();
- const day=page.locator('div.cursor-pointer').filter({has:page.locator('p').filter({hasText:/^1$/})}).filter({hasText:'+1196'});
+ const day=page.getByRole('button',{name:'Ver reservas del 1/10/2026: 1198 eventos',exact:true});
+ assert.match(await day.textContent(),/\+1196/);
  await day.click();await page.getByText('Mostrando 30 de 1198 reservas',{exact:true}).waitFor();
- await page.getByRole('button',{name:'Mostrar más reservas',exact:true}).click();await page.getByText('Mostrando 60 de 1198 reservas',{exact:true}).waitFor();
+ // Verify keyboard activation as well as the mouse activation checked above.
+ await page.getByRole('button',{name:'Mostrar más reservas',exact:true}).focus();
+ await page.keyboard.press('Enter');
+ await page.getByText('Mostrando 60 de 1198 reservas',{exact:true}).waitFor();
  await page.getByRole('button',{name:'Nueva reserva',exact:true}).click();
  const modal=page.getByRole('dialog',{name:'Reserva',exact:true});await modal.waitFor();
  const search=modal.getByPlaceholder('Buscar producto o servicio...');await search.focus();

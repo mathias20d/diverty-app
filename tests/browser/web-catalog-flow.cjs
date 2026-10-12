@@ -15,7 +15,7 @@ const sdk=require('./web-admin-sdk.cjs');
   if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:sdk});
   return route.continue();
  });
- const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin);
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});await page.goto(origin);
  await page.getByRole('button',{name:/Servicios y personajes/}).click();
  await page.getByRole('button',{name:'Nuevo servicio / personaje'}).click();
  await page.getByRole('button',{name:'Por cantidad',exact:true}).click();

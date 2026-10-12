@@ -3,9 +3,11 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const sdk=require('./web-admin-sdk.cjs');
 const origin=process.env.ORIGIN||'http://127.0.0.1:5173',webOrigin='https://divertypanama.netlify.app';
+const publicDist=process.env.PUBLIC_SITE_DIST||path.resolve(__dirname,'../../../Diverty-/dist');
 const encode=v=>typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integerValue:String(v)}:Array.isArray(v)?{arrayValue:{values:v.map(encode)}}:v&&typeof v==='object'?{mapValue:{fields:Object.fromEntries(Object.entries(v).map(([k,x])=>[k,encode(x)]))}}:{stringValue:String(v??'')};
 (async()=>{
- const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
+ assert.ok(fs.existsSync(path.join(publicDist,'theme-preview.html')),'Build the public website first or set PUBLIC_SITE_DIST to its dist directory.');
+ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
  try{
   const context=await browser.newContext({serviceWorkers:'block',viewport:{width:392,height:852}});
   await context.addInitScript(()=>{window.__rows={
@@ -21,7 +23,7 @@ const encode=v=>typeof v==='boolean'?{booleanValue:v}:typeof v==='number'?{integ
     if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:sdk});
     return route.continue();
    }
-   if(url.origin===webOrigin){const target=path.join('/workspace/Diverty-/dist',url.pathname);return route.fulfill({body:fs.readFileSync(target),contentType:({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2','.webp':'image/webp'})[path.extname(target)]||'application/octet-stream'});}
+   if(url.origin===webOrigin){const target=path.join(publicDist,url.pathname);return route.fulfill({body:fs.readFileSync(target),contentType:({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2','.webp':'image/webp'})[path.extname(target)]||'application/octet-stream'});}
    if(url.hostname==='firestore.googleapis.com'){
     const collection=url.pathname.split('/public/data/')[1]?.split('/')[0];
     const rows=collection==='categorias_web'?[{id:'fiestas',nombre:'Fiestas',activo:true,visible:true}]:collection==='catalogo_web'?[{id:'plan-test',nombre:'Fiesta de prueba',categoria:'fiestas',precio:100,destacado:true,imagen:'/assets/logo-256.webp'}]:[];
