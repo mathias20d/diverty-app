@@ -1,13 +1,15 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import ServiceOrder from './ServiceOrder.jsx';
+import ServiceOrderStaffEditor from './ServiceOrderStaffEditor.jsx';
 import { serviceOrderData } from '../../lib/service-order.mjs';
 import { Briefcase, Calendar, Download, FileSignature, Printer, Share2, Users, X } from 'lucide-react';
 import {serviceDurationHours} from '../../lib/service-duration.mjs';
 import { billingMode } from '../../lib/reservation-lines.mjs';
 
-const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, catalogoPaquetes = [], durationLoading = false, durationLoadError = false, onRetryDuration, onEditDuration }) {
+const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, printType, pdfScale, onClose, onPrint, onShare, onDownload, appSettings, catalogoPaquetes = [], durationLoading = false, durationLoadError = false, onRetryDuration, onEditDuration, onSaveStaff }) {
     const isC = printType === 'cotizacion', isContrato = printType === 'contrato', isContratoProv = printType === 'contrato_proveedor';
     const isOrder = printType === 'orden_servicio';
+    const [editingOrderStaff, setEditingOrderStaff] = useState(false);
     const contentRef = useRef(null), [documentHeight, setDocumentHeight] = useState(1123);
     useEffect(() => {
         if (!isOrder) { setDocumentHeight(1123); return; }
@@ -57,7 +59,7 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
       : [{ nombre: String(printData.servicio || printData.especialidad || 'Servicio General'), precio: fallbackServiceSubtotal, cantidad: 1, descripcion: String(printData.comentarios || '') }];
     const selectedServicesSubtotal = sA.reduce((sum, s) => sum + Math.max(0, utils.safeNum(s?.precio)), 0);
     const missingDurations = isOrder ? serviceOrderData(printData, catalogoPaquetes, sA).services.filter(service => service.missingDuration).map(service => service.name) : [];
-    const orderBlocked = isOrder && (durationLoading || missingDurations.length > 0);
+    const orderBlocked = isOrder && (durationLoading || missingDurations.length > 0 || editingOrderStaff);
     // En cotizaciones se recalcula el total desde los servicios seleccionados para impedir
     // que un valor antiguo/dañado del inventario termine impreso en la propuesta.
     const tot = isC ? selectedServicesSubtotal + trn : storedTotal;
@@ -280,6 +282,7 @@ const PdfTemplate = memo(function PdfTemplate({ utils, logoUrl, printData, print
     return (<div className={`bg-[#172235] min-h-screen text-slate-900 flex flex-col font-sans overflow-x-hidden animate-fadeIn relative z-[99999] ${isOrder ? 'service-order-preview' : ''}`}>
         <style>{`@media print{body *{visibility:hidden;}#pdf-wrapper-scaler,#pdf-wrapper-scaler *{visibility:visible;}#pdf-wrapper-scaler{position:absolute;left:0;top:0;width:100%;transform:scale(1)!important;margin:0;}.print\\:hidden{display:none!important;}@page{size:A4;margin:0;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}`}</style>
         <div className="sticky top-0 bg-slate-900/95 backdrop-blur-md shadow-lg flex flex-col sm:flex-row justify-between items-center z-50 print:hidden border-b border-slate-800 p-4 gap-4"><button type="button" onClick={onClose} className="text-white flex items-center font-bold hover:text-indigo-400 self-start sm:self-auto"><X size={20} className="mr-1"/> Atrás</button><div className="flex flex-wrap gap-2 justify-end w-full sm:w-auto"><button type="button" onClick={onPrint} disabled={orderBlocked} className="disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Printer size={16} className="mr-2"/> Imprimir PDF</button><button type="button" onClick={onShare} disabled={orderBlocked} className="disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Share2 size={16} className="mr-2"/> Compartir</button><button type="button" onClick={onDownload} disabled={orderBlocked} className="disabled:opacity-40 disabled:cursor-not-allowed bg-violet-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center shadow-lg text-sm"><Download size={16} className="mr-2"/> Guardar</button></div></div>
+        {isOrder && onSaveStaff && <ServiceOrderStaffEditor key={printData.id} event={printData} onSave={onSaveStaff} onEditingChange={setEditingOrderStaff}/> }
         {isOrder && (durationLoading || missingDurations.length > 0 || durationLoadError) && <div role="status" className="mx-4 sm:mx-8 p-4 rounded-xl bg-amber-50 text-amber-900 text-sm print:hidden">
             {durationLoading ? <p>Consultando la duración del catálogo web...</p> : missingDurations.length > 0 ? <><p>Completa la duración de estos servicios antes de generar el PDF: <strong>{missingDurations.join(', ')}</strong>.</p>{onEditDuration && <button type="button" onClick={onEditDuration} className="mt-2 font-bold underline">Completar duración de la reserva</button>}</> : <p>No se pudo actualizar el catálogo. Se usan las duraciones ya guardadas.</p>}
             {durationLoadError && onRetryDuration && <button type="button" onClick={()=>onRetryDuration()} className="mt-2 ml-2 font-bold underline">Reintentar catálogo</button>}

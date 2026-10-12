@@ -13,7 +13,7 @@ import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
 
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
 import { loadPdfLibrary } from './lib/pdf.mjs';
-import { serviceOrderData, serviceOrderShareText } from './lib/service-order.mjs';
+import { saveServiceOrderStaff, serviceOrderData, serviceOrderShareText } from './lib/service-order.mjs';
 import { catalogDescription, manualCatalog } from './lib/manual-catalog.mjs';
 import useWebAdminData from './modules/web/useWebAdminData.jsx';
 import { hasPlaceDescription, needsPlaceReference } from './lib/location-reference.mjs';
@@ -3274,6 +3274,14 @@ export default function App({ firebaseUser }) {
           setIsPrinting(true);
       } catch (err) { console.error(err); showAlert("No se pudo asignar el número. Revisa la conexión y vuelve a intentar.", false); }
   }, [ensureDocumentNumber, showAlert]);
+
+  const handleSaveOrderStaff = useCallback(async (event, people) => {
+      const saved = await saveServiceOrderStaff({ database:db, runTransaction, ref:getDocRef(event.id), event, people });
+      setEventos(previous => previous.map(item => item.id === saved.id ? saved : item));
+      setPrintData(previous => previous?.id === saved.id ? saved : previous);
+      await publishSync('evento', saved.id, 'update');
+      return saved;
+  }, [publishSync]);
   
   const handleSaveClientName = useCallback(async (oldName, newName, clientKey) => {
       const newKey = utils.normalizeText(newName);
@@ -4173,6 +4181,7 @@ export default function App({ firebaseUser }) {
           eventosActivos={eventosActivos}
           catalogoPaquetes={catalogoPaquetes}
           onEditDuration={() => { setIsPrinting(false); openModal(printData, false); }}
+          onSaveStaff={people => handleSaveOrderStaff(printData, people)}
         />
         </Suspense>
       )}

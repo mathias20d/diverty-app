@@ -9,6 +9,35 @@ export function serviceOrderReference(event = {}) {
   return text(event.numeroOrdenServicio) || `OS-${text(event.id) || 'SIN-RESERVA'}`;
 }
 
+export const SERVICE_ORDER_ROLES = ['Animador(a)', 'Payaso(a)', 'Pintacaritas', 'Encargado del servicio infantil'];
+
+export function serviceOrderStaff(event = {}) {
+  const assigned = Array.isArray(event.personalResponsable) ? event.personalResponsable : [];
+  const people = event.personalOrdenConfirmado === true ? assigned : [...assigned, ...(Array.isArray(event.subcontratos) ? event.subcontratos : [])];
+  return [...new Map(people.filter(item => item && text(item.nombre)).map(item => {
+    const person = { name: text(item.nombre), role: text(item.rol || item.servicio || item.especialidad) || 'Personal asignado' };
+    return [`${normalized(person.name)}|${normalized(person.role)}`, person];
+  })).values()];
+}
+
+export async function saveServiceOrderStaff({ database, runTransaction, ref, event, people, now = new Date().toISOString() }) {
+  if (!event?.id || !Array.isArray(people)) throw new Error('INVALID_ORDER_STAFF');
+  const personalResponsable = people.map(person => {
+    const nombre = text(person?.nombre), rol = text(person?.rol);
+    if (!nombre || !rol) throw new Error('INCOMPLETE_ORDER_STAFF');
+    return { ...(text(person.id) ? {id:text(person.id)} : {}), nombre, rol };
+  });
+  return runTransaction(database, async transaction => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists()) throw new Error('EVENT_NOT_FOUND');
+    const current = snapshot.data();
+    if (JSON.stringify(serviceOrderStaff(current)) !== JSON.stringify(serviceOrderStaff(event))) throw new Error('ORDER_STAFF_CHANGED');
+    const patch = { personalResponsable, personalOrdenConfirmado:true, _rev:(Number(current._rev)||0)+1, updatedAt:now };
+    transaction.set(ref, patch, {merge:true});
+    return { ...current, ...patch, id:event.id };
+  });
+}
+
 // Only operational/customer fields leave this function. No costs, balances,
 // banking details or internal notes belong on a paper signed by the customer.
 export function serviceOrderData(event = {}, catalog = [], selected = event.serviciosSeleccionados) {
@@ -28,11 +57,7 @@ export function serviceOrderData(event = {}, catalog = [], selected = event.serv
       description: [...new Map(details.map(value => [normalized(value), value])).values()].join('\n'),
     };
   });
-  const people = [...(Array.isArray(event.personalResponsable) ? event.personalResponsable : []), ...(Array.isArray(event.subcontratos) ? event.subcontratos : [])];
-  const staff = [...new Map(people.filter(item => item && text(item.nombre)).map(item => {
-    const person = { name: text(item.nombre), role: text(item.rol || item.servicio || item.especialidad) || 'Personal asignado' };
-    return [`${normalized(person.name)}|${normalized(person.role)}`, person];
-  })).values()];
+  const staff = serviceOrderStaff(event);
   return {
     reference: serviceOrderReference(event), client: text(event.cliente || event.nombre), phone: text(event.telefono),
     date: text(event.fecha), time: text(event.hora), place: text(event.ubicacion),
