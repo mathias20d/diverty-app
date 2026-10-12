@@ -54,7 +54,7 @@ const base = 'artifacts/diverty-oficial/public/data/';
   await page.evaluate(() => window.__renderAdmin()); await idle(); assert.equal(await reads(), initial, 'parent rerender must not reload');
   await page.getByRole('button', {name: /Servicios y personajes/}).click();
   for (const name of ['Comida', 'Personajes', 'Destacados', 'Ofertas', 'Todos']) await page.getByRole('button', {name, exact: true}).click();
-  await page.getByPlaceholder('Buscar servicio o personaje…').fill('Hot dogs');
+  await page.getByRole('textbox',{name:'Buscar servicio o personaje',exact:true}).fill('Hot dogs');
   await page.getByRole('button', {name: 'Editar', exact: true}).click();
   await page.getByLabel('Nombre', {exact:true}).fill('Hot dogs actualizados');
   assert.equal(await reads(), initial, 'filters/search/typing must be local');
@@ -68,7 +68,7 @@ const base = 'artifacts/diverty-oficial/public/data/';
   await page.waitForFunction(before => window.__reads.length > before, before); await expectReads(before, ['catalogo_web']);
   assert.equal(await page.getByLabel('Nombre', {exact:true}).inputValue(), 'Borrador sin guardar');
   await page.getByRole('button', {name:'Cerrar edición'}).click();
-  await page.getByPlaceholder('Buscar servicio o personaje…').fill('');
+  await page.getByRole('textbox',{name:'Buscar servicio o personaje',exact:true}).fill('');
   await page.getByRole('heading', {name:'Héroe remoto', exact:true}).waitFor();
   // Ignore pending local snapshots and stale queued confirmations.
   before = await reads();
@@ -121,7 +121,7 @@ const base = 'artifacts/diverty-oficial/public/data/';
   await page.waitForFunction(before => window.__reads.length >= before+2, before); await idle();
   assert.equal(await page.getByRole('alert').count(), 0);
   // A failed write neither advances versions nor destroys the edit form.
-  await page.getByPlaceholder('Buscar servicio o personaje…').fill('Hot dogs');
+  await page.getByRole('textbox',{name:'Buscar servicio o personaje',exact:true}).fill('Hot dogs');
   await page.getByRole('button', {name:'Editar',exact:true}).click(); await page.getByLabel('Nombre',{exact:true}).fill('Guardado con cambio remoto');
   const commits = await page.evaluate(() => window.__commits);
   await page.evaluate(() => window.__failCommit = true);
@@ -144,7 +144,7 @@ const base = 'artifacts/diverty-oficial/public/data/';
   assert.equal(await page.getByRole('alert').count(), 0);
   // Leaving the screen must not cancel a save already accepted behind a pending read.
   await page.getByRole('button',{name:'Volver',exact:true}).click(); await page.getByRole('button',{name:/Servicios y personajes/}).click();
-  await page.getByPlaceholder('Buscar servicio o personaje…').fill('Guardado con cambio remoto'); await page.getByRole('button',{name:'Editar',exact:true}).click();
+  await page.getByRole('textbox',{name:'Buscar servicio o personaje',exact:true}).fill('Guardado con cambio remoto'); await page.getByRole('button',{name:'Editar',exact:true}).click();
   await page.getByLabel('Nombre',{exact:true}).fill('Guardado al salir');
   await page.evaluate(base => {window.__readDelays = {[base+'catalogo_web']:300};window.__commitDelay = 20;}, base);
   before = await reads(); await remote({}, ['catalogo_web']); await page.waitForFunction(before => window.__reads.length > before, before);
