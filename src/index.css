@@ -296,6 +296,8 @@
   .home-dashboard .home-hero h1 { font-size: 24px; color: #0F172A; margin-bottom: 4px; }
   .home-hero p { color: #64748B; font-size: 12px; }
   .home-hero .home-new-reservation { margin-top: 0; min-width: 200px; padding: 11px 42px 11px 16px; border-radius: 10px; font-size: 13px; box-shadow: none; }
+  .home-hero .home-control-reservations { width: auto; max-width: 160px; margin-top: 0; border-color: #DDD6FE; flex-shrink: 0; }
+  .home-hero > .relative:not(button) { min-width: 0; }
   .home-dashboard .home-metrics { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
   .home-dashboard .home-metrics > button > div {
     display: grid;

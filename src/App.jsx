@@ -22,8 +22,10 @@ import { pendingRequests, requestReview, transportPending } from './lib/web-requ
 import { peakResourceUsage } from './lib/resource-usage.mjs';
 import { addReservationLine, billingMode, clientReservation, editReservationLine, reservationServices, unitPrice } from './lib/reservation-lines.mjs';
 import { createReservationModalStore } from './lib/reservation-modal-store.mjs';
+import { saveReservationFollowup } from './lib/reservation-followup.mjs';
 const confirmCentralRequest = async (...args) => args[0]?.centralBookingVersion === 1 ? (await import('./lib/central-booking.mjs')).confirmCentralRequest(...args) : null;
 const PdfTemplate = lazy(() => import('./modules/documents/PdfTemplate.jsx'));
+const ReservationControl = lazy(() => import('./modules/operations/ReservationControl.jsx'));
 
 const DateAvailabilityManager = lazy(() => import('./components/DateAvailabilityManager.jsx'));
 const WebAdmin = lazy(() => import('./modules/web/WebAdmin.jsx'));
@@ -38,6 +40,11 @@ const preloadSection = tab => {
 
 // The reservation subscribes independently so opening it leaves the active screen intact.
 const RESERVATION_WEB_SECTIONS = ['catalogo_web'];
+function ReservationControlHost({currentUser,catalogoPaquetes,...props}) {
+    const {packages,loading,loadError,refresh}=useWebAdminData({db,appId,currentUser,sections:RESERVATION_WEB_SECTIONS});
+    const catalog=useMemo(()=>manualCatalog(catalogoPaquetes,packages),[catalogoPaquetes,packages]);
+    return <ReservationControl {...props} catalog={catalog} catalogLoading={loading} catalogError={loadError} onRetryCatalog={refresh}/>;
+}
 function DocumentPreviewHost({ currentUser, ...props }) {
     const isOrder = props.printType === 'orden_servicio';
     const needsCatalog = isOrder && serviceOrderData(props.printData, props.catalogoPaquetes).services.some(service => service.missingDuration);
@@ -1455,6 +1462,8 @@ export default function App({ firebaseUser }) {
   const [toastAlert, setToastAlert] = useState({ isOpen: false, message: '', success: false }); 
   const [isModoOperativo, setIsModoOperativo] = useState(false); 
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isReservationControlOpen,setIsReservationControlOpen]=useState(false);
+  const [reservationControlError,setReservationControlError]=useState(false);
   const [printData, setPrintData] = useState(null); 
   const [printType, setPrintType] = useState(null); 
   const [pdfScale, setPdfScale] = useState(1);
@@ -1711,9 +1720,9 @@ export default function App({ firebaseUser }) {
 
   const tabHistoryRef = useRef(['inicio']);
   const navigatingBackRef = useRef(false);
-  const stateRef = useRef({ expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen });
+  const stateRef = useRef({ expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen, isReservationControlOpen });
   useEffect(() => { 
-      stateRef.current = { expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen };
+      stateRef.current = { expenseModal, navigationModal, clientEditModal, proveedorModal, isModoOperativo, isPrinting, activeTab, isNotifOpen, confirmModal, expandedClientId, expandedProvId, expandedFinanceId, financeFocus, isChristmasOpsOpen, isReservationControlOpen };
   });
   
   useEffect(() => {
@@ -1723,8 +1732,9 @@ export default function App({ firebaseUser }) {
         const s = stateRef.current;
         let blocked = false;
         
-        if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
-        else if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
+        if (s.confirmModal?.isOpen) { setConfirmModal({ isOpen: false, message: '', onConfirm: null }); blocked = true; }
+        else if (s.isReservationControlOpen) { setIsReservationControlOpen(false); blocked = true; }
+        else if (s.isChristmasOpsOpen) { setIsChristmasOpsOpen(false); blocked = true; }
         else if (s.isPrinting) { setIsPrinting(false); blocked = true; }
         else if (s.navigationModal?.isOpen) { setNavigationModal({ isOpen:false, googleUrl:'', wazeUrl:'', label:'' }); blocked = true; }
         else if (s.expenseModal?.isOpen) { setExpenseModal({ isOpen:false, event:null }); blocked = true; }
@@ -1978,9 +1988,11 @@ export default function App({ firebaseUser }) {
   }, []); 
 
   const loadFullHistory = useCallback(async (silent = true) => {
-      if (!db || !appId || !firebaseUser || historyLoadedRef.current || historyLoadingRef.current) return;
+      if (historyLoadedRef.current) return true;
+      if (!db || !appId || !firebaseUser || historyLoadingRef.current) return null;
       historyLoadingRef.current = true;
       setIsHistoryLoading(true);
+      setReservationControlError(false);
       try {
           const eventosRef = collection(db, 'artifacts', appId, 'public', 'data', 'eventos');
           let cursor = null; const fullData = [];
@@ -1994,14 +2006,39 @@ export default function App({ firebaseUser }) {
           // dentro de Finanzas o del historial.
           setEventos(fullData);
           historyLoadedRef.current = true;
+          return true;
       } catch (error) {
           console.warn('No se pudo cargar el historial completo:', error);
+          setReservationControlError(true);
           if (!silent) showAlert('No se pudo cargar el historial completo. Revisa tu conexión.', false);
+          return false;
       } finally {
           historyLoadingRef.current = false;
           setIsHistoryLoading(false);
       }
   }, [firebaseUser, showAlert]);
+
+  const openReservationControl=useCallback(async()=>{
+      setIsReservationControlOpen(true);setReservationControlError(false);
+      const loaded=await loadFullHistory(false);
+      if(loaded===false)setReservationControlError(true);
+  },[loadFullHistory]);
+
+  const handleSaveFollowup=useCallback(async(event,draft)=>{
+      try {
+          const saved=await saveReservationFollowup({database:db,runTransaction:rawRunTransaction,ref:getDocRef(event.id),event,draft,uid:firebaseUser?.uid||''});
+          setEventos(previous=>previous.map(item=>item.id===saved.id?saved:item));
+          // The record is already committed. A bus failure must not invite a duplicate save.
+          void publishSync('evento',saved.id,'update');
+          return saved;
+      } catch(error) {
+          if(error.message==='FOLLOWUP_CHANGED') {
+              const snapshot=await getDoc(getDocRef(event.id)).catch(()=>null);
+              if(snapshot?.exists())setEventos(previous=>previous.map(item=>item.id===event.id?{...snapshot.data(),id:event.id}:item));
+          }
+          throw error;
+      }
+  },[firebaseUser,publishSync]);
 
   useEffect(() => {
     const needsHistory = activeTab === 'clientes' || activeTab === 'proveedores' ||
@@ -2492,7 +2529,7 @@ export default function App({ firebaseUser }) {
   const closeModal = useCallback(() => { utils.triggerHaptic('light'); setModalConfig({ isOpen: false, initialData: defaultFormData, isCotizacion: false }); }, [modalStore]);
   
   const handleDuplicateEvento = useCallback((e) => { 
-      utils.triggerHaptic('light'); const { id, createdAt, deletedLocally, colisionAprobada, numeroFactura, numeroContrato, numeroCotizacion, ownerUid, _rev, ...rest } = e; const isCotizacionOrig = utils.normalizeText(e.estado).includes('cot'); 
+      utils.triggerHaptic('light'); const { id, createdAt, deletedLocally, colisionAprobada, numeroFactura, numeroContrato, numeroCotizacion, ownerUid, _rev, seguimientoComercial, ...rest } = e; const isCotizacionOrig = utils.normalizeText(e.estado).includes('cot');
       setModalConfig({ isOpen: true, isCotizacion: isCotizacionOrig, initialData: { ...rest, abono: '', estado: isCotizacionOrig ? 'Cotización' : 'Pendiente', isDuplicated: true } }); 
       showAlert("Evento duplicado. Verifica los datos y guarda.", true); 
   }, [showAlert]);
@@ -3592,6 +3629,7 @@ export default function App({ firebaseUser }) {
                  <div className="hidden sm:flex w-28 h-28 rounded-[30px] bg-white/[0.07] border border-white/10 items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_40px_rgba(118,87,255,.18)]"><CalendarDays size={56} className="text-fuchsia-300 drop-shadow-[0_0_18px_rgba(232,121,249,.45)]" strokeWidth={1.8}/></div>
              </div>
              <button type="button" onClick={() => openModal()} className="home-new-reservation relative z-10 mt-5 w-full rounded-[18px] py-3.5 px-5 bg-[linear-gradient(90deg,#FF2F9A_0%,#E42AD8_45%,#8A3DFF_100%)] text-white font-black text-[14px] sm:text-base tracking-wide shadow-[0_14px_34px_rgba(218,42,216,.34)] border border-white/20 flex items-center justify-center gap-3 active:scale-[0.99] transition-transform"><Plus size={22} strokeWidth={3}/> Nueva Reserva <ChevronRight size={20} className="absolute right-5"/></button>
+             <button type="button" onClick={openReservationControl} className="home-control-reservations relative z-10 mt-3 w-full min-h-[44px] rounded-[14px] border border-white/30 bg-white/95 px-4 py-2 text-violet-700 font-bold text-sm flex items-center justify-center gap-2"><Briefcase size={18}/>Control de reservas</button>
           </div>
 
           {christmasModuleVisible && <button type="button" onClick={() => { utils.triggerHaptic('light'); handleTabChange('eventos'); setIsChristmasOpsOpen(true); window.scrollTo(0,0); }} className="home-christmas w-full rounded-[22px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] p-4 text-white shadow-[0_14px_32px_rgba(217,31,45,.22)] border border-white/20 flex items-center gap-3 active:scale-[.985] transition-transform"><div className="w-11 h-11 rounded-[15px] bg-white/15 border border-white/20 flex items-center justify-center text-2xl shrink-0">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[.16em] text-white/70">Temporada navideña</p><p className="text-[17px] font-black leading-tight">Operación Navidad</p><p className="text-[10px] font-bold text-white/80 mt-0.5">24–25 dic · Santas · rutas · reservas</p></div><ChevronRight size={21} className="shrink-0"/></button>}
@@ -3773,6 +3811,7 @@ export default function App({ firebaseUser }) {
         <div className="pt-1 sm:pt-3 mb-6 sm:mb-8 flex flex-col gap-3 relative z-10">
             <div className="flex flex-col gap-4"><div><div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#7657FF] mb-1.5"><Sparkles size={14}/> Centro de operaciones</div><h2 className="text-4xl sm:text-5xl font-black text-slate-950 tracking-[-0.04em]">Agenda</h2><p className="text-sm sm:text-base font-medium text-slate-500 mt-1.5">Organiza tus eventos con precisión</p></div><button type="button" onClick={()=>{utils.triggerHaptic('light');setIsAgendaSummaryOpen(true)}} className="w-full flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#FF3EA5] via-[#B83DFF] to-[#7657FF] px-5 py-3.5 text-white shadow-[0_16px_34px_rgba(184,61,255,.26)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/15 border border-white/15 flex items-center justify-center shadow-inner"><CalendarDays size={27}/></div><div className="text-left min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumen de agenda</p><p className="text-2xl font-black leading-tight mt-1">{eventosActivos.filter(e=>{const d=String(e.fecha||''); const start=new Date(todayStr+'T00:00:00'); const end=new Date(start); end.setDate(end.getDate()+6); const ds=new Date(d+'T00:00:00'); return ds>=start&&ds<=end&&!isPendingWebRequest(e)&&!/cancelado|rechaz|cot/i.test(String(e.estado||''));}).length} eventos <span className="text-base font-bold text-white/80">esta semana</span></p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button></div>
             <Suspense fallback={null}><DateAvailabilityManager db={db} appId={appId} /></Suspense>
+            <button type="button" onClick={openReservationControl} className="w-full min-h-[48px] rounded-[18px] border border-violet-200 bg-white px-4 py-3 font-bold text-violet-700 flex items-center justify-center gap-2"><Briefcase size={20}/>Control de reservas</button>
             {christmasModuleVisible && <button type="button" onClick={()=>{utils.triggerHaptic('light');setIsChristmasOpsOpen(true)}} className="w-full mt-1 flex items-center gap-4 rounded-[24px] bg-gradient-to-r from-[#D91F2D] via-[#EF3F2F] to-[#F59E0B] px-5 py-4 text-white shadow-[0_16px_34px_rgba(217,31,45,.22)] active:scale-[.985] border border-white/30"><div className="w-12 h-12 shrink-0 rounded-[16px] bg-white/16 border border-white/20 flex items-center justify-center text-2xl">🎅</div><div className="text-left min-w-0 flex-1"><p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/75">24 y 25 de diciembre</p><p className="text-xl font-black leading-tight mt-0.5">Operación Navidad</p><p className="text-[11px] font-bold text-white/80 mt-0.5">Santas · horarios · clientes · GPS</p></div><div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center shrink-0"><ChevronRight size={21}/></div></button>}
             <div className="agenda-toolbar flex flex-col lg:flex-row gap-4 mt-3 sm:mt-5">
                  <div className="relative flex-1 group"><div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none z-20"><Search size={22} strokeWidth={2.6} className="text-[#7657FF] group-focus-within:text-[#7657FF] transition-colors" /></div><input type="text" value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder="Buscar cliente, lugar, paquete..." className="w-full h-[56px] bg-white/95 backdrop-blur-xl border border-white rounded-[20px] pl-12 pr-12 text-[15px] font-semibold text-slate-900 outline-none focus:border-[#8B5CF6]/50 focus:ring-4 focus:ring-[#7657FF]/10 transition-all duration-300 shadow-[0_10px_28px_rgba(15,23,42,.06)] placeholder:text-slate-400" />{globalSearch && <button type="button" onClick={() => setGlobalSearch('')} className="absolute inset-y-0 right-0 pr-5 flex items-center text-slate-400 hover:text-slate-700 transition-colors"><X size={18}/></button>}</div>
@@ -4153,6 +4192,16 @@ export default function App({ firebaseUser }) {
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap'); .font-outfit{font-family:'Outfit',sans-serif;} @keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes slideLeft{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}} .animate-fadeIn{animation:fadeIn 0.3s ease-out forwards;} .animate-slideLeft{animation:slideLeft 0.3s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-slideUp{animation:slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards;} .animate-fadeInUp{animation:fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards;} @keyframes pulse-slow{0%,100%{opacity:0.04;transform:scale(1);}50%{opacity:0.06;transform:scale(1.05);}} .animate-pulse-slow{animation:pulse-slow 10s ease-in-out infinite;} @keyframes spin-slow{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} .animate-spin-slow{animation:spin-slow 15s linear infinite;} input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;} .pb-safe{padding-bottom: env(safe-area-inset-bottom);} button{-webkit-tap-highlight-color:transparent;} @media(max-width:640px){#main-content{background:radial-gradient(circle at 85% 8%,rgba(255,62,165,.055),transparent 24%),radial-gradient(circle at 10% 28%,rgba(118,87,255,.06),transparent 28%),linear-gradient(180deg,#F5F6FB 0%,#FAFAFD 48%,#F4F6FB 100%);} #main-content>div{padding-left:14px;padding-right:14px;} input,select,textarea{font-size:16px!important;} button{touch-action:manipulation;} .animate-fadeIn{animation-duration:.14s!important;} .animate-slideLeft{animation-duration:.18s!important;} .animate-slideUp{animation-duration:.2s!important;} .animate-fadeInUp{animation-duration:.22s!important;} }`}</style>
       <a className="app-skip-link" href="#main-content">Ir al contenido</a>
       <Bg /><Toast alert={toastAlert} /><Confirm modal={confirmModal} setModal={setConfirmModal} />
+      {isReservationControlOpen&&<Suspense fallback={<div className="fixed inset-0 z-[900] bg-slate-950/70 text-white grid place-items-center" role="status">Cargando control de reservas…</div>}><ReservationControlHost
+        currentUser={firebaseUser} catalogoPaquetes={catalogoPaquetes} events={eventosActivos} today={todayStr}
+        loading={isHistoryLoading} loadError={reservationControlError} onRetry={openReservationControl}
+        onClose={()=>setIsReservationControlOpen(false)} onSaveFollowup={handleSaveFollowup}
+        onEdit={(event,quote)=>{setIsReservationControlOpen(false);openModal(event,quote);}}
+        onReview={event=>{setIsReservationControlOpen(false);setNotificationPendingId(event.id);setIsNotifOpen(true);}}
+        onConvert={event=>{setIsReservationControlOpen(false);handleConvertirReserva(event);}}
+        onDocument={(event,type)=>{setIsReservationControlOpen(false);handleViewDoc(event,type);}}
+        onPayment={handleRegistrarAbono} onAdvance={handleAdvanceOperational}
+      /></Suspense>}
       <QuickExpenseModal modal={expenseModal} onClose={()=>setExpenseModal({isOpen:false,event:null})} onSave={handleSaveQuickExpense} />
       <NavigationChoiceModal modal={navigationModal} onClose={()=>setNavigationModal({isOpen:false,googleUrl:'',wazeUrl:'',label:''})} />
       <NotifModal onMapClick={openGoogleMaps} isOpen={isNotifOpen} onClose={()=>{setIsNotifOpen(false);setNotificationPendingId('')}} eventosActivos={eventosActivos} onConfirmWebRequest={handleConfirmWebRequest} onRejectWebRequest={handleRejectWebRequest} onUpdateWebRequest={handleUpdateWebRequest} staffCapacity={staffCapacity} christmasSantaCapacity={christmasSantaCapacity} targetReservationId={notificationPendingId} />

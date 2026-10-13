@@ -23,10 +23,11 @@ const origin=process.env.ORIGIN || 'http://127.0.0.1:5173';
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.origin!==origin)return route.abort();
+  if(url.pathname==='/@vite/client')return route.fulfill({contentType:'text/javascript',body:require('./vite-test-client.cjs')});
   
   if(url.pathname==='/src/lib/firebase-auth.mjs')return route.fulfill({contentType:'text/javascript',body:`export const ADMIN_UID='test-admin';export const app={};export const auth={currentUser:{uid:ADMIN_UID}};export const LOGO_URL='/icon-192.png';export const firebaseConfig={};`});
   if(url.pathname.includes('firebase_auth.js'))return route.fulfill({contentType:'text/javascript',body:`export const onAuthStateChanged=(_a,next)=>{queueMicrotask(()=>next({uid:'test-admin'}));return ()=>{};};export const signOut=async()=>{};export const signInWithEmailAndPassword=async()=>{};`});
-  if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(__dirname,'reservation-fixture.mjs'),'utf8').replace('({id:path.split', '({metadata:{hasPendingWrites:false,fromCache:false},id:path.split').replace('return {docs,size:', 'return {metadata:{hasPendingWrites:false,fromCache:false},docs,size:')+'\nexport const increment=value=>({__increment:value});\nexport const getDocFromServer=getDoc;export const getDocsFromServer=getDocs;' });
+  if(url.pathname.includes('firebase_firestore.js'))return route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(__dirname,'reservation-fixture.mjs'),'utf8').replace('return {docs,size:', 'return {metadata:{hasPendingWrites:false,fromCache:false},docs,size:')+'\nexport const getDocFromServer=getDoc;export const getDocsFromServer=getDocs;' });
   return route.continue();
  });
 
