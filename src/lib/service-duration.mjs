@@ -37,9 +37,12 @@ export function serviceDurationHours(service={},catalog={}){
   }
   // An explicit per-reservation edit must win over old activity descriptions.
   if(service.duracionDefinidaManualmente === true)return positive(service.duracionHoras);
+  if(service.duracionCatalogoDefinida === true)return positive(service.duracionHoras);
+  // An unbooked catalog/cart item can carry stale prose alongside its raw data.
+  if(catalog.duracionCatalogoDefinida === true && !positive(service.duracionHoras))return positive(catalog.duracionHoras);
   // Repair legacy lines that saved the first activity's hour as the total.
   // Prefer the booked package's labelled duration; catalog fills missing totals.
-  const total=explicitDuration(service)||explicitDuration(catalog);
+  const total=explicitDuration(service)||(catalog.duracionCatalogoDefinida === true ? positive(catalog.duracionHoras) : explicitDuration(catalog));
   if(total)return total;
   const saved=positive(service.duracionHoras)||positive(catalog.duracionHoras);
   if(saved)return saved;

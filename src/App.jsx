@@ -12,7 +12,7 @@ import { signOut } from 'firebase/auth';
 import { app, auth, ADMIN_UID, LOGO_URL } from './lib/firebase-auth.mjs';
 
 import { readAppSettings, readResourceCount } from './lib/settings.mjs';
-import { loadPdfLibrary } from './lib/pdf.mjs';
+import { loadPdfLibrary, createPdfBlob, downloadPdfBlob, pdfErrorMessage } from './lib/pdf.mjs';
 import { saveServiceOrderStaff, serviceOrderData, serviceOrderShareText } from './lib/service-order.mjs';
 import { catalogDescription, manualCatalog } from './lib/manual-catalog.mjs';
 import useWebAdminData from './modules/web/useWebAdminData.jsx';
@@ -1457,7 +1457,9 @@ export default function App({ firebaseUser }) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printData, setPrintData] = useState(null); 
   const [printType, setPrintType] = useState(null); 
-  const [pdfScale, setPdfScale] = useState(1); 
+  const [pdfScale, setPdfScale] = useState(1);
+  const [pdfProgress, setPdfProgress] = useState('');
+  const pdfTaskRef = useRef(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
@@ -3349,50 +3351,44 @@ export default function App({ firebaseUser }) {
   const printNativePDF = useCallback(() => { utils.triggerHaptic('success'); window.print(); }, []);
 
   const downloadPDF = useCallback(async () => {
+    if (pdfTaskRef.current) return;
     utils.triggerHaptic('success');
-    try { await loadPdfLibrary(); } catch { showAlert("No se pudo cargar el generador de PDF. Revisa la conexión e intenta nuevamente.", false); return; }
     const element = document.getElementById('pdf-content'), wrapper = document.getElementById('pdf-wrapper-scaler'); if (!element) { showAlert("Error al localizar el documento para PDF.", false); return; }
     showAlert("Generando PDF... por favor espera.", true); 
     let oldTransform = '', oldPosition = ''; 
     if (wrapper) { oldTransform = wrapper.style.transform; oldPosition = wrapper.style.position; wrapper.style.transform = 'scale(1)'; wrapper.style.position = 'relative'; }
-    const oldScrollY = window.scrollY; window.scrollTo(0, 0);
+    const oldScrollY = window.scrollY; window.scrollTo(0, 0); pdfTaskRef.current = true; setPdfProgress('Preparando documento…');
     try {
-        if (document.fonts?.ready) { try { await document.fonts.ready; } catch (_) {} }
-        const imgs = Array.from(element.querySelectorAll('img'));
-        await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })));
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : (printData?.nombre ? String(printData.nombre).replace(/[^a-z0-9]/gi, '_') : 'Documento'); 
         const filePrefix = printType === 'orden_servicio' ? 'Orden_de_servicio' : printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : (printType === 'contrato_proveedor' ? 'Subcontrato' : 'Factura'));
         const fileName = `${filePrefix}_Diverty_${docName}.pdf`;
         const opt = { margin: 0, filename: fileName, ...(printType === 'orden_servicio' ? { pagebreak: { mode: ['css','legacy'], avoid: ['.service-order-block', 'tr'] } } : {}), image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff", windowWidth: printType === 'orden_servicio' ? window.innerWidth : 794, width: 794 }, jsPDF: printType === 'orden_servicio' ? { unit: 'mm', format: 'a4', orientation: 'portrait' } : { unit: 'px', format: [794, 1123], orientation: 'portrait' } };
-        await window.html2pdf().set(opt).from(element).save(); showAlert("¡PDF descargado con éxito!", true); 
-    } catch (error) { console.error("Error PDF:", error); showAlert("Hubo un error de procesamiento. Mostrando diálogo de impresión nativo...", false); printNativePDF(); } finally { if (wrapper) { wrapper.style.transform = oldTransform; wrapper.style.position = oldPosition; } window.scrollTo(0, oldScrollY); }
+        const blob = await createPdfBlob(element,opt,{onProgress:setPdfProgress}); downloadPdfBlob(blob,fileName); showAlert("¡PDF descargado con éxito!", true);
+    } catch (error) { console.error("Error PDF:", error); showAlert(pdfErrorMessage(error), false); } finally { if (wrapper) { wrapper.style.transform = oldTransform; wrapper.style.position = oldPosition; } window.scrollTo(0, oldScrollY); pdfTaskRef.current=false; setPdfProgress(''); }
   }, [printData, printType, showAlert, printNativePDF]);
 
   const handleSharePDF = useCallback(async () => {
+    if (pdfTaskRef.current) return;
     utils.triggerHaptic('success');
-    try { await loadPdfLibrary(); } catch { showAlert("No se pudo cargar el generador de PDF. Revisa la conexión e intenta nuevamente.", false); return; }
     const element = document.getElementById('pdf-content'), wrapper = document.getElementById('pdf-wrapper-scaler'); if (!element) return; showAlert("Preparando PDF para compartir...", true);
     let oldTransform = '', oldPosition = ''; 
     if (wrapper) { oldTransform = wrapper.style.transform; oldPosition = wrapper.style.position; wrapper.style.transform = 'scale(1)'; wrapper.style.position = 'relative'; } 
-    const oldScrollY = window.scrollY; window.scrollTo(0, 0);
+    const oldScrollY = window.scrollY; window.scrollTo(0, 0); pdfTaskRef.current = true; setPdfProgress('Preparando documento…');
     try {
-        if (document.fonts?.ready) { try { await document.fonts.ready; } catch (_) {} }
-        const imgs = Array.from(element.querySelectorAll('img'));
-        await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = resolve; })));
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); 
+
         const docName = printData?.cliente ? String(printData.cliente).replace(/[^a-z0-9]/gi, '_') : (printData?.nombre ? String(printData.nombre).replace(/[^a-z0-9]/gi, '_') : 'Documento'); 
         const filePrefix = printType === 'orden_servicio' ? 'Orden_de_servicio' : printType === 'cotizacion' ? 'Cotizacion' : (printType === 'contrato' ? 'Contrato' : (printType === 'contrato_proveedor' ? 'Subcontrato' : 'Factura'));
         const fileName = `${filePrefix}_Diverty_${docName}.pdf`;
         const opt = { margin: 0, filename: fileName, ...(printType === 'orden_servicio' ? { pagebreak: { mode: ['css','legacy'], avoid: ['.service-order-block', 'tr'] } } : {}), image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff", windowWidth: printType === 'orden_servicio' ? window.innerWidth : 794, width: 794 }, jsPDF: printType === 'orden_servicio' ? { unit: 'mm', format: 'a4', orientation: 'portrait' } : { unit: 'px', format: [794, 1123], orientation: 'portrait' } };
-        const pdfBlob = await window.html2pdf().set(opt).from(element).output('blob'); if (!pdfBlob) throw new Error("Blob vacío");
+        const pdfBlob = await createPdfBlob(element,opt,{onProgress:setPdfProgress}); if (!pdfBlob) throw new Error("Blob vacío");
         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
         let msgType = 'recibo';
         if (printType === 'cotizacion') msgType = 'cotizacion';
         if (printType === 'contrato_proveedor') msgType = 'contrato_prov';
         const msg = printType === 'orden_servicio' ? serviceOrderShareText(printData) : getWhatsAppMessage(printData, msgType, appSettings.empresa);
-        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: fileName, text: msg }); } else if (printType === 'orden_servicio') { await window.html2pdf().set(opt).from(element).save(); showAlert("Orden descargada. Puedes adjuntarla al chat del personal responsable.", true); } else { showAlert("No se pudo compartir en tu dispositivo. Descargando...", false); await window.html2pdf().set(opt).from(element).save(); const phoneClean = String(printData?.telefono || '').replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }
-    } catch (error) { console.error("Share error:", error); if (error?.name !== 'AbortError') { showAlert("Error al compartir. Usa el botón Guardar.", false); } } finally { if (wrapper) { wrapper.style.transform = oldTransform; wrapper.style.position = oldPosition; } window.scrollTo(0, oldScrollY); }
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: fileName, text: msg }); } else if (printType === 'orden_servicio') { downloadPdfBlob(pdfBlob,fileName); showAlert("Orden descargada. Puedes adjuntarla al chat del personal responsable.", true); } else { showAlert("No se pudo compartir en tu dispositivo. Descargando...", false); downloadPdfBlob(pdfBlob,fileName); const phoneClean = String(printData?.telefono || '').replace(/\D/g,''); utils.openWhatsAppBusiness(phoneClean, msg); }
+    } catch (error) { console.error("Share error:", error); if (error?.name !== 'AbortError') { showAlert(pdfErrorMessage(error), false); } } finally { if (wrapper) { wrapper.style.transform = oldTransform; wrapper.style.position = oldPosition; } window.scrollTo(0, oldScrollY); pdfTaskRef.current=false; setPdfProgress(''); }
   }, [printData, printType, appSettings, showAlert]);
 
   const downloadExcel = useCallback(() => {
@@ -4173,7 +4169,8 @@ export default function App({ firebaseUser }) {
           printData={printData}
           printType={printType}
           pdfScale={pdfScale}
-          onClose={() => { setIsPrinting(false); setPrintData(null); setPrintType(null); }}
+          onClose={() => { if(pdfTaskRef.current)return; setIsPrinting(false); setPrintData(null); setPrintType(null); }}
+          pdfProgress={pdfProgress}
           onPrint={printNativePDF}
           onShare={handleSharePDF}
           onDownload={downloadPDF}

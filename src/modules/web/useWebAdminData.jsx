@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { collection, doc, getDoc, getDocs, increment, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, increment, onSnapshot, writeBatch, runTransaction } from 'firebase/firestore';
+import {createCategoryWithSync} from '../../lib/catalog-editor.mjs';
 
 export const WEB_SECTIONS = ['categorias_web', 'catalogo_web', 'campanas_web', 'temas_web', 'galeria_web', 'cupones_web', 'config_web'];
 export const VIEW_SECTIONS = {
@@ -139,6 +140,13 @@ export default function useWebAdminData({ db, appId, currentUser, sections = WEB
       cache.sync = controller.seen;
       return load(dirty);
     }, true);
+    controller.createCategory = (ref, value) => enqueue(async () => {
+      await createCategoryWithSync({database:db, runTransaction, ref, data:value,
+        syncRef:item('config_web', 'web_sync'), syncUpdate:{versions:{categorias_web:increment(1)},version:increment(1),updatedAt:new Date().toISOString()}});
+      // Reload authoritative data. The transaction and its notification are atomic.
+      delete cache.versions.categorias_web;
+      return load(['categorias_web']);
+    }, true);
     startSync();
     return () => { controller.active = false; controller.unsubscribe?.(); };
   }, [db, appId, uid, sections]);
@@ -150,9 +158,14 @@ export default function useWebAdminData({ db, appId, currentUser, sections = WEB
     return controller.commit(mutations, names);
   }, [db, appId, uid]);
   const setCategories = useCallback(update => setData(previous => ({ ...previous, categorias_web: typeof update === 'function' ? update(previous.categorias_web) : update })), []);
+  const createCategory = useCallback((ref, value) => {
+    const controller = controllerRef.current;
+    if (!uid || !controller?.active || controller.uid !== uid || controller.db !== db || controller.appId !== appId) return Promise.reject(new Error('AUTH_REQUIRED'));
+    return controller.createCategory(ref, value);
+  }, [db, appId, uid]);
   const setCampaigns = useCallback(update => setData(previous => ({ ...previous, campanas_web: typeof update === 'function' ? update(previous.campanas_web) : update })), []);
   return { categories: data.categorias_web, packages: data.catalogo_web, campaigns: data.campanas_web,
     themes: data.temas_web, gallery: data.galeria_web, coupons: data.cupones_web,
     themeConfig: data.config_web.theme, settings: data.config_web.settings,
-    setCategories, setCampaigns, loading, loadError, refresh, commitMutation };
+    setCategories, setCampaigns, loading, loadError, refresh, commitMutation, createCategory };
 }

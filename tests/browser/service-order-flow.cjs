@@ -97,6 +97,23 @@ const library = process.env.PDF_LIBRARY_PATH;
     await page.getByRole('button', { name: 'Compartir', exact: true }).click();
     await share;
     await page.getByText('Orden descargada. Puedes adjuntarla al chat del personal responsable.', { exact: true }).waitFor();
+    // Accelerated render timeout: UI must recover without a delayed download.
+    await page.evaluate(()=>{
+      window.__realPdfFactory=window.html2pdf;
+      window.__realTimeout=window.setTimeout;
+      window.setTimeout=(callback,ms,...args)=>window.__realTimeout(callback,ms===45000?150:ms,...args);
+      window.html2pdf=()=>({set(){return this;},from(){return this;},output(){return new Promise(resolve=>{window.__latePdfResult=resolve;});}});
+    });
+    const downloadsBeforeTimeout=[];const onLateDownload=file=>downloadsBeforeTimeout.push(file);
+    page.on('download',onLateDownload);
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await page.getByText('La generación tardó demasiado. Reintenta o usa Imprimir PDF.',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Guardar',exact:true}).isEnabled(),true);
+    await page.evaluate(()=>{window.__latePdfResult(new Blob(['late'],{type:'application/pdf'}));window.html2pdf=window.__realPdfFactory;window.setTimeout=window.__realTimeout;});
+    assert.equal(downloadsBeforeTimeout.length,0);page.off('download',onLateDownload);
+    const retryDownload=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();await retryDownload;
+
     await page.evaluate(()=>{
       Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
       Object.defineProperty(navigator,'share',{configurable:true,value:async payload=>{window.__shared={name:payload.files[0].name,type:payload.files[0].type,size:payload.files[0].size,text:payload.text};}});
