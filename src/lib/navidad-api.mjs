@@ -1,0 +1,2 @@
+const API='https://divertypanama.netlify.app/api/navidad';
+export async function navidadApi(action,data,user){const token=await user.getIdToken();const response=await fetch(API,{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({empresa:user.uid,action,...data})});const value=await response.json();if(!response.ok)throw Error(value?.error?.reason||'UNAVAILABLE');return value.event||value;}

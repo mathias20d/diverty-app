@@ -1,69 +1,14 @@
-import React, { Component, lazy, Suspense, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth, ADMIN_UID } from '../../lib/firebase-auth.mjs';
-import { AuthLoading, LoginView } from './AuthViews.jsx';
-
-const OperationalApp = lazy(() => import('../../App.jsx'));
-
-class AppLoadBoundary extends Component {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  render() {
-    if (this.state.failed) return (
-      <div role="alert" className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
-        <p>No se pudo cargar el panel. Comprueba tu conexión y vuelve a intentarlo.</p>
-        <button type="button" className="rounded-xl bg-violet-600 text-white px-5 py-3" onClick={() => window.location.reload()}>Reintentar</button>
-      </div>
-    );
-    return this.props.children;
-  }
-}
-
-export default function SessionGate() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 8000);
-    const unsubscribe = onAuthStateChanged(auth, current => {
-      clearTimeout(timer);
-      setUser(current?.uid === ADMIN_UID ? current : null);
-      setLoading(false);
-      if (current && current.uid !== ADMIN_UID) {
-        setError('Esta cuenta no tiene acceso al panel.');
-        signOut(auth).catch(() => {});
-      }
-    }, () => {
-      clearTimeout(timer);
-      setLoading(false);
-      setError('No se pudo comprobar la sesión. Revisa tu conexión.');
-    });
-    return () => { clearTimeout(timer); unsubscribe(); };
-  }, []);
-
-  const handleLogin = async event => {
-    event.preventDefault();
-    setError('');
-    try {
-      await signInWithEmailAndPassword(auth, emailInput, passwordInput);
-      try { if (navigator.vibrate) navigator.vibrate(50); } catch (_) {}
-      setEmailInput('');
-      setPasswordInput('');
-    } catch (_) {
-      setError('Credenciales incorrectas o conexión no disponible. Intenta nuevamente.');
-    }
-  };
-
-  if (loading) return <AuthLoading />;
-  if (!user) return <LoginView {...{ emailInput, setEmailInput, passwordInput, setPasswordInput, handleLogin, error }} />;
-  return (
-    <AppLoadBoundary>
-      <Suspense fallback={<AuthLoading />}>
-        <OperationalApp firebaseUser={user} />
-      </Suspense>
-    </AppLoadBoundary>
-  );
+import React,{Component,Suspense,lazy,useEffect,useRef,useState} from 'react';
+import {onAuthStateChanged,signInWithEmailAndPassword,createUserWithEmailAndPassword,updateProfile,sendPasswordResetEmail,signOut} from 'firebase/auth';
+import {auth,LOGO_URL} from '../../lib/firebase-auth.mjs';
+import {ensureChristmasCompany} from '../../lib/christmas-company.mjs';
+const App=lazy(()=>import('../../App.jsx'));
+class Boundary extends Component{state={failed:false};static getDerivedStateFromError(){return{failed:true};}render(){return this.state.failed?<div role="alert" className="navidad-dialog"><h1>No se pudo abrir la agenda</h1><button onClick={()=>location.reload()}>Volver a cargar</button></div>:this.props.children;}}
+export default function SessionGate(){
+ const [user,setUser]=useState(null),[loading,setLoading]=useState(true),[creating,setCreating]=useState(false),[busy,setBusy]=useState(false),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[name,setName]=useState(''),[error,setError]=useState('');const registering=useRef(false);
+ useEffect(()=>{let alive=true;const stop=onAuthStateChanged(auth,async current=>{if(registering.current)return;if(!current||current.isAnonymous){if(alive){setUser(null);setLoading(false);}return;}try{await ensureChristmasCompany(current,current.displayName);if(alive&&auth.currentUser?.uid===current.uid)setUser(current);}catch{if(alive)setError('No se pudo preparar tu empresa. Revisa la conexión y vuelve a cargar.');}finally{if(alive)setLoading(false);}});return()=>{alive=false;stop();};},[]);
+ const submit=async e=>{e.preventDefault();setBusy(true);setError('');try{if(creating){if(!name.trim())throw Error('BUSINESS_NAME_REQUIRED');registering.current=true;const result=await createUserWithEmailAndPassword(auth,email.trim(),password);await updateProfile(result.user,{displayName:name.trim().slice(0,100)});await ensureChristmasCompany(result.user,name);setUser(result.user);setLoading(false);}else{await signInWithEmailAndPassword(auth,email.trim(),password);}setPassword('');}catch(e){setError(e.code==='auth/email-already-in-use'?'Ya existe una cuenta con ese correo. Inicia sesión o recupera la contraseña.':e.message==='BUSINESS_NAME_REQUIRED'?'Escribe el nombre de tu empresa.':e.code==='auth/weak-password'?'Elige una contraseña más segura.':'No se pudo continuar. Revisa tus datos y la conexión.');}finally{registering.current=false;setBusy(false);}};
+ if(loading)return <div role="status" className="navidad-loading">Abriendo Operación Navidad…</div>;
+ if(user)return <Boundary key={user.uid}><Suspense fallback={<div role="status" className="navidad-loading">Cargando tu agenda…</div>}><App key={user.uid} firebaseUser={user}/></Suspense></Boundary>;
+ return <main className="navidad-auth"><form className="navidad-dialog" onSubmit={submit}><img src={LOGO_URL} alt="Diverty" width="125"/><h1>Operación Navidad</h1><p>{creating?'Crea la cuenta de tu empresa. Tu agenda y tus Santas se guardarán en un espacio separado.':'Entra a la agenda navideña de tu empresa.'}</p>{creating&&<label>Nombre de tu empresa<input required maxLength={100} value={name} onChange={e=>setName(e.target.value)} disabled={busy}/></label>}<label>Correo<input required type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/></label><label>Contraseña<input required type="password" minLength={creating?8:1} autoComplete={creating?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)} disabled={busy}/></label>{!!error&&<p role="status">{error}</p>}<button disabled={busy} type="submit">{busy?'Preparando…':creating?'Crear mi empresa':'Iniciar sesión'}</button><button type="button" disabled={busy} onClick={()=>{setCreating(v=>!v);setError('');setPassword('');}}>{creating?'Ya tengo una cuenta':'Crear cuenta para mi empresa'}</button>{!creating&&<button type="button" disabled={busy} onClick={async()=>{if(!email.trim())return setError('Escribe tu correo para recuperar el acceso.');try{await sendPasswordResetEmail(auth,email.trim());setError('Si el correo tiene una cuenta, recibirás las instrucciones de recuperación.');}catch{setError('No se pudo solicitar la recuperación. Revisa el correo y la conexión.');}}}>Olvidé mi contraseña</button>}</form></main>;
 }

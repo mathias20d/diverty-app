@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {isChristmasRecord,isChristmasService,assertChristmasRecord} from '../src/lib/christmas-scope.mjs';
+test('only Christmas services enter the seasonal agenda',()=>{assert.equal(isChristmasService({nombre:'Entregas de Nochebuena'}),true);assert.equal(isChristmasRecord({fecha:'2026-12-24',esNavidad:true}),true);assert.equal(isChristmasRecord({fecha:'2026-12-24',servicio:'Cumpleaños'}),false);assert.throws(()=>assertChristmasRecord({fecha:'2026-11-20',esNavidad:true}));});
