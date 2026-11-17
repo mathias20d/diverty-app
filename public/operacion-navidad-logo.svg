@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Operación Navidad">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B3172E"/>
+      <stop offset="1" stop-color="#5E0B17"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="#FFFFFF">
+    <polygon points="256,132 180,236 332,236"/>
+    <polygon points="256,186 154,306 358,306"/>
+    <polygon points="256,244 128,380 384,380"/>
+  </g>
+  <rect x="234" y="380" width="44" height="40" rx="6" fill="#F3D9A4"/>
+  <polygon fill="#F5C04A" points="256,62 267.8,93.8 301.6,95.2 275,116.2 284.2,148.8 256,130 227.8,148.8 237,116.2 210.4,95.2 244.2,93.8"/>
+  <circle cx="226" cy="268" r="11" fill="#D62839"/>
+  <circle cx="292" cy="258" r="11" fill="#F5C04A"/>
+  <circle cx="200" cy="344" r="11" fill="#F5C04A"/>
+  <circle cx="318" cy="338" r="11" fill="#D62839"/>
+  <circle cx="258" cy="318" r="11" fill="#2E8B57"/>
+</svg>

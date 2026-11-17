@@ -580,3 +580,61 @@ body>div>.navidad-loading:only-child,#root>.navidad-loading{min-height:100dvh;ma
 @keyframes nv-rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes nv-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.navidad-app *,.navidad-dialog-overlay,.navidad-dialog-overlay *,.navidad-auth *,.navidad-toast,.navidad-loading:before{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ---- Logo propio, publicar en 3 pasos, ajustes por pestañas y precios fáciles ---- */
+.nv-brand-logo{width:40px;height:40px;border-radius:12px;flex-shrink:0;box-shadow:0 4px 12px -4px rgba(126,17,32,.45)}
+.nv-auth-logo{display:block;margin:0 auto 6px;border-radius:20px;box-shadow:0 10px 24px -10px rgba(94,11,23,.55)}
+.nv-publish button,.nv-publish .nv-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border-radius:12px;border:1px solid var(--nv-line-strong);background:var(--nv-surface);color:var(--nv-ink);font:600 14px/1.2 var(--nv-font);cursor:pointer;text-decoration:none}
+.nv-publish .nv-btn-primary{background:var(--nv-brand);border-color:var(--nv-brand);color:#fff}
+.nv-publish button:disabled{opacity:.55;cursor:not-allowed}
+.nv-publish{display:grid;gap:14px;padding:20px;border-radius:var(--nv-radius-lg);background:var(--nv-surface);border:1px solid var(--nv-line);box-shadow:var(--nv-shadow)}
+.nv-publish:not(.nv-publish-live){border-color:color-mix(in srgb,var(--nv-gold) 55%,var(--nv-line));background:linear-gradient(180deg,var(--nv-gold-soft),var(--nv-surface) 70%)}
+.nv-publish-head h2{margin:4px 0 2px;font-size:19px;font-weight:800;letter-spacing:-.01em;color:var(--nv-ink)}
+.nv-publish-head p{margin:0;color:var(--nv-muted);font-size:14px}
+.nv-publish-actions{display:flex;gap:10px;flex-wrap:wrap}
+.nv-link-preview{display:block;padding:12px 14px;border-radius:12px;background:var(--nv-bg);border:1px dashed var(--nv-line-strong);color:var(--nv-brand);font-weight:700;font-size:15px;overflow-wrap:anywhere;text-decoration:none}
+.nv-steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.nv-steps li{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--nv-surface);border:1px solid var(--nv-line)}
+.nv-steps li.is-done{background:var(--nv-pine-soft);border-color:transparent}
+.nv-step-dot{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-weight:800;font-size:14px;background:var(--nv-brand-soft);color:var(--nv-brand)}
+.nv-steps li.is-done .nv-step-dot{background:var(--nv-pine);color:#fff}
+.nv-step-body{display:grid;gap:6px;flex:1;min-width:0}
+.nv-step-body b{font-size:15px;color:var(--nv-ink)}
+.nv-step-body small{color:var(--nv-muted);font-size:13px}
+.nv-step-body>button{justify-self:start}
+.nv-inline-form{display:flex;gap:8px;flex-wrap:wrap}
+.nv-inline-form input{flex:1;min-width:150px;min-height:44px;padding:10px 12px;border:1px solid var(--nv-line-strong);border-radius:12px;font:500 16px/1.3 var(--nv-font)}
+@media(min-width:760px){.nv-steps{grid-template-columns:repeat(3,minmax(0,1fr))}.nv-steps li{flex-direction:column}}
+/* Ajustes por pestañas */
+.nv-tabs{display:flex;gap:6px;overflow-x:auto;padding:4px;border-radius:14px;background:var(--nv-bg);border:1px solid var(--nv-line);scrollbar-width:none;position:sticky;top:0;z-index:2}
+.nv-tabs::-webkit-scrollbar{display:none}
+.navidad-dialog .nv-tab{flex:1 0 auto;min-height:40px;padding:8px 14px;border:0;border-radius:10px;background:transparent;box-shadow:none;color:var(--nv-muted);font-weight:700;white-space:nowrap}
+.navidad-dialog .nv-tab.is-active{background:var(--nv-surface);color:var(--nv-brand);box-shadow:var(--nv-shadow-sm)}
+.nv-publish-state{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.nv-hint{margin:-4px 0 0;font-size:12px;color:var(--nv-muted)}
+.nv-service-form{gap:12px}
+.nv-transport{display:grid;gap:14px}
+/* Precio con − / + */
+.nv-place{padding:10px 10px 10px 14px}
+.nv-place-main{justify-content:space-between}
+.nv-price-stepper{display:inline-flex;align-items:stretch;border:1px solid var(--nv-line-strong);border-radius:12px;overflow:hidden;background:#fff;width:max-content;max-width:100%}
+.navidad-dialog .nv-price-stepper button{min-width:48px;min-height:48px;padding:0;border:0;border-radius:0;box-shadow:none;background:var(--nv-bg);font-size:22px;font-weight:700;color:var(--nv-ink)}
+.navidad-dialog .nv-price-stepper button:hover:not(:disabled){background:var(--nv-brand-soft);color:var(--nv-brand)}
+.nv-price-field{display:flex;align-items:center;gap:2px;padding:0 6px 0 12px;font-weight:700;color:var(--nv-muted);border-inline:1px solid var(--nv-line)}
+.navidad-dialog .nv-price-field input{width:92px;min-height:48px;border:0;box-shadow:none;padding:0 6px;text-align:center;font:700 18px/1 var(--nv-font);font-variant-numeric:tabular-nums;background:transparent}
+.navidad-dialog .nv-price-field input:focus{box-shadow:none}
+.nv-price-stepper:focus-within{border-color:var(--nv-brand);box-shadow:0 0 0 4px color-mix(in srgb,var(--nv-brand) 14%,transparent)}
+.nv-place>.nv-price-stepper{margin:8px 0 2px}
+.nv-field{display:grid;gap:6px;font-size:14px;font-weight:600;color:var(--nv-ink)}
+@media(min-width:640px){.nv-place{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:12px}.nv-place-main{grid-column:1}.nv-place>.nv-price-stepper{grid-column:2;grid-row:1;margin:0}.nv-place>.nv-place-more{grid-column:1/-1}.nv-place-remove{order:2}}
+/* Barra de guardar fija al final del panel */
+.nv-save-bar{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:14px;background:var(--nv-surface);border:1px solid var(--nv-line);box-shadow:0 -6px 18px -12px rgba(16,24,40,.25);font-size:13px;color:var(--nv-muted)}
+.nv-save-bar.is-dirty{border-color:var(--nv-gold);color:var(--nv-ink);font-weight:600}
+/* Santas: − / + */
+.nv-stepper-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.nv-stepper-row>span{font-weight:600;color:var(--nv-ink)}
+.nv-stepper{display:inline-flex;border:1px solid var(--nv-line-strong);border-radius:12px;overflow:hidden;background:#fff}
+.navidad-dialog .nv-stepper button{min-width:48px;min-height:48px;padding:0;border:0;border-radius:0;box-shadow:none;background:var(--nv-bg);font-size:22px}
+.navidad-dialog .nv-stepper input{width:64px;min-height:48px;border:0;border-inline:1px solid var(--nv-line);border-radius:0;box-shadow:none;text-align:center;font:700 18px/1 var(--nv-font)}
+/* Computadora: el panel de ajustes aprovecha el ancho */
+@media(min-width:900px) and (pointer:fine){.navidad-dialog.nv-settings{width:min(860px,94vw);max-width:none}}

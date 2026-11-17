@@ -12,7 +12,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 const CRM_URL = `${self.location.origin}/`;
-const ICON_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
+const ICON_URL = '/icon-192.png';
 
 // IMPORTANTE:
 // El Worker de Cloudflare debe enviar un mensaje DATA-ONLY para que este Service Worker
@@ -54,7 +54,7 @@ messaging.onBackgroundMessage((payload) => {
   const data = payload?.data || {};
   const notification = payload?.notification || {};
   const reservationId = getReservationId(payload);
-  const title = data.title || notification.title || '🎉 Nueva reserva Diverty';
+  const title = data.title || notification.title || '🎄 Nueva solicitud de Navidad';
   const body = data.body || notification.body || 'Tienes una nueva reserva.';
   const targetUrl = buildTargetUrl(payload);
 

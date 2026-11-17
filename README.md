@@ -4,7 +4,7 @@ Aplicación web instalable (PWA) y página pública de entregas del 24 y 25 de d
 
 Conserva rutas por Santa, capacidad de varios Santas, ubicación, disponibilidad recomendada, transporte, solicitudes, abonos y liberación de cupos.
 
-Cada cuenta registrada utiliza su propio espacio privado. La cuenta original de Diverty conserva sus datos originales. Las empresas nuevas empiezan sin publicar; para compartir requieren verificar el correo, añadir un servicio y configurar su WhatsApp.
+Cada cuenta registrada utiliza su propio espacio privado. La cuenta original de Diverty conserva sus datos originales. Las empresas nuevas empiezan sin publicar; para publicar basta con añadir un servicio y su WhatsApp (sin confirmar el correo). Publicar y guardar los datos de la empresa lo hace la API de Netlify (acción «profile»); al publicar se crea el enlace corto automáticamente.
 
 No se migraron ni borraron las reservas de otros módulos: se retiraron sus pantallas de esta publicación. Los proyectos completos originales están en el respaldo privado de la entrega.
 

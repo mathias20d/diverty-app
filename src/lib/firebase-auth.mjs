@@ -5,4 +5,5 @@ export const firebaseConfig = { apiKey: "AIzaSyDxE2E1KMuZU523k8oWHabi1jDrFxPOD-0
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const ADMIN_UID = 'OblqzhP2L3XulJ920O82jwd1Qrk1';
-export const LOGO_URL = 'https://i.postimg.cc/GhFd4tcm/1000047880.png';
+// Logo propio de Operación Navidad (sin marca Diverty).
+export const LOGO_URL = '/operacion-navidad-logo.svg';

@@ -11,6 +11,18 @@ const num=value=>Number(String(value??'').replace(',','.'));
 const mapUrl=zone=>'https://www.google.com/maps?q='+(zone.tipo==='circulo'?zone.lat+','+zone.lng:((zone.sur+zone.norte)/2).toFixed(5)+','+((zone.oeste+zone.este)/2).toFixed(5));
 const OTHER='__otro__';
 
+// Precio fácil de cambiar en celular y en computadora: campo grande que selecciona todo al
+// tocarlo (se escribe encima), teclado numérico y botones − / + de $1.
+export function PriceStepper({label,value,onChange,disabled,step=1}){
+ const current=num(value),safe=Number.isFinite(current)?current:0;
+ const bump=delta=>onChange(String(Math.max(0,Math.min(TRANSPORT_LIMITS.price,Math.round((safe+delta)*100)/100))));
+ return <div className="nv-price-stepper">
+  <button type="button" aria-label={label+': restar $'+step} disabled={disabled||safe<=0} onClick={()=>bump(-step)}>−</button>
+  <span className="nv-price-field"><span aria-hidden="true">$</span><input aria-label={label} inputMode="decimal" enterKeyHint="done" autoComplete="off" value={String(value??'')} disabled={disabled} onFocus={e=>e.target.select()} onChange={e=>onChange(e.target.value.replace(/[^0-9.,]/g,''))} onKeyDown={e=>{if(e.key==='ArrowUp'){e.preventDefault();bump(step);}else if(e.key==='ArrowDown'){e.preventDefault();bump(-step);}else if(e.key==='Enter')e.currentTarget.blur();}}/></span>
+  <button type="button" aria-label={label+': sumar $'+step} disabled={disabled} onClick={()=>bump(step)}>+</button>
+ </div>;
+}
+
 export default function ChristmasTransportSettings({db,appId,saved,onMessage}){
  const original=useMemo(()=>copy(normalizeTransportConfig(saved)),[saved]);
  const [draft,setDraft]=useState(original),[terms,setTerms]=useState(original.zonasRojas.terminos.join('\n')),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false);
@@ -61,18 +73,19 @@ export default function ChristmasTransportSettings({db,appId,saved,onMessage}){
  const restore=()=>{if(!window.confirm('¿Restaurar los lugares, precios y zonas rojas originales? Pierdes los cambios que no hayas guardado.'))return;const base=copy(DEFAULT_TRANSPORT);update(base);setTerms(base.zonasRojas.terminos.join('\n'));};
 
  const termCount=terms.split('\n').map(t=>t.trim()).filter(t=>t.length>=3).length;
- return <details><summary>Transporte y zonas{dirty?' · sin guardar':''}</summary>
-  <p>Escribe cuánto cobras por llevar a Santa a cada lugar. La página calcula el transporte sola con la ubicación del cliente.</p>
+ return <div className="nv-transport">
+  <p>Escribe cuánto cobras por llevar a Santa a cada lugar. Toca un precio para cambiarlo o usa − y +. La página calcula el transporte sola con la ubicación del cliente.</p>
   <label className="nv-switch"><input type="checkbox" checked={draft.automatico} onChange={e=>update({...draft,automatico:e.target.checked})}/><span><b>Cálculo automático del transporte</b><small>{draft.automatico?'Activado: el cliente ve el transporte de su lugar.':'Apagado: todas las solicitudes llegan con transporte por confirmar.'}</small></span></label>
 
   <section className="nv-section" aria-label="Precios por lugar"><h3>Precios por lugar</h3><p>$0 significa transporte incluido. Si el cliente está fuera de todos estos lugares, el transporte queda por confirmar.</p>
    {draft.zonas.length===0&&<p className="nv-empty">No hay lugares. Agrega uno abajo o restaura los originales.</p>}
    <ul className="nv-places">{draft.zonas.map((zone,index)=><li key={zone.id+index} className="nv-place">
-    <div className="nv-place-main"><span className="nv-place-name">{zone.nombre}</span><span className="nv-place-price"><span aria-hidden="true">$</span><input aria-label={'Precio de '+zone.nombre} inputMode="decimal" value={String(zone.precio??'')} disabled={busy} onChange={e=>setZone(index,{precio:e.target.value})}/></span><button type="button" className="nv-btn-ghost nv-icon-btn" aria-label={'Quitar '+zone.nombre} disabled={busy} onClick={()=>update({...draft,zonas:draft.zonas.filter((_,i)=>i!==index)})}>✕</button></div>
+    <div className="nv-place-main"><span className="nv-place-name">{zone.nombre}</span><button type="button" className="nv-btn-ghost nv-icon-btn nv-place-remove" aria-label={'Quitar '+zone.nombre} disabled={busy} onClick={()=>update({...draft,zonas:draft.zonas.filter((_,i)=>i!==index)})}>✕</button></div>
+    <PriceStepper label={'Precio de '+zone.nombre} value={zone.precio} disabled={busy} onChange={precio=>setZone(index,{precio})}/>
     <details className="nv-place-more"><summary>Ajustar</summary><div className="nv-place-adv"><label>Nombre<input maxLength={TRANSPORT_LIMITS.nameLength} value={zone.nombre} disabled={busy} onChange={e=>setZone(index,{nombre:e.target.value})}/></label>{zone.tipo==='circulo'?<label>Radio (km)<input inputMode="decimal" value={String(zone.radioKm??'')} disabled={busy} onChange={e=>setZone(index,{radioKm:e.target.value})}/></label>:<p>Área amplia del mapa.</p>}<a href={mapUrl(zone)} target="_blank" rel="noopener noreferrer">Ver en el mapa</a></div></details>
    </li>)}</ul>
    <div className="nv-summary nv-add-place"><strong>Agregar un lugar</strong>
-    <div className="navidad-form-row"><label>Lugar<select value={pick} disabled={busy} onChange={e=>setPick(e.target.value)}><option value="">Elige un lugar…</option>{available.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}<option value={OTHER}>Otro lugar…</option></select></label><label>Precio ($)<input inputMode="decimal" placeholder="Ej. 10" value={pickPrice} disabled={busy} onChange={e=>setPickPrice(e.target.value)}/></label></div>
+    <div className="navidad-form-row"><label>Lugar<select value={pick} disabled={busy} onChange={e=>setPick(e.target.value)}><option value="">Elige un lugar…</option>{available.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}<option value={OTHER}>Otro lugar…</option></select></label><div className="nv-field"><span>Precio</span><PriceStepper label="Precio del lugar nuevo" value={pickPrice} disabled={busy} onChange={setPickPrice}/></div></div>
     {pick===OTHER&&<><label>Nombre del lugar<input maxLength={TRANSPORT_LIMITS.nameLength} placeholder="Ej. Brisas del Golf" value={custom.nombre} disabled={busy} onChange={e=>setCustom(old=>({...old,nombre:e.target.value}))}/></label><label>Ubicación<input placeholder="Enlace de Google Maps o «9.0123, -79.5012»" value={custom.ubicacion} disabled={busy} onChange={e=>setCustom(old=>({...old,ubicacion:e.target.value}))}/></label><div className="navidad-form-row"><label>Radio (km)<input inputMode="decimal" value={custom.radioKm} disabled={busy} onChange={e=>setCustom(old=>({...old,radioKm:e.target.value}))}/></label><button type="button" disabled={busy} onClick={useDevice} style={{alignSelf:'end'}}>Usar mi ubicación</button></div></>}
     <button type="button" className="nv-btn-primary" disabled={busy||!pick} onClick={addPlace} style={{justifySelf:'start'}}>Agregar lugar</button>
    </div>
@@ -81,10 +94,11 @@ export default function ChristmasTransportSettings({db,appId,saved,onMessage}){
   <section className="nv-section" aria-label="Zonas rojas"><h3>Zonas rojas</h3>
    <button type="button" className={draft.zonasRojas.activo?'nv-btn-primary':''} aria-pressed={draft.zonasRojas.activo} disabled={busy} onClick={()=>setRed({activo:!draft.zonasRojas.activo})} style={{justifySelf:'start'}}>{draft.zonasRojas.activo?'Zonas rojas activadas · Desactivar':'Zonas rojas desactivadas · Activar'}</button>
    <p>{draft.zonasRojas.activo?'Si la dirección o la referencia del cliente menciona uno de estos lugares, se calcula el transporte de su zona más el recargo, y la solicitud queda para que confirmes antes de aceptar. El cliente no ve la palabra «zona roja».':'Desactivadas: estos lugares se cobran como cualquier otro.'}</p>
-   <div className="navidad-form-row"><label>Recargo adicional ($)<input inputMode="decimal" value={String(draft.zonasRojas.recargo??'')} disabled={busy||!draft.zonasRojas.activo} onChange={e=>setRed({recargo:e.target.value})}/></label><span/></div>
+   <div className="nv-field"><span>Recargo adicional</span><PriceStepper label="Recargo de zona roja" value={draft.zonasRojas.recargo} disabled={busy||!draft.zonasRojas.activo} onChange={recargo=>setRed({recargo})}/></div>
    <details className="nv-place-more"><summary>Ver o editar los lugares ({termCount})</summary><label>Un lugar por línea<textarea rows={6} value={terms} disabled={busy||!draft.zonasRojas.activo} onChange={e=>{setTerms(e.target.value);setDirty(true);}}/></label></details>
   </section>
 
-  <div className="nv-row"><button type="button" className="nv-btn-primary" disabled={busy||!dirty} onClick={save}>{busy?'Guardando…':'Guardar transporte'}</button><button type="button" disabled={busy} onClick={restore}>Restaurar valores originales</button></div>
- </details>;
+  <div className={'nv-save-bar'+(dirty?' is-dirty':'')}><span>{dirty?'Tienes cambios sin guardar':'Todo guardado'}</span><button type="button" className="nv-btn-primary" disabled={busy||!dirty} onClick={save}>{busy?'Guardando…':'Guardar transporte'}</button></div>
+  <details className="nv-place-more"><summary>Más opciones</summary><div className="nv-place-adv"><button type="button" disabled={busy} onClick={restore} style={{justifySelf:'start'}}>Restaurar valores originales</button></div></details>
+ </div>;
 }
