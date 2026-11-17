@@ -525,6 +525,30 @@ article .navidad-actions{padding:0;margin-top:8px;display:grid;grid-template-col
 .nv-switch b{font-weight:700;color:var(--nv-ink)}
 .nv-switch small{font-size:13px;font-weight:400;color:var(--nv-muted);line-height:1.45}
 .nv-zone{gap:8px}
+.nv-places{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.nv-place{border:1px solid var(--nv-line);border-radius:var(--nv-radius);background:var(--nv-surface);padding:6px 6px 6px 14px}
+.nv-place-main{display:flex;align-items:center;gap:10px}
+.nv-place-name{flex:1;min-width:0;font-size:15px;font-weight:600;color:var(--nv-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nv-place-price{display:flex;align-items:center;gap:4px;font-weight:700;color:var(--nv-muted)}
+.navidad-dialog .nv-place-price input{width:84px;min-height:40px;padding:8px 10px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.navidad-dialog details.nv-place-more,.navidad-dialog details.nv-place-more[open]{border:0;background:transparent;padding:0;display:block;overflow:visible}
+.navidad-dialog details.nv-place-more>summary{min-height:32px;padding:0 24px 0 0;font-size:13px;font-weight:600;color:var(--nv-muted);display:inline-flex;margin:0;border:0;background:transparent}
+.navidad-dialog details.nv-place-more>summary:after{right:6px;width:6px;height:6px}
+.navidad-dialog details.nv-place-more[open]>summary{margin:0;border:0;background:transparent}
+.nv-place-adv{display:grid;gap:10px;padding:8px 8px 10px 0}
+.nv-add-place select{background-color:#fff}
+.nv-upload{display:grid;gap:8px}
+.nv-upload-label{font-size:14px;font-weight:600;color:var(--nv-ink-2)}
+.navidad-dialog label.nv-upload-drop{display:grid;justify-items:center;gap:4px;padding:24px 16px;border:2px dashed var(--nv-line-strong);border-radius:var(--nv-radius);background:var(--nv-surface);text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.navidad-dialog label.nv-upload-drop:hover{border-color:var(--nv-brand);background:var(--nv-brand-soft)}
+.nv-upload-drop.is-busy{cursor:progress;border-color:var(--nv-gold);background:var(--nv-gold-soft)}
+.nv-upload-icon{font-size:28px;line-height:1}
+.nv-upload-drop b{font-size:15px;color:var(--nv-ink)}
+.nv-upload-drop small{font-size:13px;font-weight:400;color:var(--nv-muted)}
+.navidad-dialog .nv-upload input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.nv-upload-preview{display:grid;gap:10px}
+.nv-upload-preview img{width:100%;max-height:220px;object-fit:cover;border-radius:var(--nv-radius);border:1px solid var(--nv-line)}
+.navidad-dialog label.nv-upload-btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border-radius:12px;border:1px solid var(--nv-line-strong);background:var(--nv-surface);font-weight:600;cursor:pointer;position:relative}
 .nv-empty{padding:40px 16px;text-align:center;color:var(--nv-muted);font-size:14px;border:1px dashed var(--nv-line-strong);border-radius:var(--nv-radius-lg)}
 
 /* ---------- Estados y avisos ---------- */
