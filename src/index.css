@@ -516,6 +516,15 @@ article .navidad-actions{padding:0;margin-top:8px;display:grid;grid-template-col
 .nv-pill-brand{background:var(--nv-brand-soft);color:var(--nv-brand);border-color:#F4C7CD}
 .nv-money-due{color:#B42318;font-weight:700}
 .nv-money-ok{color:var(--nv-pine);font-weight:700}
+.navidad-dialog label.nv-switch{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid var(--nv-line);border-radius:var(--nv-radius);background:var(--nv-surface);cursor:pointer}
+.navidad-dialog label.nv-switch input{appearance:none;-webkit-appearance:none;flex-shrink:0;width:46px;min-height:0;height:28px;padding:0;margin-top:2px;border-radius:999px;border:0;background:var(--nv-line-strong);box-shadow:none;position:relative;cursor:pointer;transition:background .15s}
+.navidad-dialog label.nv-switch input:after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.3);transition:transform .15s}
+.navidad-dialog label.nv-switch input:checked{background:var(--nv-pine)}
+.navidad-dialog label.nv-switch input:checked:after{transform:translateX(18px)}
+.nv-switch span{display:grid;gap:3px}
+.nv-switch b{font-weight:700;color:var(--nv-ink)}
+.nv-switch small{font-size:13px;font-weight:400;color:var(--nv-muted);line-height:1.45}
+.nv-zone{gap:8px}
 .nv-empty{padding:40px 16px;text-align:center;color:var(--nv-muted);font-size:14px;border:1px dashed var(--nv-line-strong);border-radius:var(--nv-radius-lg)}
 
 /* ---------- Estados y avisos ---------- */

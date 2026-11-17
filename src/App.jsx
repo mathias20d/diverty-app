@@ -9,6 +9,7 @@ import ChristmasOperation from './ChristmasOperation.jsx';
 import {createChristmasStore,utils,isPendingWebRequest,publicSlot,christmasInsertionPlan,christmasEventGps,confirmCentralRequest as legacyConfirmCentralRequest,needsPlaceReference,transportPending,inferResourceRequirements,NotifModal,Confirm,NavigationChoiceModal} from './christmas-core.jsx';
 import {isChristmasRecord,isChristmasService,assertChristmasRecord} from './lib/christmas-scope.mjs';
 import ChristmasReservationForm from './components/ChristmasReservationForm.jsx';
+import ChristmasTransportSettings from './components/ChristmasTransportSettings.jsx';
 import {Gift,CalendarPlus,Inbox,ClipboardList,Settings2,LogOut,Route,X,ExternalLink,Bell} from 'lucide-react';
 
 // Retain the legacy transaction/projections/slot counters, while disallowing edits outside Navidad.
@@ -29,6 +30,7 @@ export default function App({firebaseUser}){
  const [eventos,setEventos]=useState([]),[catalog,setCatalog]=useState([]),[loaded,setLoaded]=useState(false),[configured,setConfigured]=useState(false),[error,setError]=useState('');
  const [christmasSantaCapacity,setChristmasSantaCapacity]=useState(1),[capacityDraft,setCapacityDraft]=useState('1'),[isChristmasOpsOpen,setIsChristmasOpsOpen]=useState(true),[christmasModuleVisible,setVisible]=useState(()=>utils.getSafeLocal('diverty_christmas_module_visible')!=='false');
  const [christmasDayFilter,setChristmasDayFilter]=useState('all'),[expandedChristmasId,setExpandedChristmasId]=useState(null),[isNotifOpen,setIsNotifOpen]=useState(false),[settings,setSettings]=useState(false),[manage,setManage]=useState(false),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[notice,setNotice]=useState('');
+ const [transportConfig,setTransportConfig]=useState(null);
  const [navigationModal,setNavigationModal]=useState({isOpen:false}),[confirmModal,setConfirmModal]=useState({isOpen:false});
  const christmasAutoAssignBusyRef=useRef(false),noticeTimer=useRef(null),deviceIdRef=useRef('navidad-'+Math.random().toString(36).slice(2));
  const handledIntent=useRef(false);
@@ -41,8 +43,9 @@ export default function App({firebaseUser}){
   if(!firebaseUser)return;
   const unsubscribe=onSnapshot(query(collection(db,'artifacts',appId,'public','data','eventos'),where('fecha','>=','2026-12-24'),where('fecha','<=','2026-12-25')),snap=>{setEventos(snap.docs.map(d=>({...d.data(),id:d.id})).filter(isChristmasRecord));setLoaded(true);setError('');},()=>{setError('No se pudo cargar la agenda navideña. Revisa la conexión y vuelve a abrir la app.');setLoaded(false);});
   const unsubscribeConfig=onSnapshot(doc(db,'artifacts',appId,'public','data','config_web','global'),snap=>{const n=Number(snap.data()?.capacidadSanta??1);setCompanyName(snap.data()?.nombreEmpresa||(store.legacy?'Diverty Eventos':firebaseUser.displayName||'Tu empresa'));setChristmasSantaCapacity(Number.isInteger(n)&&n>=1&&n<=20?n:1);setConfigured(true);},()=>{setConfigured(false);setError('No se pudo comprobar la cantidad de Santas. No se harán asignaciones automáticas.');});
+  const unsubscribeTransport=onSnapshot(doc(db,'artifacts',appId,'public','data','config_web','disponibilidad'),snap=>setTransportConfig(snap.data()?.transporte||null),()=>setTransportConfig(null));
   const unsubscribeCatalog=onSnapshot(collection(db,'artifacts',appId,'public','data','catalogo_web'),snap=>setCatalog(snap.docs.map(d=>({...d.data(),id:d.id})).filter(isChristmasService)),()=>showAlert('No se pudo cargar el catálogo navideño. Puedes conservar el servicio escrito en la reserva.'));
-  return()=>{unsubscribe();unsubscribeConfig();unsubscribeCatalog();clearTimeout(noticeTimer.current);};
+  return()=>{unsubscribe();unsubscribeConfig();unsubscribeTransport();unsubscribeCatalog();clearTimeout(noticeTimer.current);};
  },[firebaseUser,showAlert]);
 
 const patchEventoAtomic = useCallback(async (id, patch) => {
@@ -444,6 +447,7 @@ const openGoogleMaps = useCallback((dir, ubi, eventData = null) => {
    <Confirm modal={confirmModal} setModal={setConfirmModal}/>
    {settings&&<div className="navidad-dialog-overlay"><section role="dialog" aria-modal="true" aria-label="Santas y ajustes" className="navidad-dialog"><div className="nv-dialog-head"><div><h2>Santas y ajustes</h2><p>Tu empresa, los servicios que ofreces y cómo se reparten las rutas.</p></div><button type="button" className="nv-btn-ghost nv-icon-btn" aria-label="Cerrar ajustes" disabled={saving} onClick={()=>setSettings(false)}><X size={20}/></button></div>
     <ChristmasCompanySettings store={store} user={firebaseUser} catalog={catalog} onMessage={showAlert}/>
+    <ChristmasTransportSettings db={db} appId={appId} saved={transportConfig} onMessage={showAlert}/>
     <section className="nv-section" aria-labelledby="nv-santas-title"><h3 id="nv-santas-title">Cantidad de Santas</h3><p>Define cuántas rutas se pueden atender. Con 2 Santas tendrás Santa 1 y Santa 2, cada uno con su agenda y sus traslados.</p><div className="nv-row"><label>Santas disponibles<input type="number" min="1" max="20" value={capacityDraft} onChange={e=>setCapacityDraft(e.target.value)}/></label><button className="nv-btn-primary" disabled={saving} onClick={saveCapacity}>{saving?'Guardando…':'Guardar Santas'}</button></div></section>
     <section className="nv-section" aria-labelledby="nv-avisos-title"><h3 id="nv-avisos-title">Avisos</h3><p>Recibe una notificación en este dispositivo cuando llegue una solicitud nueva.</p><button disabled={saving} onClick={activarNotificaciones} style={{justifySelf:'start'}}><Bell size={17}/> Activar avisos en este dispositivo</button></section>
     <ChristmasDates db={db} appId={appId}/>
@@ -452,7 +456,7 @@ const openGoogleMaps = useCallback((dir, ubi, eventData = null) => {
    {manage&&<div className="navidad-dialog-overlay"><section role="dialog" aria-modal="true" aria-label="Reservas de Navidad" className="navidad-dialog"><div className="nv-dialog-head"><div><h2>Reservas de Navidad</h2><p>{eventosActivos.length} {eventosActivos.length===1?'reserva':'reservas'} del 24 y 25 de diciembre.</p></div><button onClick={()=>setManage(false)}>Cerrar</button></div>
     {eventosActivos.length===0&&<p className="nv-empty">Aún no hay reservas de Navidad. Las nuevas entregas y las solicitudes de la web aparecerán aquí.</p>}
     {eventosActivos.map(event=>{const balance=Math.max(0,utils.safeNum(event.total)-utils.safeNum(event.abono));return <article className="navidad-record" key={event.id}><div className="nv-record-head"><b>{event.cliente}</b><span className={'nv-pill '+statusTone(event.estado)}>{event.estado||'Pendiente'}</span></div><div className="nv-meta"><span>{formatDay(event.fecha)} · {utils.formatTime12h(event.hora)}</span><span>{event.santaAsignado||'Sin asignar'}</span><span>Saldo: <span className={balance>0?'nv-money-due':'nv-money-ok'}>$ {balance.toFixed(2)}</span></span></div><div className="nv-record-actions"><button onClick={()=>setEditing(event)}>Editar</button><button onClick={()=>handleRegistrarAbono(event)}>Registrar abono</button>{isPendingWebRequest(event)&&<button className="nv-btn-primary" onClick={()=>{setManage(false);setIsNotifOpen(true);}}>Revisar solicitud</button>}</div></article>;})}</section></div>}
-   {editing&&<ChristmasReservationForm event={editing} catalog={catalog} santaCount={christmasSantaCapacity} busy={saving} onClose={()=>setEditing(null)} onSave={saveReservation}/>}
+   {editing&&<ChristmasReservationForm event={editing} catalog={catalog} santaCount={christmasSantaCapacity} busy={saving} onClose={()=>setEditing(null)} onSave={saveReservation} transportConfig={transportConfig}/>}
    {!!notice&&<div role="status" className="navidad-toast"><span>{notice}</span><button aria-label="Cerrar aviso" onClick={()=>setNotice('')}>×</button></div>}
  </div>;
 }
