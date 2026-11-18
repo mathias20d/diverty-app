@@ -1,5 +1,6 @@
 import ChristmasCompanySettings from './components/ChristmasCompanySettings.jsx';
 import ChristmasPublishCard from './components/ChristmasPublishCard.jsx';
+import ChristmasKidsSetting from './components/ChristmasKidsSetting.jsx';
 import {profileErrorMessage} from './lib/christmas-publish.mjs';
 import {navidadApi} from './lib/navidad-api.mjs';
 import React,{useState,useEffect,useRef,useMemo,useCallback} from 'react';
@@ -456,6 +457,7 @@ const openGoogleMaps = useCallback((dir, ubi, eventData = null) => {
     {settingsTab==='transport'&&<ChristmasTransportSettings db={db} appId={appId} saved={transportConfig} onMessage={showAlert}/>}
     {settingsTab==='santas'&&<>
     <section className="nv-section" aria-labelledby="nv-santas-title"><h3 id="nv-santas-title">Cantidad de Santas</h3><p>Define cuántas rutas se pueden atender. Con 2 Santas tendrás Santa 1 y Santa 2, cada uno con su agenda y sus traslados.</p><div className="nv-stepper-row"><span>Santas disponibles</span><div className="nv-stepper"><button type="button" aria-label="Un Santa menos" disabled={saving||Number(capacityDraft)<=1} onClick={()=>setCapacityDraft(String(Math.max(1,Number(capacityDraft||1)-1)))}>−</button><input aria-label="Santas disponibles" inputMode="numeric" value={capacityDraft} onFocus={e=>e.target.select()} onChange={e=>setCapacityDraft(e.target.value.replace(/[^0-9]/g,'').slice(0,2))}/><button type="button" aria-label="Un Santa más" disabled={saving||Number(capacityDraft)>=20} onClick={()=>setCapacityDraft(String(Math.min(20,Number(capacityDraft||0)+1)))}>+</button></div><button className="nv-btn-primary" disabled={saving||String(capacityDraft)===String(christmasSantaCapacity)} onClick={saveCapacity}>{saving?'Guardando…':'Guardar'}</button></div></section>
+    <ChristmasKidsSetting store={store} user={firebaseUser} onMessage={showAlert}/>
     <section className="nv-section" aria-labelledby="nv-avisos-title"><h3 id="nv-avisos-title">Avisos</h3><p>Recibe una notificación en este dispositivo cuando llegue una solicitud nueva.</p><button disabled={saving} onClick={activarNotificaciones} style={{justifySelf:'start'}}><Bell size={17}/> Activar avisos en este dispositivo</button></section>
     <ChristmasDates db={db} appId={appId}/>
     <details><summary>Revisar cupos de Navidad</summary><p>Reconstruye únicamente los cupos navideños con las reservas guardadas; no borra reservas.</p><button disabled={saving} onClick={async()=>{setSaving(true);try{await reconcileChristmasAvailability();showAlert('Cupos navideños revisados.');}catch{showAlert('No se pudieron revisar los cupos.');}finally{setSaving(false);}}}>Revisar cupos</button></details>
