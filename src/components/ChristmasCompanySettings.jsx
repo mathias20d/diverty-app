@@ -14,7 +14,7 @@ export default function ChristmasCompanySettings({store,user,catalog,onMessage,p
  const [slug,setSlug]=useState(''),[slugDraft,setSlugDraft]=useState('');
  useEffect(()=>onSnapshot(ref('config_web','disponibilidad'),snap=>{const s=snap.data()?.enlace||'';setSlug(s);setSlugDraft(old=>old||s);},()=>{}),[appId]);
  const link=publicPageLink({slug,uid:user.uid,legacy});
- const saveSlug=async()=>{if(String(slugDraft).trim().length<3)return onMessage('El nombre del enlace debe tener al menos 3 letras.');setBusy(true);try{const result=await navidadApi('link',{slug:slugDraft},user);setSlug(result.slug);setSlugDraft(result.slug);onMessage('Tu enlace ahora es divertypanama.netlify.app/s/'+result.slug);}catch(e){onMessage(e.message==='SLUG_TAKEN'?'Ese nombre ya lo usa otra empresa. Prueba con otro.':e.message==='INVALID_SLUG'?'Usa solo letras, números y guiones (mínimo 3).':'No se pudo guardar el enlace. Revisa la conexión.');}finally{setBusy(false);}};
+ const saveSlug=async()=>{if(String(slugDraft).trim().length<3)return onMessage('El nombre del enlace debe tener al menos 3 letras.');setBusy(true);try{const result=await navidadApi('link',{slug:slugDraft},user);setSlug(result.slug);setSlugDraft(result.slug);onMessage('Tu enlace ahora es entregasnavidad.netlify.app/s/'+result.slug);}catch(e){onMessage(e.message==='SLUG_TAKEN'?'Ese nombre ya lo usa otra empresa. Prueba con otro.':e.message==='INVALID_SLUG'?'Usa solo letras, números y guiones (mínimo 3).':'No se pudo guardar el enlace. Revisa la conexión.');}finally{setBusy(false);}};
  const saveProfile=async publish=>{
   const cleanName=name.replace(/[<>]/g,'').trim();
   if(!cleanName)return onMessage('Escribe el nombre de la empresa.');

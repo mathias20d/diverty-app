@@ -1,5 +1,5 @@
 // Publicar la página de reservas en pocos pasos: qué falta y qué decirle a la persona.
-const SITE = 'https://divertypanama.netlify.app';
+const SITE = 'https://entregasnavidad.netlify.app';
 
 export function publicPageLink({ slug = '', uid = '', legacy = false } = {}) {
   if (slug) return SITE + '/s/' + slug;
